@@ -72,6 +72,34 @@ export async function fetchOverpass(query: string): Promise<OsmElement[]> {
   return json.elements
 }
 
+// Split a large area into rows x cols tiles and fetch them one at a time.
+// Smaller queries get through a busy public server far more often than one
+// big one, and each tile caches on its own so a failure resumes where it
+// stopped. Elements crossing tile edges come back twice; dedupe by type/id.
+export async function fetchTiled(
+  bbox: Bbox,
+  rows: number,
+  cols: number,
+  query: (b: Bbox) => string,
+): Promise<OsmElement[]> {
+  const seen = new Map<string, OsmElement>()
+  const dLat = (bbox.north - bbox.south) / rows
+  const dLng = (bbox.east - bbox.west) / cols
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      console.log(`overpass: tile ${r * cols + c + 1}/${rows * cols}`)
+      const tile: Bbox = {
+        south: bbox.south + r * dLat,
+        north: bbox.south + (r + 1) * dLat,
+        west: bbox.west + c * dLng,
+        east: bbox.west + (c + 1) * dLng,
+      }
+      for (const el of await fetchOverpass(query(tile))) seen.set(`${el.type}/${el.id}`, el)
+    }
+  }
+  return [...seen.values()]
+}
+
 // The public server asks clients to back off exponentially when it's at
 // capacity (HTTP 429/502/503/504). Anything else fails immediately.
 const RETRYABLE = new Set([429, 502, 503, 504])
