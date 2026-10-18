@@ -52,13 +52,40 @@ export function cityQuery(b: Bbox): string {
 out tags geom;`
 }
 
-export async function fetchOverpass(query: string, maxAttempts = MAX_ATTEMPTS): Promise<OsmElement[]> {
+export interface FetchOptions {
+  // Never touch the network: use cached tiles (or cached sub-tiles) only and
+  // skip anything missing. For previewing a partial bake.
+  cachedOnly?: boolean
+}
+
+class NotCachedError extends Error {}
+
+// The main query uses `out tags geom`, which omits relation members, so
+// multipolygon buildings arrive without geometry. Fetch them separately with
+// full geometry (`out geom`): a small query, kept apart so the cached tiles
+// stay valid.
+export function buildingRelationsQuery(b: Bbox): string {
+  const bb = `${b.south},${b.west},${b.north},${b.east}`
+  return `[out:json][timeout:180];
+(
+  relation["building"]["type"="multipolygon"](${bb});
+  relation["building:part"]["type"="multipolygon"](${bb});
+);
+out geom;`
+}
+
+export async function fetchOverpass(
+  query: string,
+  maxAttempts = MAX_ATTEMPTS,
+  opts: FetchOptions = {},
+): Promise<OsmElement[]> {
   const key = createHash('sha256').update(query).digest('hex').slice(0, 16)
   const file = join(CACHE_DIR, `overpass-${key}.json`)
   if (existsSync(file)) {
     console.log(`overpass: using cache ${file}`)
     return JSON.parse(readFileSync(file, 'utf8')).elements
   }
+  if (opts.cachedOnly) throw new NotCachedError(`not cached: overpass-${key}`)
 
   const started = Date.now()
   const text = await postWithBackoff(query, maxAttempts)
@@ -82,6 +109,7 @@ export async function fetchTiled(
   rows: number,
   cols: number,
   query: (b: Bbox) => string,
+  opts: FetchOptions = {},
 ): Promise<OsmElement[]> {
   const seen = new Map<string, OsmElement>()
   const dLat = (bbox.north - bbox.south) / rows
@@ -95,7 +123,7 @@ export async function fetchTiled(
         west: bbox.west + c * dLng,
         east: bbox.west + (c + 1) * dLng,
       }
-      for (const el of await fetchAdaptive(tile, query, 0)) seen.set(`${el.type}/${el.id}`, el)
+      for (const el of await fetchAdaptive(tile, query, 0, opts)) seen.set(`${el.type}/${el.id}`, el)
     }
   }
   return [...seen.values()]
@@ -104,12 +132,27 @@ export async function fetchTiled(
 const MAX_SPLIT_DEPTH = 2
 const ATTEMPTS_BEFORE_SPLIT = 2
 
-async function fetchAdaptive(tile: Bbox, query: (b: Bbox) => string, depth: number): Promise<OsmElement[]> {
-  if (depth === MAX_SPLIT_DEPTH) return fetchOverpass(query(tile))
+async function fetchAdaptive(
+  tile: Bbox,
+  query: (b: Bbox) => string,
+  depth: number,
+  opts: FetchOptions,
+): Promise<OsmElement[]> {
+  if (depth === MAX_SPLIT_DEPTH) {
+    try {
+      return await fetchOverpass(query(tile), MAX_ATTEMPTS, opts)
+    } catch (err) {
+      if (!(err instanceof NotCachedError)) throw err
+      console.warn(`overpass: SKIPPING uncached area ${JSON.stringify(tile)} (cached-only)`)
+      return []
+    }
+  }
   try {
-    return await fetchOverpass(query(tile), ATTEMPTS_BEFORE_SPLIT)
+    return await fetchOverpass(query(tile), ATTEMPTS_BEFORE_SPLIT, opts)
   } catch (err) {
-    console.warn(`overpass: splitting tile into 4 (depth ${depth + 1}) after: ${(err as Error).message.slice(0, 80)}`)
+    if (!(err instanceof NotCachedError)) {
+      console.warn(`overpass: splitting tile into 4 (depth ${depth + 1}) after: ${(err as Error).message.slice(0, 80)}`)
+    }
     const midLat = (tile.south + tile.north) / 2
     const midLng = (tile.west + tile.east) / 2
     const quads: Bbox[] = [
@@ -119,7 +162,7 @@ async function fetchAdaptive(tile: Bbox, query: (b: Bbox) => string, depth: numb
       { south: midLat, north: tile.north, west: midLng, east: tile.east },
     ]
     const out: OsmElement[] = []
-    for (const q of quads) out.push(...(await fetchAdaptive(q, query, depth + 1)))
+    for (const q of quads) out.push(...(await fetchAdaptive(q, query, depth + 1, opts)))
     return out
   }
 }

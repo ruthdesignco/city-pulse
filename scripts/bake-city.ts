@@ -1,7 +1,8 @@
 // Bake OSM buildings and streets for SoMa, the Mission and the Tenderloin
 // (plus a dimmer context ring) into public/city.bin.
 //
-//   npm run bake
+//   npm run bake                    fetch what's missing, then bake
+//   npm run bake -- --cached-only   bake from cache only (partial preview)
 //
 // Inputs:  scripts/data/analysis-neighborhoods.geojson (DataSF)
 //          OpenStreetMap via Overpass, cached in scripts/.cache/
@@ -31,7 +32,15 @@ import {
   simplifyRing,
   stitchRings,
 } from './lib/geometry.ts'
-import { type Bbox, type OsmElement, type OsmGeomPoint, cityQuery, fetchTiled } from './lib/overpass.ts'
+import {
+  type Bbox,
+  type OsmElement,
+  type OsmGeomPoint,
+  buildingRelationsQuery,
+  cityQuery,
+  fetchOverpass,
+  fetchTiled,
+} from './lib/overpass.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
@@ -86,6 +95,7 @@ const stats = {
   outlines: 0,
   parts: 0,
   relationRingsUnclosed: 0,
+  relationsWithoutGeometry: 0,
   holesIgnored: 0,
   skippedByValue: 0,
   tooSmall: 0,
@@ -103,6 +113,10 @@ function footprintsOf(el: OsmElement, tags: Record<string, string>): Footprint[]
     const last = ring[ring.length - 1]
     if (first[0] !== last[0] || first[1] !== last[1]) return [] // unclosed building way: broken data
     return [{ osm, ring: openRing(ring), tags }]
+  }
+  if (!el.members) {
+    stats.relationsWithoutGeometry++
+    return []
   }
   const outers = el.members.filter((m) => m.role === 'outer' && m.geometry).map((m) => m.geometry!.map(project))
   stats.holesIgnored += el.members.filter((m) => m.role === 'inner').length
@@ -287,7 +301,20 @@ async function main() {
   const boundary = loadBoundary()
   console.log(`boundary: ${boundary.length} rings, ${boundary.reduce((n, r) => n + r.length, 0)} points`)
 
-  const elements = await fetchTiled(QUERY_BBOX, TILES, TILES, cityQuery)
+  const cachedOnly = process.argv.includes('--cached-only')
+  if (cachedOnly) console.warn('bake: --cached-only. Output may be PARTIAL; do not commit it.')
+  const tiled = await fetchTiled(QUERY_BBOX, TILES, TILES, cityQuery, { cachedOnly })
+  let relations: OsmElement[] = []
+  try {
+    relations = await fetchOverpass(buildingRelationsQuery(QUERY_BBOX), undefined, { cachedOnly })
+  } catch (err) {
+    if (!cachedOnly) throw err
+    console.warn('bake: building relations not cached; multipolygon buildings will be missing')
+  }
+  // Full-geometry relations replace the tag-only copies from the tiles.
+  const byId = new Map(tiled.map((e) => [`${e.type}/${e.id}`, e]))
+  for (const r of relations) byId.set(`${r.type}/${r.id}`, r)
+  const elements = [...byId.values()]
   console.log(`osm: ${elements.length} elements after tile dedupe`)
 
   const buildings = bakeBuildings(elements, boundary)
@@ -328,7 +355,7 @@ async function main() {
   console.log(`\nbuildings: ${buildings.length} kept (${core} in the three neighborhoods, ${buildings.length - core} in the ring)`)
   console.log(`  outlines seen ${stats.outlines}, parts with heights ${stats.parts}`)
   console.log(`  dropped: ${stats.outsideRing} beyond ring, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value`)
-  console.log(`  multipolygon: ${stats.relationRingsUnclosed} outer rings could not be closed, ${stats.holesIgnored} inner rings (courtyards) ignored`)
+  console.log(`  multipolygon: ${stats.relationRingsUnclosed} outer rings could not be closed, ${stats.holesIgnored} inner rings (courtyards) ignored, ${stats.relationsWithoutGeometry} relations had no geometry`)
   const hf = stats.heightFrom
   const pct = (v: number) => `${((100 * v) / buildings.length).toFixed(1)}%`
   console.log(`  height source: height ${pct(hf.height)}, levels ${pct(hf.levels)}, parts ${pct(hf.parts)}, default ${DEFAULT_HEIGHT_M} m ${pct(hf.default)}`)
