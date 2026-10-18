@@ -52,7 +52,7 @@ export function cityQuery(b: Bbox): string {
 out tags geom;`
 }
 
-export async function fetchOverpass(query: string): Promise<OsmElement[]> {
+export async function fetchOverpass(query: string, maxAttempts = MAX_ATTEMPTS): Promise<OsmElement[]> {
   const key = createHash('sha256').update(query).digest('hex').slice(0, 16)
   const file = join(CACHE_DIR, `overpass-${key}.json`)
   if (existsSync(file)) {
@@ -61,7 +61,7 @@ export async function fetchOverpass(query: string): Promise<OsmElement[]> {
   }
 
   const started = Date.now()
-  const text = await postWithBackoff(query)
+  const text = await postWithBackoff(query, maxAttempts)
   const json = JSON.parse(text)
   if (json.remark) console.warn(`overpass remark: ${json.remark}`)
   mkdirSync(CACHE_DIR, { recursive: true })
@@ -75,7 +75,8 @@ export async function fetchOverpass(query: string): Promise<OsmElement[]> {
 // Split a large area into rows x cols tiles and fetch them one at a time.
 // Smaller queries get through a busy public server far more often than one
 // big one, and each tile caches on its own so a failure resumes where it
-// stopped. Elements crossing tile edges come back twice; dedupe by type/id.
+// stopped. A tile that keeps failing is split 2x2 (up to MAX_SPLIT_DEPTH
+// levels). Elements crossing tile edges come back twice; dedupe by type/id.
 export async function fetchTiled(
   bbox: Bbox,
   rows: number,
@@ -94,10 +95,33 @@ export async function fetchTiled(
         west: bbox.west + c * dLng,
         east: bbox.west + (c + 1) * dLng,
       }
-      for (const el of await fetchOverpass(query(tile))) seen.set(`${el.type}/${el.id}`, el)
+      for (const el of await fetchAdaptive(tile, query, 0)) seen.set(`${el.type}/${el.id}`, el)
     }
   }
   return [...seen.values()]
+}
+
+const MAX_SPLIT_DEPTH = 2
+const ATTEMPTS_BEFORE_SPLIT = 2
+
+async function fetchAdaptive(tile: Bbox, query: (b: Bbox) => string, depth: number): Promise<OsmElement[]> {
+  if (depth === MAX_SPLIT_DEPTH) return fetchOverpass(query(tile))
+  try {
+    return await fetchOverpass(query(tile), ATTEMPTS_BEFORE_SPLIT)
+  } catch (err) {
+    console.warn(`overpass: splitting tile into 4 (depth ${depth + 1}) after: ${(err as Error).message.slice(0, 80)}`)
+    const midLat = (tile.south + tile.north) / 2
+    const midLng = (tile.west + tile.east) / 2
+    const quads: Bbox[] = [
+      { south: tile.south, north: midLat, west: tile.west, east: midLng },
+      { south: tile.south, north: midLat, west: midLng, east: tile.east },
+      { south: midLat, north: tile.north, west: tile.west, east: midLng },
+      { south: midLat, north: tile.north, west: midLng, east: tile.east },
+    ]
+    const out: OsmElement[] = []
+    for (const q of quads) out.push(...(await fetchAdaptive(q, query, depth + 1)))
+    return out
+  }
 }
 
 // The public server asks clients to back off exponentially when it's at
@@ -105,9 +129,9 @@ export async function fetchTiled(
 const RETRYABLE = new Set([429, 502, 503, 504])
 const MAX_ATTEMPTS = 5
 
-async function postWithBackoff(query: string): Promise<string> {
+async function postWithBackoff(query: string, maxAttempts: number): Promise<string> {
   for (let attempt = 1; ; attempt++) {
-    console.log(`overpass: fetching, attempt ${attempt}/${MAX_ATTEMPTS} (can take a few minutes)...`)
+    console.log(`overpass: fetching, attempt ${attempt}/${maxAttempts} (can take a few minutes)...`)
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -118,7 +142,7 @@ async function postWithBackoff(query: string): Promise<string> {
     if (res.ok && text.trimStart().startsWith('{')) return text
 
     const summary = `HTTP ${res.status}; body starts: ${text.slice(0, 200).replace(/\s+/g, ' ')}`
-    if (!RETRYABLE.has(res.status) || attempt === MAX_ATTEMPTS) throw new Error(`overpass: ${summary}`)
+    if (!RETRYABLE.has(res.status) || attempt >= maxAttempts) throw new Error(`overpass: ${summary}`)
     const waitS = 30 * 2 ** (attempt - 1)
     console.warn(`overpass: ${summary}\noverpass: retrying in ${waitS}s`)
     await new Promise((r) => setTimeout(r, waitS * 1000))
