@@ -1,0 +1,25 @@
+# Secrets: never commit. Use .env.example for documented, non-secret placeholders.
+.env*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Supabase local files
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+supabase/functions/**/.env
+
+# Bake intermediates (raw downloads are large and reproducible)
+scripts/.cache/
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
