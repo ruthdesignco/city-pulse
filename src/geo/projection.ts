@@ -25,11 +25,10 @@ export interface ScenePoint {
   z: number
 }
 
-// PROVISIONAL: approximate center of SoMa + Mission + Tenderloin. Replace with
-// the rounded centroid of the Analysis Neighborhoods polygons once
-// scripts/data/analysis-neighborhoods.geojson is in, then rebake.
-// Never hard-code this elsewhere; import it.
-export const ORIGIN: LatLng = { lat: 37.768, lng: -122.411 }
+// Area-weighted centroid of the SoMa, Mission and Tenderloin Analysis
+// Neighborhoods polygons (37.76778, -122.41279), rounded. Changing it means
+// rebaking public/city.bin. Never hard-code this elsewhere; import it.
+export const ORIGIN: LatLng = { lat: 37.768, lng: -122.413 }
 
 const WGS84_A = 6378137
 const WGS84_E2 = 0.00669437999014
