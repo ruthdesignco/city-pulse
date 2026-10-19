@@ -13,9 +13,11 @@ export const palette = {
   building: '#8a8ba5', // cool neutral grey; roofs take the sky's blue, west walls the sun's orange
   buildingBase: '#423f58', // street-level tone; walls brighten toward the roof
 
-  streetMajor: '#7a83b8',
-  streetMinor: '#545c8c',
-  streetLocal: '#3a4068',
+  // 20% brighter (in linear light) than the first pass, once the ring dimming
+  // and bloom made them read too faint.
+  streetMajor: '#858ec8',
+  streetMinor: '#5c6498',
+  streetLocal: '#404671',
 
   // Muni vehicles: unlit, so they read as lights moving through the dusk.
   muniBus: '#ffcf7a',
