@@ -50,7 +50,10 @@ export default function App() {
       <Canvas
         dpr={[1, 1.5]}
         gl={{ antialias: false }}
-        shadows="soft"
+        // "soft" (PCFSoft) was removed in this three.js version -- it falls
+        // back to hard PCF with a console warning. VSM is the remaining
+        // soft-shadow type (Atmosphere.tsx's shadow-radius controls blur).
+        shadows="variance"
         camera={{ position: OPENING_POSITION, fov: 40, near: 10, far: 20000 }}
       >
         {/* Each independently-loading resource (HDRI, city.bin, routes.json)

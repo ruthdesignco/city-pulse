@@ -69,6 +69,7 @@ export function Atmosphere() {
         shadow-camera-far={SUN_POSITION[1] + SHADOW_EXTENT_M * 4}
         shadow-bias={-0.0003}
         shadow-normalBias={0.4}
+        shadow-radius={3}
       />
       <group ref={cloudsRef} position={[TARGET[0], CLOUD_HEIGHT_M, TARGET[2]]}>
         {/* limit must cover every Cloud's segments total (22+18+16=56 here) --
