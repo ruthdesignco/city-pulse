@@ -1,6 +1,8 @@
 import { type ComponentRef, useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import { DEMO } from '../params.ts'
+import { SHOTS, type Shot, shotPose } from './shots.ts'
 import { TARGET } from './view.ts'
 
 // Constrained orbit around the cluster plus a slow idle drift.
@@ -20,6 +22,8 @@ export function CameraRig() {
   const interacting = useRef(false)
   const lastInteraction = useRef(0)
   const reducedMotion = useRef(true)
+  // The walkthrough shot playing, if any (?demo, keys 1-7; Esc or a drag stops it).
+  const playing = useRef<{ shot: Shot; startedAt: number } | null>(null)
 
   useEffect(() => {
     lastInteraction.current = performance.now() // count the first idle period from mount
@@ -30,11 +34,42 @@ export function CameraRig() {
     return () => query.removeEventListener('change', onChange)
   }, [])
 
+  useEffect(() => {
+    if (!DEMO) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === 'Escape') {
+        playing.current = null
+        lastInteraction.current = performance.now()
+        return
+      }
+      const n = Number(e.key)
+      if (Number.isInteger(n) && n >= 1 && n <= SHOTS.length) playing.current = { shot: SHOTS[n - 1], startedAt: performance.now() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // Drift is driven by frame delta, so it runs at the same speed at 60 or
   // 120 Hz, and eases in after the user lets go instead of snapping.
   useFrame((_, delta) => {
     const c = controls.current
-    if (!c || interacting.current || reducedMotion.current) return
+    if (!c) return
+    const p = playing.current
+    if (p) {
+      // A shot plays even with reduced motion: someone asked for it.
+      const elapsedS = (performance.now() - p.startedAt) / 1000
+      const pose = shotPose(p.shot, elapsedS)
+      c.object.position.set(...pose.position)
+      c.target.set(...pose.target)
+      c.update()
+      if (elapsedS >= p.shot.durationS) {
+        playing.current = null
+        lastInteraction.current = performance.now() // hold the end frame, then drift
+      }
+      return
+    }
+    if (interacting.current || reducedMotion.current) return
     const idle = performance.now() - lastInteraction.current - IDLE_BEFORE_DRIFT_MS
     if (idle <= 0) return
     const t = Math.min(1, idle / DRIFT_EASE_IN_MS)
@@ -58,6 +93,7 @@ export function CameraRig() {
       maxPolarAngle={MAX_POLAR}
       onStart={() => {
         interacting.current = true
+        playing.current = null
       }}
       onEnd={() => {
         interacting.current = false
