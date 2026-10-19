@@ -22,7 +22,7 @@ jobs:
       - run: npm test
 
   sql-fixture:
-    name: current_state SQL fixture
+    name: SQL fixtures
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -49,4 +49,6 @@ jobs:
             -f supabase/migrations/20261018200000_ingest_schema.sql \
             -f supabase/migrations/20261019030000_current_state_filters.sql \
             -f supabase/migrations/20261019050000_prune_relative_to_newest.sql \
-            -f supabase/tests/current_state.test.sql
+            -f supabase/migrations/20261019070000_healthcheck_ping.sql \
+            -f supabase/tests/current_state.test.sql \
+            -f supabase/tests/healthcheck_ping.test.sql
