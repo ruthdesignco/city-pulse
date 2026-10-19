@@ -1,27 +1,27 @@
-import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
-import { Cloud, Clouds, Environment } from '@react-three/drei'
-import type { Group } from 'three'
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
+import type { DirectionalLight, Group, Object3D } from 'three'
 import { palette } from '../city/palette.ts'
-import { TARGET } from './view.ts'
-import { createCloudTextureDataUrl } from './cloudTexture.ts'
+import { createCloudTexture } from './cloudTexture.ts'
+import { createSkyBackgroundTexture } from './skyBackground.ts'
 import { SUN_POSITION } from './sun.ts'
+import { TARGET } from './view.ts'
 
-// Daytime golden hour: a real HDRI (public/sky.hdr, Poly Haven CC0
-// "belfast_sunset_puresky" -- the "puresky" variant, with no photographed
-// ground/terrain in the panorama, chosen specifically because this app's
-// camera never looks near or above the horizon (CameraRig's polar-angle
-// range), so a regular ground+sky HDRI put the photographed ground where
-// the camera's upward view expects open sky) drives both the visible sky
-// and the scene's ambient lighting -- bright and warm, not the old dusk's
-// dark navy. The directional light rides on top of that purely to cast
-// real shadows from the same warm direction (sun.ts), dialed up relative
-// to the HDRI's own ambient contribution so shadows read as clearly
-// visible, not just a faint PCFSoft blur.
+// Fraction from the top of frame where the sun's glow reads, for the
+// background gradient's warm band (skyBackground.ts) -- this camera's
+// opening shot sits with the true horizon almost exactly at the top edge
+// (Atmosphere.tsx's CLOUD_PUFFS comment), so "low in the sky" lands near the
+// very top of frame, not the middle.
+const SUN_SCREEN_Y = 0.18
+
+// Daytime golden hour, merged from two tried directions (see git history on
+// look-golden/look-stylized): this direction's own SkyDome (not drei's
+// procedural <Sky> -- see SkyDome.tsx for why), golden's shadow/light
+// structure, a realistic-SF building palette at a brighter, lighter value
+// range, and a pulled-back, warm-but-neutral color grade throughout.
 //
-// The shadow camera frustum is sized around the baked city, not the full
-// 40,000 m ground plane (Ground.tsx) -- a low sun angle casts long shadows,
-// so this errs wide rather than clipping them at the edge of view.
+// The directional light is the scene's main light; the hemisphere light
+// fills shadows with the same warm-above/dark-below split.
 const SHADOW_EXTENT_M = 3600
 
 // Clouds drift by slowly rotating the whole layer about the vertical axis --
@@ -29,33 +29,86 @@ const SHADOW_EXTENT_M = 3600
 // and reads the same from an orbiting camera. One full pass overhead takes
 // about 20 minutes; "soft," not a time-lapse.
 //
-// Centered over view.ts's TARGET (what the camera actually orbits and looks
-// at), not the world origin: OrbitControls always looks toward TARGET, so
-// clouds centered elsewhere could sit outside the frustum depending on
-// orbit angle.
-//
-// Kept low (not high overhead): view.ts's own opening framing is tuned so
-// the frame's top edge sits right at the horizon (its comment: "the frame's
-// top edge is 20 deg above the view direction... puts the top edge at the
-// horizon"), meaning true sky above the horizon is mostly cropped out of
-// that shot by design -- a cloud layer placed high overhead would be
-// outside the frustum there. Near the opening camera's own height instead,
-// so clouds sit in the thin band of sky that actually is visible.
-const CLOUD_HEIGHT_M = 900
+// Positions are computed along the opening camera's actual view direction
+// (view.ts), not just "near TARGET": with a 40 deg (vertical) FOV, puffs
+// merely offset from TARGET by hundreds of meters land tens of degrees off
+// the view direction (a camera at ~1800m from TARGET only has to offset
+// ~650m to swing 20 deg) -- confirmed by placing one deliberately huge,
+// fully opaque, camera-facing puff and seeing nothing. These anchors sit
+// just above the horizon line within the frame (the opening shot's own top
+// edge sits almost exactly at the horizon, so "low in the sky" is the only
+// band that's actually visible there).
+const CLOUD_HEIGHT_M = 950
 const CLOUD_DRIFT_RAD_PER_S = 0.005
 
+interface CloudPuff {
+  position: [number, number, number]
+  scale: number
+  opacity: number
+  color: string
+}
+const CLOUD_PUFFS: CloudPuff[] = [
+  { position: [-218, -512, -2960], scale: 750, opacity: 0.8, color: '#ffffff' },
+  { position: [-80, -460, -3050], scale: 480, opacity: 0.65, color: '#fff6ec' },
+  { position: [695, -416, -3283], scale: 700, opacity: 0.75, color: '#fff6ec' },
+  { position: [850, -370, -3200], scale: 460, opacity: 0.6, color: '#ffffff' },
+  { position: [1410, -491, -2776], scale: 750, opacity: 0.8, color: '#ffffff' },
+  { position: [1560, -450, -2850], scale: 480, opacity: 0.65, color: '#fffaf0' },
+  { position: [2363, -379, -2658], scale: 700, opacity: 0.75, color: '#fffaf0' },
+  { position: [2220, -330, -2600], scale: 460, opacity: 0.6, color: '#fff6ec' },
+  { position: [2588, -599, -1634], scale: 680, opacity: 0.7, color: '#fff6ec' },
+  { position: [2450, -560, -1550], scale: 440, opacity: 0.55, color: '#ffffff' },
+  { position: [-838, -637, -2681], scale: 700, opacity: 0.75, color: '#ffffff' },
+  { position: [-980, -590, -2600], scale: 460, opacity: 0.6, color: '#fffaf0' },
+]
+
 export function Atmosphere() {
+  const { scene } = useThree()
+  const lightRef = useRef<DirectionalLight>(null)
+  const lightTargetRef = useRef<Object3D>(null)
   const cloudsRef = useRef<Group>(null)
-  const cloudTexture = useMemo(() => createCloudTextureDataUrl(), [])
+  const cloudTexture = useMemo(() => createCloudTexture(), [])
+  const skyTexture = useMemo(
+    () => createSkyBackgroundTexture(palette.sky, palette.skyZenith, palette.sun, SUN_SCREEN_Y),
+    [],
+  )
+  useEffect(() => {
+    // oxlint's react(immutability) flags this (mutating useThree()'s scene),
+    // but it's r3f's own documented pattern for scene.background/environment
+    // -- there's no hook-owned setter for it.
+    scene.background = skyTexture
+    return () => {
+      scene.background = null
+    }
+  }, [scene, skyTexture])
+  // The shadow camera's ortho frustum (shadow-camera-left/right/top/bottom
+  // below) is centered on the light's target, which three.js defaults to
+  // world (0,0,0) if never set -- not TARGET, ~1800 m away, where the city
+  // and camera actually are. Ground and buildings beyond the mismatched
+  // frustum's edge fell outside shadow coverage and sampled as spuriously
+  // dark, which was the real cause of the "dark band" near the horizon
+  // (every sky-side hypothesis -- fog range, SSAO, the dome shader itself --
+  // left this unchanged, since none of them touch shadow-camera framing).
+  useEffect(() => {
+    if (lightRef.current && lightTargetRef.current) lightRef.current.target = lightTargetRef.current
+  }, [])
   useFrame((_state, delta) => {
     if (cloudsRef.current) cloudsRef.current.rotation.y += CLOUD_DRIFT_RAD_PER_S * delta
   })
 
   return (
     <>
-      <Environment files="/sky.hdr" background backgroundIntensity={1.1} environmentIntensity={0.7} />
-      <fog attach="fog" args={[palette.sky, 5500, 12000]} />
+      <hemisphereLight args={[palette.sun, palette.ground, 0.75]} />
+      {/* City buildings mostly sit within ~2-3 km of TARGET (SPEC.md): near
+          keeps most of downtown crisp. far is well inside Ground.tsx's dark
+          near-plane edge (4500 m radius) so that plane always finishes
+          fading to this same palette.sky color before reaching it -- the
+          unlit backdrop plane beyond takes over already in that color, so
+          there's no edge or gradient left exposed to show as a seam. */}
+      <fog attach="fog" args={[palette.sky, 2000, 4200]} />
+      <object3D ref={lightTargetRef} position={TARGET} />
       <directionalLight
+        ref={lightRef}
         color={palette.sun}
         position={SUN_POSITION}
         intensity={2.3}
@@ -72,14 +125,15 @@ export function Atmosphere() {
         shadow-radius={3}
       />
       <group ref={cloudsRef} position={[TARGET[0], CLOUD_HEIGHT_M, TARGET[2]]}>
-        {/* limit must cover every Cloud's segments total (22+18+16=56 here) --
-            drei's <Clouds> silently drops whichever segments don't fit under
-            limit, rather than erroring, so this is easy to under-provision. */}
-        <Clouds texture={cloudTexture} limit={64}>
-          <Cloud seed={1} position={[-1200, 200, -600]} segments={22} bounds={[3800, 220, 3800]} volume={650} opacity={0.5} fade={10000} speed={0.1} growth={180} color="#fff3e6" />
-          <Cloud seed={2} position={[1600, -150, 800]} segments={18} bounds={[4200, 200, 4200]} volume={800} opacity={0.4} fade={10000} speed={0.08} growth={160} color="#ffe9d2" />
-          <Cloud seed={3} position={[0, 300, 2200]} segments={16} bounds={[3200, 180, 3200]} volume={550} opacity={0.4} fade={10000} speed={0.12} growth={150} color="#fff6ec" />
-        </Clouds>
+        {CLOUD_PUFFS.map((p, i) => (
+          <sprite key={i} position={p.position} scale={[p.scale, p.scale * 0.6, 1]}>
+            {/* fog off: these sit just above the horizon specifically to read
+              as a cloud layer against the sky -- the tighter near-camera
+              fog tuned for Ground.tsx's dark-to-sky fade (its own comment)
+              washed them out almost to invisible when they inherited it. */}
+          <spriteMaterial map={cloudTexture} color={p.color} opacity={p.opacity} transparent depthWrite={false} fog={false} />
+          </sprite>
+        ))}
       </group>
     </>
   )

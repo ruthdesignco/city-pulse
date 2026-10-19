@@ -17,10 +17,12 @@ export function bearingToScene(azimuthDeg: number, elevationDeg: number, distanc
 }
 
 // ~258°: SF's sunset bearing in October, WSW (equinox is 270° due west,
-// winter solstice ~242°). ~12° above the horizon: low and warm, but still
-// enough light to read the scene -- true sunset (~0-2°) is too dark here.
+// winter solstice ~242°). ~16° above the horizon: low and warm, raised a
+// touch from the first pass' 12 deg -- that read too dark on the ground
+// (grazing light only, N.L ~ sin(elevation) ~ 0.2 at 12 deg) once actually
+// screenshotted.
 export const SUN_AZIMUTH_DEG = 258
-export const SUN_ELEVATION_DEG = 12
+export const SUN_ELEVATION_DEG = 16
 export const SUN_DISTANCE = 3400
 
 export const SUN_POSITION = bearingToScene(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, SUN_DISTANCE)

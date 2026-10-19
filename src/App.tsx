@@ -84,7 +84,7 @@ export default function App() {
             enough not to compete with the real shadows from Atmosphere's sun. */}
         <EffectComposer enableNormalPass>
           <SSAO radius={0.12} intensity={12} luminanceInfluence={0.6} distanceFalloff={0.5} />
-          <Bloom luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.9} mipmapBlur />
+          <Bloom luminanceThreshold={0.9} luminanceSmoothing={0.2} intensity={1.1} mipmapBlur />
           <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
         </EffectComposer>
         {import.meta.env.DEV && !DEMO && <Stats />}

@@ -47,7 +47,10 @@ const STALE_MIX = 1
 // Fresh buses are drawn this many times brighter than their palette color,
 // past the bloom threshold (App.tsx), so they glow and nothing else in the
 // scene does. The boost fades out with staleness: a stale bus doesn't glow.
-const GLOW = 2.4
+// Raised from the dusk-era 2.4: against a bright daylight sky/ground
+// (skyBackground.ts, the lighter palette.ts pass) buses need more separation
+// to still read as the brightest, most saturated things in frame.
+const GLOW = 3.4
 // However far the camera pulls back, a bus stays at least this wide on screen.
 const MIN_WIDTH_PX = 4
 

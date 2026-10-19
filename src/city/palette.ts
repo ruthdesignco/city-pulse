@@ -1,42 +1,45 @@
-// The City Pulse golden-hour palette. Every scene color comes from here so
-// the look can be tuned in one place. Values are sRGB hex.
+// The City Pulse palette. Every scene color comes from here so the look can
+// be tuned in one place. Values are sRGB hex.
 
 export const palette = {
-  // Fog and the ring/near-camera dim target (Buildings.tsx, Streets.tsx)
-  // share this pale, desaturated haze tone -- atmospheric perspective: the
-  // ring should recede (hazier, lower contrast), not become the brightest,
-  // most vivid thing in frame, which a fully-saturated sky color did. The
-  // rendered background itself is the HDRI texture, not this color.
-  sky: '#cdc0ac',
+  // Fog, the ring/near-camera dim target (Buildings.tsx, Streets.tsx), and
+  // SkyDome's horizon color (Atmosphere.tsx) all share this tone -- the
+  // fogged ground and the sky dome meet with no seam by construction, since
+  // SkyDome is given this exact value, not a close guess. Warm but
+  // deliberately NOT vivid: pulled back from earlier, more saturated
+  // orange-tan passes toward something closer to neutral.
+  sky: '#c7b49c',
+  skyZenith: '#aec4da', // SkyDome's upper-frame color: soft pale blue, not warm
 
-  // Warm neutral daylight ground -- dark enough that streetLocal (#404671,
-  // the darkest street color) still reads clearly on top of it.
-  ground: '#3d342a',
-  neighborhood: '#4a3f33', // the three neighborhoods, lifted slightly off the ground
+  // Clean warm-neutral ground, dark enough that streetLocal (#404671, the
+  // darkest street color) still reads on top of it.
+  ground: '#483f35',
+  neighborhood: '#564c40', // the three neighborhoods, lifted slightly off the ground
 
-  // A notch below mid grey so the buses, not the buildings, are the brightest
-  // thing in the scene. Three color families by OSM building type/height,
-  // each with 3 deterministic per-building shade variants
-  // (scripts/lib/buildingColor.ts: BuildingColorType*3 + buildingVariant
-  // indexes this flat array) -- 92% of buildings carry no usable `building`
-  // tag value, so without per-building variety within Neutral especially,
-  // the city reads as one flat grey. Subtle -- SF's actual palette (cream,
-  // sandstone, muted pastels, grays) -- not a rainbow: every variant stays
-  // close enough in value that bloom and the ring-fade/near-dim shader math
-  // hold the same way for all nine.
-  building: '#8a8ba5', // = buildingColors[0]: kept as the material's fallback color
+  // Three color families by OSM building type/height, each with 3
+  // deterministic per-building shade variants (scripts/lib/buildingColor.ts:
+  // BuildingColorType*3 + buildingVariant indexes this flat array) -- 92% of
+  // buildings carry no usable `building` tag value, so without per-building
+  // variety within Neutral especially, the city reads as one flat color.
+  // Realistic San Francisco architecture -- cream and white stucco, warm
+  // grays, sandstone, some terracotta, blue-gray glass towers -- bright
+  // enough to read clearly (not the desaturated-neutral first pass) but
+  // deliberately no greens or teals. Every variant stays close enough in
+  // value within its family that bloom and the ring-fade/near-dim shader
+  // math hold the same way for all nine.
+  building: '#e3d5bc', // = buildingColors[0]: kept as the material's fallback color
   buildingColors: [
-    '#8a8ba5', // Neutral 0: cool grey (unchanged from the original single color)
-    '#9c9686', // Neutral 1: warm taupe-grey
-    '#b8a888', // Neutral 2: muted sandstone
-    '#c9ab80', // Residential 0: sandstone
-    '#d4bb95', // Residential 1: light cream
-    '#b89a8c', // Residential 2: dusty pastel terracotta
-    '#93a0b4', // Tower 0: glass grey
-    '#a6b0bf', // Tower 1: light glass
-    '#7e8da3', // Tower 2: deep blue-glass
+    '#e3d5bc', // Neutral 0: cream/white stucco
+    '#b8aa94', // Neutral 1: warm gray
+    '#cbb896', // Neutral 2: sandstone
+    '#c97b56', // Residential 0: terracotta
+    '#ecd9b8', // Residential 1: bright stucco cream
+    '#d9a876', // Residential 2: warm tan/ochre
+    '#9fb0c2', // Tower 0: light blue-gray glass
+    '#7891a8', // Tower 1: medium blue-gray glass
+    '#c3ccd6', // Tower 2: pale glass
   ],
-  buildingBase: '#423f58', // street-level tone; walls brighten toward the roof
+  buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
   // 20% brighter (in linear light) than the first pass, once the ring dimming
   // and bloom made them read too faint.
@@ -45,16 +48,20 @@ export const palette = {
   streetLocal: '#404671',
 
   // Muni vehicles: unlit, so they read as lights against the daylight scene.
-  muniBus: '#ffcf7a',
-  muniRail: '#7fe8ff', // light rail and streetcars (route_type 0)
-  muniCable: '#ff9fc4', // cable cars (route_type 5)
+  // Boosted from the dusk-era values -- against a bright warm city these
+  // need more separation to still read as the brightest, most saturated
+  // things in frame.
+  muniBus: '#ffb340',
+  muniRail: '#5ad6ff', // light rail and streetcars (route_type 0)
+  muniCable: '#ff8fc4', // cable cars (route_type 5)
   // What a bus fades to once its data is ~3 min old: a muted lavender grey,
   // dimmer than any live vehicle and without their glow, but brighter than
   // every street, so a stale bus never reads as a missing one (palette.test.ts).
   muniStale: '#a7adcf',
 
-  // Golden-hour key light. The HDRI sky (Atmosphere.tsx) now provides the
-  // ambient/fill lighting that skyFill/groundFill used to; this directional
-  // light exists to cast crisp, real shadows in the same warm direction.
-  sun: '#ff9c5c',
+  // Warm key light, also driving SkyDome's sun glow and (tinted toward
+  // ground) the hemisphere fill (Atmosphere.tsx). Pulled back from earlier,
+  // more saturated orange passes to a paler gold -- "warm but neutral,"
+  // so it tints the scene without washing out buildingColors' variety.
+  sun: '#ffd9a8',
 } as const
