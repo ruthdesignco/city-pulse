@@ -22,10 +22,9 @@ describe('buildVehicleGeometry', () => {
         expect(b.max.z - b.min.z).toBeLessThan(MODEL_WIDTH_M[kind] + 0.5)
       })
 
-      it('has accent faces to tint and glow, and colors on every vertex', () => {
-        const accent = g.getAttribute('accent')
-        expect(Array.from(accent.array as Float32Array).some((a) => a === 1)).toBe(true)
+      it('carries its body colors on every vertex, nothing to tint or glow', () => {
         expect(g.getAttribute('color').count).toBe(g.getAttribute('position').count)
+        expect(g.getAttribute('accent')).toBeUndefined()
       })
     })
 

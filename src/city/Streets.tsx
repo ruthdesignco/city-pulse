@@ -1,66 +1,108 @@
 import { useEffect, useMemo } from 'react'
-import { BufferAttribute, BufferGeometry, Color } from 'three'
+import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { COORD_QUANTUM, StreetClass, type CityData } from './format.ts'
 import { palette } from './palette.ts'
 import { ringDim, ringPosition } from './ring.ts'
+import { ROAD_CLASS, type Mesh, type Pt, dashes, emptyMesh, laneLineOffsets, ribbon } from './roads.ts'
 import { useCity } from './useCity.ts'
 
-// Lift lines just off the ground so they don't z-fight with it.
-const STREET_Y = 0.3
+// Real roads (roads.ts): sidewalks, asphalt over them, lane lines over that,
+// a few centimeters apart above the ground (Ground.tsx, y <= 0.1) and pushed
+// further apart in depth by polygon offset so they don't z-fight from the
+// orbit's far end.
+const SIDEWALK_Y = 0.2
+const ASPHALT_Y = 0.25
+const MARKING_Y = 0.3
 
 const SKY = new Color(palette.sky)
-
-const CLASS_COLOR: Record<number, Color> = {
-  [StreetClass.Major]: new Color(palette.streetMajor),
-  [StreetClass.Minor]: new Color(palette.streetMinor),
-  [StreetClass.Local]: new Color(palette.streetLocal),
-}
+// Lane lines fade into the asphalt with distance, so thin dashes don't
+// shimmer from the opening view.
+const MARKING_FADE_M: [number, number] = [250, 900]
 
 // Streets in the context ring fade toward the sky like the ring's buildings
-// (ring.ts), per vertex, so a street crossing the boundary fades along its length.
-function buildGeometry(city: CityData): BufferGeometry {
-  const { streets, boundary } = city
+// (ring.ts), per vertex.
+function toGeometry(m: Mesh, base: Color, city: CityData): BufferGeometry {
+  const { boundary } = city
   const ringMeters = city.header.ringMeters
-  const color = new Color()
-  const shade = (base: Color, x: number, z: number, out: Float32Array, at: number) =>
-    color.copy(base).lerp(SKY, ringDim(ringPosition(boundary, ringMeters, x, z))).toArray(out, at)
-
-  let segments = 0
-  for (const n of streets.counts) segments += n - 1
-  const positions = new Float32Array(segments * 6)
-  const colors = new Float32Array(segments * 6)
-  let c = 0
-  let p = 0
-  let s = 0
-  streets.counts.forEach((n, k) => {
-    const base = CLASS_COLOR[streets.classes[k]] ?? CLASS_COLOR[StreetClass.Local]
-    for (let i = 0; i < n - 1; i++, c += 2) {
-      const x0 = streets.coords[c] * COORD_QUANTUM
-      const z0 = streets.coords[c + 1] * COORD_QUANTUM
-      const x1 = streets.coords[c + 2] * COORD_QUANTUM
-      const z1 = streets.coords[c + 3] * COORD_QUANTUM
-      positions.set([x0, STREET_Y, z0, x1, STREET_Y, z1], p)
-      p += 6
-      shade(base, x0, z0, colors, s)
-      shade(base, x1, z1, colors, s + 3)
-      s += 6
-    }
-    c += 2 // skip the last point of this line
-  })
+  const position = new Float32Array(m.position)
+  const color = new Float32Array(position.length)
+  const c = new Color()
+  for (let i = 0; i < position.length; i += 3)
+    c.copy(base).lerp(SKY, ringDim(ringPosition(boundary, ringMeters, position[i], position[i + 2]))).toArray(color, i)
+  const normal = new Float32Array(position.length)
+  for (let i = 1; i < normal.length; i += 3) normal[i] = 1
   const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(positions, 3))
-  g.setAttribute('color', new BufferAttribute(colors, 3))
+  g.setAttribute('position', new BufferAttribute(position, 3))
+  g.setAttribute('normal', new BufferAttribute(normal, 3))
+  g.setAttribute('color', new BufferAttribute(color, 3))
+  g.setIndex(new BufferAttribute(position.length / 3 > 65535 ? new Uint32Array(m.index) : new Uint16Array(m.index), 1))
+  g.computeBoundingSphere()
   return g
+}
+
+function buildLayers(city: CityData) {
+  const { streets } = city
+  const sidewalk = emptyMesh()
+  const asphalt = emptyMesh()
+  const markings = emptyMesh()
+  let c = 0
+  streets.counts.forEach((n, k) => {
+    const line: Pt[] = []
+    for (let i = 0; i < n; i++, c += 2) line.push([streets.coords[c] * COORD_QUANTUM, streets.coords[c + 1] * COORD_QUANTUM])
+    const cls = ROAD_CLASS[streets.classes[k]] ?? ROAD_CLASS[StreetClass.Local]
+    ribbon(sidewalk, line, cls.asphaltM / 2 + cls.sidewalkM, SIDEWALK_Y)
+    ribbon(asphalt, line, cls.asphaltM / 2, ASPHALT_Y)
+    const lanes = laneLineOffsets(cls.asphaltM, cls.lanes)
+    if (lanes.length) dashes(markings, line, lanes, MARKING_Y)
+  })
+  return {
+    sidewalk: toGeometry(sidewalk, new Color(palette.sidewalk), city),
+    asphalt: toGeometry(asphalt, new Color(palette.asphalt), city),
+    markings: toGeometry(markings, new Color(palette.laneMarking), city),
+  }
+}
+
+// `layer` 1-3, bottom to top: each one wins the depth test over the one below.
+function roadMaterial(layer: number): MeshStandardMaterial {
+  return new MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.95,
+    metalness: 0,
+    polygonOffset: true,
+    polygonOffsetFactor: -layer,
+    polygonOffsetUnits: -4 * layer,
+  })
+}
+
+function markingMaterial(): MeshStandardMaterial {
+  const material = roadMaterial(3)
+  const asphalt = new Color(palette.asphalt)
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uAsphalt = { value: asphalt }
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uAsphalt;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+diffuseColor.rgb = mix(diffuseColor.rgb, uAsphalt, smoothstep(${MARKING_FADE_M[0].toFixed(1)}, ${MARKING_FADE_M[1].toFixed(1)}, length(vViewPosition)));`,
+      )
+  }
+  material.customProgramCacheKey = () => 'city-lane-markings-v1'
+  return material
 }
 
 export function Streets() {
   const city = useCity()
-  const geometry = useMemo(() => buildGeometry(city), [city])
-  useEffect(() => () => geometry.dispose(), [geometry])
+  const layers = useMemo(() => buildLayers(city), [city])
+  const materials = useMemo(() => ({ sidewalk: roadMaterial(1), asphalt: roadMaterial(2), markings: markingMaterial() }), [])
+  useEffect(() => () => Object.values(layers).forEach((g) => g.dispose()), [layers])
+  useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials])
 
   return (
-    <lineSegments geometry={geometry}>
-      <lineBasicMaterial vertexColors />
-    </lineSegments>
+    <>
+      <mesh geometry={layers.sidewalk} material={materials.sidewalk} receiveShadow />
+      <mesh geometry={layers.asphalt} material={materials.asphalt} receiveShadow />
+      <mesh geometry={layers.markings} material={materials.markings} receiveShadow />
+    </>
   )
 }

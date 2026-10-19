@@ -1,36 +1,16 @@
-// Level of detail for one vehicle, by how many pixels its real length covers
-// on screen -- so the bands hold at any zoom and window size.
-//
-//   >= NEAR_PX        the model at true scale
-//   FAR_PX..NEAR_PX   the model, scaled up (at most MAX_UPSCALE) to stay readable
-//   below FADE_PX     the glowing marker
-//
-// Between FADE_PX and FAR_PX both draw: the model shrinks away as the marker
-// grows in, so nothing pops. In the opening view (1.8 km out) a 12 m bus is
-// ~10 px, so it's a marker, as before.
+// Level of detail for one vehicle: always its 3D model, at true size up
+// close and scaled up with distance so it stays findable, by how many pixels
+// its real length covers on screen (so it holds at any zoom and window
+// size). Below NEAR_PX the model grows to keep NEAR_PX, up to MAX_UPSCALE.
+// In the opening view (1.8 km out) a 12 m bus is ~10 px, drawn 3x: ~30 px.
 
 import { metersPerPixel } from '../scene/pixels.ts'
 
 export const NEAR_PX = 60
-export const FAR_PX = 24
-export const FADE_PX = 16
-export const MAX_UPSCALE = 2
+export const MAX_UPSCALE = 3
 
-export interface Lod {
-  model: number // 0..1, how much of the model draws (scale factor)
-  modelScale: number // >= 1, size-up in the mid band
-  marker: number // 0..1, how much of the marker draws
-}
-
-const smooth = (t: number) => {
-  const x = Math.min(1, Math.max(0, t))
-  return x * x * (3 - 2 * x)
-}
-
-export function lodFor(lengthPx: number): Lod {
-  const modelScale = Math.min(MAX_UPSCALE, Math.max(1, NEAR_PX / Math.max(lengthPx, 1e-6)))
-  const model = smooth((lengthPx - FADE_PX) / (FAR_PX - FADE_PX))
-  return { model, modelScale, marker: 1 - model }
+export function modelScale(lengthPx: number): number {
+  return Math.min(MAX_UPSCALE, Math.max(1, NEAR_PX / Math.max(lengthPx, 1e-6)))
 }
 
 // How many pixels `lengthM` covers at `distance` (side-on, the worst case is

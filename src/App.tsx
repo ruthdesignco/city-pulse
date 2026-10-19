@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Stats } from '@react-three/drei'
-import { Bloom, EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
+import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
 import { DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, VIEW } from './params.ts'
@@ -79,14 +79,13 @@ export default function App() {
           <Vehicles key={feed.replay?.loop ?? 0} state={feed.state} />
         </Suspense>
         <CameraRig start={START_POSE} />
-        {/* Only the buses are bright enough to bloom (Vehicles.tsx, GLOW).
-            The composer turns off the renderer's tone mapping, so it's
-            reapplied here as the same ACES curve, after the bloom. SSAO runs
-            first: soft contact shadows in corners and at street level, subtle
-            enough not to compete with the real shadows from Atmosphere's sun. */}
+        {/* No bloom: the look is realistic, nothing in the scene glows. The
+            composer turns off the renderer's tone mapping, so it's reapplied
+            here as the same ACES curve. SSAO: soft contact shadows in corners
+            and at street level, subtle enough not to compete with the real
+            shadows from Atmosphere's sun. */}
         <EffectComposer enableNormalPass>
           <SSAO radius={0.12} intensity={12} luminanceInfluence={0.6} distanceFalloff={0.5} />
-          <Bloom luminanceThreshold={0.9} luminanceSmoothing={0.2} intensity={1.1} mipmapBlur />
           <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
         </EffectComposer>
         {import.meta.env.DEV && !DEMO && <Stats />}

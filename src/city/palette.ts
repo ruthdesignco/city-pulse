@@ -11,10 +11,9 @@ export const palette = {
   sky: '#c2bdae',
   skyZenith: '#8fb2d6', // sky background's upper-frame color: a real pale blue, not a tint of the horizon tan
 
-  // Mid-gray asphalt, not near-black: dark enough that streetLocal
-  // (#404671, the darkest street color) still reads on top of it, light
-  // enough that it doesn't read as a near-black void next to the fogged
-  // ground further out (the gap between the two was the "dark band" bug).
+  // Bare ground between and beyond the roads: light enough that it doesn't
+  // read as a near-black void next to the fogged ground further out (the gap
+  // between the two was the "dark band" bug).
   ground: '#6b6862',
   neighborhood: '#78746b', // the three neighborhoods, lifted slightly off the ground
 
@@ -57,40 +56,31 @@ export const palette = {
   ],
   buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
-  // 20% brighter (in linear light) than the first pass, once the ring dimming
-  // and bloom made them read too faint.
-  streetMajor: '#858ec8',
-  streetMinor: '#5c6498',
-  streetLocal: '#404671',
+  // Roads (Streets.tsx, roads.ts): mid-gray asphalt, lighter concrete
+  // sidewalks, worn off-white lane lines -- lit by the sun like everything
+  // else. Lighter than the swatches suggest they need to be: the sun, haze
+  // and ACES grade render them about half as bright.
+  asphalt: '#7f7f80',
+  sidewalk: '#c2beb5',
+  laneMarking: '#cfccc3',
 
-  // Muni vehicles: unlit, so they read as lights against the daylight scene.
-  // Boosted from the dusk-era values -- against a bright warm city these
-  // need more separation to still read as the brightest, most saturated
-  // things in frame.
-  muniBus: '#ffb340',
-  muniRail: '#5ad6ff', // light rail and streetcars (route_type 0)
-  muniCable: '#ff8fc4', // cable cars (route_type 5)
-  // What a bus fades to once its data is ~3 min old: a muted lavender grey,
-  // dimmer than any live vehicle and without their glow, but brighter than
-  // every street, so a stale bus never reads as a missing one (palette.test.ts).
-  muniStale: '#a7adcf',
-
-  // Vehicle models (vehicleModels.ts): lit like the buildings, generic
-  // liveries, no operator branding. The accent band (and the headlamps) takes
-  // the vehicle's color above -- amber bus, cyan rail -- so models, markers
-  // and trails share one color code. Cable cars are natural wood instead,
-  // their accent a warm lamp glow rather than muniCable's pink.
+  // Vehicle models (vehicleModels.ts): lit by the sun like the buildings, in
+  // their real body colors at every distance. Generic liveries, no operator
+  // branding: off-white buses and silver light rail with a muted stripe,
+  // natural wood cable cars.
   liveryBody: '#e9e6df', // off-white bus body
+  liveryBusStripe: '#8a3b2f', // muted brick
   liveryRail: '#c9ced4', // brushed silver light rail body
+  liveryRailStripe: '#4c6573', // muted slate blue
   liveryGlass: '#2b333d',
   liverySkirt: '#55585d',
   liveryRoof: '#b3b6ba',
   liveryJoint: '#3b3d41', // articulation bellows
   liveryWheel: '#25272a',
+  liveryLamp: '#dedbd2', // headlamp lenses, unlit
   cableWood: '#b37a45',
   cableWoodDark: '#6e4728',
   cableRoof: '#5f5951',
-  cableLamp: '#ffcf87',
 
   // The directional light's color and the sky background's sun-glow accent
   // (Atmosphere.tsx, skyBackground.ts) -- NOT hemisphereLight's ambient

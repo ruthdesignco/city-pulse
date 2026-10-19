@@ -7,11 +7,10 @@
 //   rail    light rail car, two 11.1 m halves, pantograph
 //   cable   cable car, 8.3 m: closed wood cabin, open ends, clerestory roof
 //
-// Every vertex carries a base color and an `accent` flag. One material
-// (vehicleMaterial) draws all four: accent faces take each instance's tint
-// (aTint) and glow by aFx.y; aFx.x is staleness, which fades the whole body
-// toward palette.muniStale and lights it from within so a stale vehicle in
-// shadow never drops below the streets (STALE_SELF_LIT, palette.test.ts).
+// Every vertex carries its real body color; the material is lit by the sun
+// like the buildings, with no emission. Staleness (per instance, aStale 0..1)
+// desaturates and slightly lightens the whole vehicle -- a faded look, never
+// a tint, and never darker than the asphalt (palette.test.ts).
 
 import { BoxGeometry, BufferAttribute, type BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
@@ -21,19 +20,15 @@ import type { VehicleKind } from './fleet.ts'
 export const MODEL_LENGTH_M: Record<VehicleKind, number> = { bus40: 12.2, bus60: 18.3, rail: 23, cable: 8.3 }
 export const MODEL_WIDTH_M: Record<VehicleKind, number> = { bus40: 2.55, bus60: 2.55, rail: 2.65, cable: 2.45 }
 
-// How strongly a fully stale vehicle lights itself in muniStale: at 1 it's
-// never darker than the stale marker, which palette.test.ts keeps above
-// every street.
-export const STALE_SELF_LIT = 1
-// Every vehicle's own albedo added back as emission, so shadowed sides keep
-// their shape instead of going black against the street.
-const SELF_LIT = 0.22
+// A fully stale vehicle: this much of the way to its own luminance (gray),
+// then this much toward white -- faded, not darker.
+export const STALE_DESATURATE = 0.8
+export const STALE_LIGHTEN = 0.15
 
 interface Part {
   at: [number, number, number] // center
   size: [number, number, number]
   color: string
-  accent?: boolean
   rotZ?: number
 }
 
@@ -48,7 +43,6 @@ function build(parts: Part[]): BufferGeometry {
     const color = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) color.set([c.r, c.g, c.b], i * 3)
     g.setAttribute('color', new BufferAttribute(color, 3))
-    g.setAttribute('accent', new BufferAttribute(new Float32Array(n).fill(p.accent ? 1 : 0), 1))
     return g
   })
   const merged = mergeGeometries(pieces)
@@ -67,15 +61,15 @@ function busSection(x0: number, x1: number, W: number, nose: boolean, tail: bool
   const parts = [
     box([cx, 0.45, 0], [len - 0.1, 0.3, W - 0.12], palette.liverySkirt),
     box([cx, 1.775, 0], [len, 2.35, W], palette.liveryBody),
-    box([cx, 1.325, 0], [len + 0.02, 0.25, W + 0.02], palette.liveryBody, { accent: true }),
+    box([cx, 1.325, 0], [len + 0.02, 0.25, W + 0.02], palette.liveryBusStripe),
     box([cx + (nose ? -0.4 : 0), 2.075, 0], [len - (nose ? 1.6 : 0.6), 0.95, W + 0.04], palette.liveryGlass),
     box([cx - 0.3, 3.1, 0], [Math.min(len - 2, 6), 0.3, W - 0.7], palette.liveryRoof),
   ]
   if (nose)
     parts.push(
       box([x1, 1.95, 0], [0.06, 1.5, W - 0.3], palette.liveryGlass),
-      box([x1, 0.9, W / 2 - 0.35], [0.06, 0.2, 0.4], palette.liveryBody, { accent: true }),
-      box([x1, 0.9, -(W / 2 - 0.35)], [0.06, 0.2, 0.4], palette.liveryBody, { accent: true }),
+      box([x1, 0.9, W / 2 - 0.35], [0.06, 0.2, 0.4], palette.liveryLamp),
+      box([x1, 0.9, -(W / 2 - 0.35)], [0.06, 0.2, 0.4], palette.liveryLamp),
     )
   if (tail) parts.push(box([x0, 2.2, 0], [0.06, 0.6, W - 0.6], palette.liveryGlass))
   return parts
@@ -116,12 +110,12 @@ function rail(): BufferGeometry {
     const end = sign * (L / 2)
     parts.push(
       box([cx, 2.025, 0], [half, 2.75, W], palette.liveryRail),
-      box([cx, 1.125, 0], [half + 0.02, 0.25, W + 0.02], palette.liveryRail, { accent: true }),
+      box([cx, 1.125, 0], [half + 0.02, 0.25, W + 0.02], palette.liveryRailStripe),
       box([cx - sign * 0.3, 2.0, 0], [half - 1.4, 1.2, W + 0.04], palette.liveryGlass),
       // Cab at each end: it runs both ways.
       box([end, 2.15, 0], [0.06, 1.3, W - 0.3], palette.liveryGlass),
-      box([end, 1.0, W / 2 - 0.35], [0.06, 0.2, 0.4], palette.liveryRail, { accent: true }),
-      box([end, 1.0, -(W / 2 - 0.35)], [0.06, 0.2, 0.4], palette.liveryRail, { accent: true }),
+      box([end, 1.0, W / 2 - 0.35], [0.06, 0.2, 0.4], palette.liveryLamp),
+      box([end, 1.0, -(W / 2 - 0.35)], [0.06, 0.2, 0.4], palette.liveryLamp),
       box([sign * (L / 2 - 2.4), 0.35, 0], [2.2, 0.6, W - 0.4], palette.liveryWheel),
       box([cx, 3.5, 0], [half - 3, 0.2, W - 0.9], palette.liveryRoof),
     )
@@ -149,9 +143,9 @@ function cable(): BufferGeometry {
     box([0, 1.85, 0], [cabin, 2.1, W], palette.cableWood),
     box([0, 2.1, 0], [cabin - 0.5, 0.8, W + 0.04], palette.liveryGlass),
     box([0, 3.1, 0], [L + 0.2, 0.18, W + 0.25], palette.cableRoof),
-    // Clerestory, its windows lit warm: the cable car's glow.
+    // Clerestory, a strip of small windows along it.
     box([0, 3.33, 0], [L - 1.6, 0.28, 1.1], palette.cableRoof),
-    box([0, 3.33, 0], [L - 2, 0.16, 1.14], palette.cableWood, { accent: true }),
+    box([0, 3.33, 0], [L - 2, 0.12, 1.14], palette.liveryGlass),
   ]
   for (const sign of [1, -1]) {
     const endX = sign * (L / 2 - 0.05)
@@ -162,7 +156,7 @@ function cable(): BufferGeometry {
       box([openX, 1.1, W / 2 - 0.04], [openLen, 0.6, 0.08], palette.cableWood),
       box([openX, 1.1, -(W / 2 - 0.04)], [openLen, 0.6, 0.08], palette.cableWood),
       box([endX, 1.2, 0], [0.1, 0.8, W], palette.cableWood),
-      box([endX + sign * 0.04, 1.1, 0], [0.06, 0.28, 0.32], palette.cableWood, { accent: true }),
+      box([endX + sign * 0.04, 1.1, 0], [0.06, 0.28, 0.32], palette.liveryLamp),
       // Benches and roof posts.
       box([openX, 1.3, 0], [openLen - 0.3, 0.12, 0.7], palette.cableWoodDark),
     )
@@ -185,55 +179,35 @@ export function buildVehicleGeometry(kind: VehicleKind): BufferGeometry {
   }
 }
 
-// One material for all four models. Per-instance attributes, set by
-// Vehicles.tsx: aTint (vec3, linear), the accent color, already faded toward
-// muniStale; aFx (vec2) = (staleness 0..1, accent glow).
+// One material for all four models. Per-instance attribute, set by
+// Vehicles.tsx: aStale (float 0..1), how stale the vehicle's data is.
 export function vehicleMaterial(): MeshStandardMaterial {
-  const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0, flatShading: true })
-  const stale = new Color(palette.muniStale)
+  const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0, flatShading: true })
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uStale = { value: stale }
     shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-attribute float accent;
-attribute vec3 aTint;
-attribute vec2 aFx;
-varying float vAccent;
-varying vec3 vTint;
-varying vec2 vFx;`,
-      )
-      .replace(
-        '#include <color_vertex>',
-        `#include <color_vertex>
-vAccent = accent;
-vTint = aTint;
-vFx = aFx;`,
-      )
+      .replace('#include <common>', '#include <common>\nattribute float aStale;\nvarying float vStale;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvStale = aStale;')
     shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-uniform vec3 uStale;
-varying float vAccent;
-varying vec3 vTint;
-varying vec2 vFx;`,
-      )
+      .replace('#include <common>', '#include <common>\nvarying float vStale;')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-diffuseColor.rgb = mix(diffuseColor.rgb, vTint, vAccent);
-diffuseColor.rgb = mix(diffuseColor.rgb, uStale, 0.7 * vFx.x) * (1.0 - 0.5 * vFx.x);`,
-      )
-      .replace(
-        '#include <emissivemap_fragment>',
-        `#include <emissivemap_fragment>
-totalEmissiveRadiance += vTint * vAccent * vFx.y;
-totalEmissiveRadiance += diffuseColor.rgb * ${SELF_LIT.toFixed(3)};
-totalEmissiveRadiance += uStale * vFx.x * ${STALE_SELF_LIT.toFixed(3)};`,
+float gray = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(gray), ${STALE_DESATURATE.toFixed(3)} * vStale);
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), ${STALE_LIGHTEN.toFixed(3)} * vStale);`,
       )
   }
-  material.customProgramCacheKey = () => 'city-vehicles-v1'
+  material.customProgramCacheKey = () => 'city-vehicles-v2'
   return material
+}
+
+// What a vehicle color becomes when fully stale (linear RGB), mirroring the
+// shader above; for palette.test.ts.
+export function staleColor(hex: string): Color {
+  const c = new Color(hex)
+  const gray = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+  const d = STALE_DESATURATE
+  const l = STALE_LIGHTEN
+  const f = (v: number) => (v + (gray - v) * d) * (1 - l) + l
+  return new Color(f(c.r), f(c.g), f(c.b))
 }

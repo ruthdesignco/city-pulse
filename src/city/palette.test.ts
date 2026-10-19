@@ -1,27 +1,37 @@
 import { Color } from 'three'
 import { describe, expect, it } from 'vitest'
-import { STALE_SELF_LIT } from '../transit/vehicleModels.ts'
+import { staleColor } from '../transit/vehicleModels.ts'
 import { palette } from './palette.ts'
 
 // Relative luminance in linear light (Color converts the sRGB hex on set).
-const luminance = (hex: string) => {
-  const c = new Color(hex)
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+const luminance = (c: string | Color) => {
+  const l = typeof c === 'string' ? new Color(c) : c
+  return 0.2126 * l.r + 0.7152 * l.g + 0.0722 * l.b
 }
+const saturation = (c: Color) => Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)
 
 describe('palette', () => {
-  const streets = [palette.streetMajor, palette.streetMinor, palette.streetLocal]
-  const live = [palette.muniBus, palette.muniRail, palette.muniCable]
+  // The colors that make up most of a vehicle's silhouette.
+  const bodies = [palette.liveryBody, palette.liveryRail, palette.cableWood]
 
-  it('keeps a stale bus brighter than every street, so it never reads as missing', () => {
-    for (const street of streets) expect(luminance(palette.muniStale)).toBeGreaterThan(luminance(street))
+  it('reads roads as roads: sidewalks lighter than asphalt, lane lines lighter still', () => {
+    expect(luminance(palette.sidewalk)).toBeGreaterThan(luminance(palette.asphalt))
+    expect(luminance(palette.laneMarking)).toBeGreaterThan(luminance(palette.sidewalk))
   })
 
-  it('lights a fully stale model at least as bright as the stale marker, so it stays above the streets in shadow', () => {
-    expect(STALE_SELF_LIT).toBeGreaterThanOrEqual(1)
+  it('keeps every vehicle body lighter than the asphalt it drives on, live or stale', () => {
+    for (const body of bodies) {
+      expect(luminance(body), body).toBeGreaterThan(luminance(palette.asphalt))
+      expect(luminance(staleColor(body)), body).toBeGreaterThan(luminance(palette.asphalt))
+    }
   })
 
-  it('keeps a stale bus dimmer than every live vehicle', () => {
-    for (const color of live) expect(luminance(palette.muniStale)).toBeLessThan(luminance(color))
+  it('shows staleness as fading, not tinting: less saturated, never darker', () => {
+    for (const body of bodies) {
+      const live = new Color(body)
+      const stale = staleColor(body)
+      expect(saturation(stale), body).toBeLessThanOrEqual(saturation(live))
+      expect(luminance(stale), body).toBeGreaterThanOrEqual(luminance(live) - 1e-6)
+    }
   })
 })
