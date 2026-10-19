@@ -30,7 +30,7 @@ describe('checkSecret', () => {
     expect(await checkSecret(SECRET.toUpperCase(), SECRET)).toBe('unauthorized')
   })
 
-  it('fails closed when POLLER_SECRET is unset, empty or too short', async () => {
+  it('fails closed when the expected secret is unset, empty or too short', async () => {
     expect(await checkSecret(SECRET, undefined)).toBe('misconfigured')
     expect(await checkSecret('', '')).toBe('misconfigured')
     expect(await checkSecret('short', 'short')).toBe('misconfigured')

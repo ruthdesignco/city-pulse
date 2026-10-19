@@ -1,5 +1,6 @@
-// The poller only answers the scheduler: pg_cron sends x-poller-secret (read
-// from Vault), which must match the function's POLLER_SECRET.
+// The poller only answers the scheduler: pg_cron sends x-poller-secret, read
+// from Vault, and the function checks it against the same Vault secret
+// (secret.ts).
 
 export const SECRET_HEADER = 'x-poller-secret'
 

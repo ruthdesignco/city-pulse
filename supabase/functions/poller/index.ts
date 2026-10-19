@@ -1,13 +1,15 @@
 // Edge Function entry point. Deploy with JWT verification off; the
-// x-poller-secret check in handler.ts is the gate:
-//   supabase functions deploy poller --no-verify-jwt
+// x-poller-secret check in handler.ts is the gate. Always name the project:
+//   supabase functions deploy poller --no-verify-jwt --project-ref jegmwhfbdhohvysbmjdw
 //
-// Secrets: POLLER_SECRET (same value as Vault's poller_secret) and
-// TRANSIT_511_API_KEY. SUPABASE_URL and the service key are provided.
+// Secrets: TRANSIT_511_API_KEY only. The poller secret is read from Vault
+// (secret.ts), never from the env. SUPABASE_URL and the service key are
+// provided.
 
 import { createClient } from '@supabase/supabase-js'
 import { supabaseDb } from './db.ts'
 import { handle } from './handler.ts'
+import { secretCache } from './secret.ts'
 
 function serviceKey(): string {
   const keys = Deno.env.get('SUPABASE_SECRET_KEYS')
@@ -23,13 +25,15 @@ function serviceKey(): string {
 const db = supabaseDb(
   createClient(Deno.env.get('SUPABASE_URL')!, serviceKey(), { auth: { persistSession: false, autoRefreshToken: false } }),
 )
+const secret = secretCache(() => db.pollerSecret())
 
 Deno.serve((req) =>
   handle(req, {
     db,
     fetch,
     now: () => new Date(),
-    env: { POLLER_SECRET: Deno.env.get('POLLER_SECRET'), TRANSIT_511_API_KEY: Deno.env.get('TRANSIT_511_API_KEY') },
+    secret,
+    env: { TRANSIT_511_API_KEY: Deno.env.get('TRANSIT_511_API_KEY') },
     log: (message) => console.error(message),
   }),
 )

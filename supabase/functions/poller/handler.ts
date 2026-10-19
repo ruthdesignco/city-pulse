@@ -1,7 +1,8 @@
 // One poller tick. pg_cron calls this every 20 s; most ticks are logged as
 // skipped and only one every 75+ s actually calls 511.
 //
-//   1. reject anything without the scheduler's secret (not logged)
+//   1. reject anything without the scheduler's secret (not logged); the
+//      expected value comes from Vault via secret.ts
 //   2. open an ingest_runs row
 //   3. gate on poll_budget, then claim the slot by compare-and-swap
 //   4. fetch 511 Vehicle Positions (agency=SF), decode, clip to the bake area
@@ -13,9 +14,10 @@
 
 import { inBakeArea } from '../_shared/area.ts'
 import { redact } from '../_shared/redact.ts'
-import { SECRET_HEADER, checkSecret } from './auth.ts'
+import { type AuthResult, SECRET_HEADER, checkSecret } from './auth.ts'
 import { type VehicleObservation, VEHICLE_SOURCE, decodeVehicles } from './decode.ts'
 import { type BudgetClaim, type BudgetRow, decide } from './gate.ts'
+import type { SecretCache } from './secret.ts'
 
 export const BUDGET_SOURCE = 'sf511' // one budget per 511 key, shared by every endpoint
 const ENDPOINT = 'https://api.511.org/transit/vehiclepositions'
@@ -41,13 +43,16 @@ export interface Db {
   // false when another tick changed the row first (version mismatch)
   claimBudget(source: string, expectedVersion: number, next: BudgetClaim): Promise<boolean>
   recordObservations(rows: VehicleObservation[]): Promise<number>
+  // Vault's poller_secret, or null if it doesn't exist
+  pollerSecret(): Promise<string | null>
 }
 
 export interface Deps {
   db: Db
+  secret: SecretCache
   fetch: typeof fetch
   now(): Date
-  env: { POLLER_SECRET?: string; TRANSIT_511_API_KEY?: string }
+  env: { TRANSIT_511_API_KEY?: string }
   log?(message: string): void
 }
 
@@ -61,13 +66,24 @@ function describeError(err: unknown): string {
 }
 
 export async function handle(req: Request, deps: Deps): Promise<Response> {
-  const auth = await checkSecret(req.headers.get(SECRET_HEADER), deps.env.POLLER_SECRET)
+  const key = deps.env.TRANSIT_511_API_KEY?.trim() || undefined
+  const scrub = (err: unknown) => redact(describeError(err), key).slice(0, MAX_ERROR_CHARS)
+
+  // A bare call never reaches the database.
+  const provided = req.headers.get(SECRET_HEADER)
+  if (!provided?.trim()) return json(401, { status: 'unauthorized' })
+  let auth: AuthResult
+  try {
+    auth = await checkSecret(provided, (await deps.secret.current()) ?? undefined)
+    // A mismatch may mean the secret was rotated after this isolate cached it.
+    if (auth !== 'ok') auth = await checkSecret(provided, (await deps.secret.reloaded()) ?? undefined)
+  } catch (err) {
+    deps.log?.(`poller: could not read the poller secret: ${scrub(err)}`)
+    return json(500, { status: 'misconfigured' })
+  }
   if (auth === 'misconfigured') return json(500, { status: 'misconfigured' })
   if (auth !== 'ok') return json(401, { status: 'unauthorized' })
   if (req.method !== 'POST') return json(405, { status: 'method_not_allowed' })
-
-  const key = deps.env.TRANSIT_511_API_KEY?.trim() || undefined
-  const scrub = (err: unknown) => redact(describeError(err), key).slice(0, MAX_ERROR_CHARS)
 
   let runId: number
   try {

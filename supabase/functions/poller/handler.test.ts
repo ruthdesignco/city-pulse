@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { VehicleObservation } from './decode.ts'
 import type { BudgetRow } from './gate.ts'
 import { type Db, type Deps, type RunFields, handle } from './handler.ts'
+import { RELOAD_MS, secretCache } from './secret.ts'
 
 const SECRET = 'synthetic-poller-secret-0123456789'
 const KEY = 'synthetic-511-key-abc123'
@@ -29,6 +30,9 @@ function setup(
   opts: {
     budget?: Partial<BudgetRow>
     env?: Deps['env']
+    // Vault's poller_secret; null when it doesn't exist
+    vault?: string | null
+    vaultFails?: boolean
     fetch?: typeof fetch
     startRunFails?: boolean
     // Hold readBudget until this many ticks have read, forcing them to race on the claim.
@@ -52,6 +56,9 @@ function setup(
     calls: [] as string[],
     urls: [] as string[],
     logs: [] as string[],
+    vault: opts.vault === undefined ? SECRET : opts.vault,
+    vaultReads: 0,
+    clockMs: NOW.getTime(), // the secret cache's clock; deps.now stays fixed
   }
   let nextId = 1
   const db: Db = {
@@ -86,6 +93,11 @@ function setup(
       state.observations.push(...rows)
       return rows.length
     },
+    async pollerSecret() {
+      state.vaultReads++
+      if (opts.vaultFails) throw new Error(`vault read failed; request was ?api_key=${KEY}`)
+      return state.vault
+    },
   }
   const fetchImpl: typeof fetch = async (input, init) => {
     state.urls.push(String(input))
@@ -93,9 +105,10 @@ function setup(
   }
   const deps: Deps = {
     db,
+    secret: secretCache(() => db.pollerSecret(), () => state.clockMs),
     fetch: fetchImpl,
     now: () => NOW,
-    env: opts.env ?? { POLLER_SECRET: SECRET, TRANSIT_511_API_KEY: KEY },
+    env: opts.env ?? { TRANSIT_511_API_KEY: KEY },
     log: (m) => state.logs.push(m),
   }
   return { deps, state }
@@ -120,25 +133,54 @@ const onlyRun = (s: ReturnType<typeof setup>) => {
 }
 
 describe('secret header', () => {
-  it('rejects a missing header with 401 and touches nothing', async () => {
+  it('rejects a missing header with 401 and touches nothing, not even Vault', async () => {
     const s = setup()
     expect((await run(s, post({}))).status).toBe(401)
+    expect((await run(s, post({ 'x-poller-secret': '  ' }))).status).toBe(401)
     expect(s.state.calls).toEqual([])
+    expect(s.state.vaultReads).toBe(0)
     expect(s.state.urls).toEqual([])
   })
 
-  it('rejects a wrong secret with 401', async () => {
+  it('rejects a wrong secret with 401, reading Vault at most once per reload interval', async () => {
     const s = setup()
-    expect((await run(s, post({ 'x-poller-secret': `${SECRET}x` }))).status).toBe(401)
+    for (let i = 0; i < 5; i++) expect((await run(s, post({ 'x-poller-secret': `${SECRET}x` }))).status).toBe(401)
     expect(s.state.calls).toEqual([])
+    expect(s.state.vaultReads).toBe(1)
   })
 
-  it('fails closed with 500 when POLLER_SECRET is not configured', async () => {
-    const s = setup({ env: { TRANSIT_511_API_KEY: KEY } })
+  it('accepts the Vault secret and caches it across ticks', async () => {
+    const s = setup({ budget: { last_call_at: new Date(NOW.getTime() - 30_000).toISOString() } })
+    expect((await run(s)).status).toBe(200)
+    expect((await run(s)).status).toBe(200)
+    expect(s.state.vaultReads).toBe(1)
+  })
+
+  it('picks up a rotated secret on the first tick after the reload interval', async () => {
+    const s = setup({ budget: { last_call_at: new Date(NOW.getTime() - 30_000).toISOString() } })
+    expect((await run(s)).status).toBe(200)
+    const ROTATED = 'synthetic-rotated-secret-9876543210'
+    s.state.vault = ROTATED // pg_cron sends the new value from the next tick on
+    s.state.clockMs += RELOAD_MS
+    expect((await run(s, post({ 'x-poller-secret': ROTATED }))).status).toBe(200)
+    expect((await run(s)).status).toBe(401) // the leaked value is dead
+    expect(s.state.vaultReads).toBe(2)
+  })
+
+  it('fails closed with 500 when Vault has no poller_secret', async () => {
+    const s = setup({ vault: null })
     const r = await run(s)
     expect(r.status).toBe(500)
     expect(r.body.status).toBe('misconfigured')
     expect(s.state.calls).toEqual([])
+  })
+
+  it('fails closed with 500 when Vault cannot be read, and logs it redacted', async () => {
+    const s = setup({ vaultFails: true })
+    const r = await run(s)
+    expect(r).toEqual({ status: 500, body: { status: 'misconfigured' } })
+    expect(s.state.calls).toEqual([])
+    expect(s.state.logs).toEqual(['poller: could not read the poller secret: vault read failed; request was ?api_key=[redacted]'])
   })
 
   it('only accepts POST, after authenticating', async () => {
@@ -178,7 +220,7 @@ describe('budget gating', () => {
   })
 
   it('does not burn budget when the 511 key is missing', async () => {
-    const s = setup({ env: { POLLER_SECRET: SECRET } })
+    const s = setup({ env: {} })
     const r = await run(s)
     expect(r.status).toBe(500)
     expect(onlyRun(s).fields).toMatchObject({ status: 'error', error: 'TRANSIT_511_API_KEY is not set' })
