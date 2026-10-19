@@ -100,7 +100,7 @@ Primary: a portfolio piece that shows real time, data driven 3D UX at the craft 
   - Freshness: buses fade to a muted tone and freeze as their data reaches 3 minutes; a corner indicator shows the age of the newest Muni data on the database clock
 
 ## Open questions
-1. Exact cluster boundary: SF Analysis Neighborhoods polygons or a hand drawn shape?
+1. ~~Exact cluster boundary: SF Analysis Neighborhoods polygons or a hand drawn shape?~~ Resolved: the SF Analysis Neighborhoods polygons for South of Market, Mission and Tenderloin, plus an 800 m context ring (`scripts/bake-city.ts`). The same area clips the poller's vehicles.
 2. Which police call types are dropped vs. aggregated? Decide before Weekend 2.
 3. Time of day palette: fixed dusk, or lighting that follows real SF sunrise and sunset?
 4. Does pg_cron activity keep a free Supabase project awake? Unverified; moot once on Pro.
