@@ -9,9 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "bake": "node scripts/bake-city.ts",
-    "bake:routes": "node scripts/bake-routes.ts",
-    "record": "node scripts/record-state.ts"
+    "bake": "node --experimental-strip-types scripts/bake-city.ts",
+    "bake:routes": "node --experimental-strip-types scripts/bake-routes.ts",
+    "record": "node --experimental-strip-types scripts/record-state.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
