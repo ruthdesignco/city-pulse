@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { CapsuleGeometry, Color, type InstancedMesh, MeshBasicMaterial, Object3D } from 'three'
 import { palette } from '../city/palette.ts'
 import type { CurrentState } from './currentState.ts'
+import { staleDim } from './freshness.ts'
 import { FADE_S, type Motion, applyReport, createMotion, step } from './motion.ts'
 import { useRoutes } from './useRoutes.ts'
 
@@ -20,6 +21,8 @@ const COLOR_BY_TYPE: Record<number, Color> = {
   5: new Color(palette.muniCable),
 }
 const BUS_COLOR = new Color(palette.muniBus)
+const STALE_COLOR = new Color(palette.muniStale)
+const STALE_MIX = 0.8 // how far a fully stale bus moves toward STALE_COLOR
 
 const smooth = (t: number) => {
   const x = Math.min(1, Math.max(0, t))
@@ -67,7 +70,13 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
   }, [state, routes])
 
   const dummy = useMemo(() => new Object3D(), [])
-  const colorFor = (m: Motion) => (m.routeId !== null ? COLOR_BY_TYPE[routes.typeByRoute.get(m.routeId) ?? 3] : undefined) ?? BUS_COLOR
+  const scratch = useMemo(() => new Color(), [])
+  // setColorAt copies, so one scratch Color serves every instance.
+  const colorFor = (m: Motion, now: number) => {
+    const base = (m.routeId !== null ? COLOR_BY_TYPE[routes.typeByRoute.get(m.routeId) ?? 3] : undefined) ?? BUS_COLOR
+    const dim = staleDim(now - m.plan.tB)
+    return dim > 0 ? scratch.copy(base).lerp(STALE_COLOR, STALE_MIX * dim) : base
+  }
 
   useFrame((_, delta) => {
     const im = mesh.current
@@ -88,7 +97,7 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
 
     for (const m of motions.current.values()) {
       step(m, now, dt)
-      const color = colorFor(m)
+      const color = colorFor(m, now)
       put(m.x, m.z, m.hx, m.hz, smooth(m.appear), color)
       if (m.ghost) put(m.ghost.x, m.ghost.z, m.ghost.hx, m.ghost.hz, 1 - smooth(m.ghost.age / FADE_S), color)
     }
@@ -96,7 +105,7 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
     for (const [id, l] of leaving.current) {
       const age = clock - l.since
       if (age >= FADE_S) leaving.current.delete(id)
-      else put(l.m.x, l.m.z, l.m.hx, l.m.hz, 1 - smooth(age / FADE_S), colorFor(l.m))
+      else put(l.m.x, l.m.z, l.m.hx, l.m.hz, 1 - smooth(age / FADE_S), colorFor(l.m, now))
     }
 
     im.count = n

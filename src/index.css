@@ -5,3 +5,61 @@ body,
   height: 100%;
   background: #1b1d2a;
 }
+
+#root {
+  position: relative;
+}
+
+/* Freshness indicator (src/transit/Freshness.tsx). Colors follow
+   src/city/palette.ts: sky for the backing, muniBus for a live feed. */
+.freshness {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(27 30 48 / 0.72);
+  backdrop-filter: blur(6px);
+  color: #c9cde8;
+  font: 500 12px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+}
+
+.freshness__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6c7199;
+}
+
+.freshness--live .freshness__dot {
+  background: #ffcf7a;
+  box-shadow: 0 0 8px #ffcf7a;
+}
+
+.freshness--stale {
+  color: #9a9fc0;
+}
+
+.freshness--stale .freshness__dot {
+  background: #e0915a;
+}
+
+.freshness--offline .freshness__dot {
+  background: #d46a6a;
+}
+
+.freshness__note {
+  color: #8e93b8;
+}
+
+.freshness__note::before {
+  content: '· ';
+}
