@@ -7,7 +7,7 @@ export const VEHICLE_SOURCE = 'sf511-muni'
 export interface VehicleObservation {
   source: string
   upstream_id: string
-  feed_timestamp: string // ISO
+  feed_timestamp: string // ISO; the feed header's snapshot time, not the vehicle's own
   route_id: string | null
   trip_id: string | null
   direction_id: 0 | 1 | null
@@ -42,6 +42,7 @@ export function decodeVehicles(bytes: Uint8Array): { entities: number; vehicles:
   const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(bytes)
   const headerTs = num(feed.header?.timestamp)
   const byId = new Map<string, VehicleObservation>()
+  const orderById = new Map<string, number>() // vehicle's own timestamp, to pick the newest duplicate
 
   for (const e of feed.entity) {
     const v = e.vehicle
@@ -53,7 +54,14 @@ export function decodeVehicles(bytes: Uint8Array): { entities: number; vehicles:
     if (lat === 0 && lng === 0) continue // "null island": no fix
     const id = textOrNull(v.vehicle?.id) ?? textOrNull(e.id)
     if (!id) continue
-    const ts = num(v.timestamp) || headerTs
+    const vehicleTs = num(v.timestamp)
+    const order = vehicleTs || headerTs
+    // feed_timestamp is the snapshot the view keys on (Blocker 3): the header
+    // wins whenever it's sent, so every vehicle in a poll lands in the same
+    // snapshot even if 511 starts filling in per-vehicle timestamps too. The
+    // vehicle's own timestamp, when sent, only breaks ties between duplicate
+    // entities for the same vehicle; it's never stored.
+    const ts = headerTs > 0 ? headerTs : vehicleTs
     if (!(ts > 0)) continue
 
     const dir = sent(v.trip, 'directionId')
@@ -69,8 +77,11 @@ export function decodeVehicles(bytes: Uint8Array): { entities: number; vehicles:
       bearing: finiteOrNull(sent(pos, 'bearing')),
       speed: finiteOrNull(sent(pos, 'speed')),
     }
-    const prev = byId.get(id)
-    if (!prev || prev.feed_timestamp < obs.feed_timestamp) byId.set(id, obs)
+    const prevOrder = orderById.get(id)
+    if (prevOrder === undefined || prevOrder <= order) {
+      byId.set(id, obs)
+      orderById.set(id, order)
+    }
   }
 
   return { entities: feed.entity.length, vehicles: [...byId.values()] }

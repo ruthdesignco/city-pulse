@@ -31,7 +31,7 @@ describe('decodeVehicles', () => {
     expect(v).toMatchObject({
       source: 'sf511-muni',
       upstream_id: '8812',
-      feed_timestamp: new Date((T - 30) * 1000).toISOString(),
+      feed_timestamp: new Date(T * 1000).toISOString(), // the header's time, not the vehicle's own (T - 30)
       route_id: '14',
       trip_id: 'trip-8812',
       direction_id: 1,
@@ -40,6 +40,11 @@ describe('decodeVehicles', () => {
     expect(v.lat).toBeCloseTo(37.765, 5)
     expect(v.lng).toBeCloseTo(-122.4195, 5)
     expect(v.speed).toBeCloseTo(6.5, 5)
+  })
+
+  it('keys feed_timestamp on the header, not the vehicle, even when the vehicle sends its own', () => {
+    const { vehicles } = decodeVehicles(feed([bus('11', { timestamp: T - 9_000 }), bus('12', { timestamp: T + 9_000 })]))
+    expect(vehicles.map((v) => v.feed_timestamp)).toEqual([new Date(T * 1000).toISOString(), new Date(T * 1000).toISOString()])
   })
 
   it('falls back to the feed header timestamp, and to the entity id', () => {
@@ -79,12 +84,17 @@ describe('decodeVehicles', () => {
     expect(vehicles).toEqual([])
   })
 
-  it('keeps the newest report when a vehicle appears twice', () => {
+  it('keeps the newest report when a vehicle appears twice, by the vehicle timestamp', () => {
     const { vehicles } = decodeVehicles(
-      feed([bus('5', { timestamp: T - 90 }), bus('5', { timestamp: T - 10 }), bus('5', { timestamp: T - 50 })]),
+      feed([
+        bus('5', { timestamp: T - 90, position: { latitude: 37.1, longitude: -122.1 } }),
+        bus('5', { timestamp: T - 10, position: { latitude: 37.3, longitude: -122.3 } }),
+        bus('5', { timestamp: T - 50, position: { latitude: 37.2, longitude: -122.2 } }),
+      ]),
     )
     expect(vehicles).toHaveLength(1)
-    expect(vehicles[0].feed_timestamp).toBe(new Date((T - 10) * 1000).toISOString())
+    expect(vehicles[0].feed_timestamp).toBe(new Date(T * 1000).toISOString()) // the header, not any vehicle's own time
+    expect(vehicles[0].lat).toBeCloseTo(37.3, 5) // the T-10 report: newest by vehicle timestamp
   })
 
   it('handles an empty feed', () => {
