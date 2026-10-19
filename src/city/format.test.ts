@@ -16,6 +16,7 @@ function sample(name = 'Salesforce Tower'): CityData {
       counts: new Uint16Array([4, 3]),
       heights: new Uint16Array([3260, 85]),
       ringBand: new Uint8Array([0, 37]),
+      colorType: new Uint8Array([2, 1]),
       coords: new Int16Array([0, 0, 100, 0, 100, 100, 0, 100, -32000, 32000, -31990, 32000, -32000, 31990]),
     },
     streets: {

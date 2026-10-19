@@ -29,6 +29,7 @@ function buildGeometry(city: CityData): BufferGeometry {
   g.setAttribute('position', new BufferAttribute(mesh.positions, 3))
   g.setAttribute('normal', new BufferAttribute(mesh.normals, 3))
   g.setAttribute('ring', new BufferAttribute(mesh.ring, 1))
+  g.setAttribute('colorType', new BufferAttribute(mesh.colorType, 1))
   g.setIndex(new BufferAttribute(mesh.index, 1))
   g.computeBoundingSphere()
   console.info(
@@ -37,19 +38,34 @@ function buildGeometry(city: CityData): BufferGeometry {
   return g
 }
 
+// Indexed by scripts/lib/buildingColor.ts's BuildingColorType (Neutral,
+// Residential, Tower) -- keep that order in sync with this array.
+const BUILDING_COLORS = [palette.building, palette.buildingResidential, palette.buildingTower]
+
 function buildMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: palette.building, roughness: 0.92, metalness: 0 })
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
     shader.uniforms.uDim = { value: new Color(palette.sky) }
+    shader.uniforms.uBuildingColors = { value: BUILDING_COLORS.map((c) => new Color(c)) }
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float ring;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRing = ring;\nvY = position.y;\nvWall = 1.0 - step(0.5, normal.y);')
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float ring;\nattribute float colorType;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorType;',
+      )
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvRing = ring;\nvY = position.y;\nvWall = 1.0 - step(0.5, normal.y);\nvColorType = colorType;',
+      )
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;')
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[3];\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorType;',
+      )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
+        diffuseColor.rgb = uBuildingColors[int(vColorType + 0.5)];
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, vRing > 0.0 ? ${RING_DIM_MIN.toFixed(2)} + ${RING_DIM_RANGE.toFixed(2)} * vRing : 0.0);
@@ -58,7 +74,7 @@ function buildMaterial(): MeshStandardMaterial {
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${NEAR_DIM.toFixed(2)} * nearCam);`,
       )
   }
-  material.customProgramCacheKey = () => 'city-buildings-v4'
+  material.customProgramCacheKey = () => 'city-buildings-v5'
   return material
 }
 

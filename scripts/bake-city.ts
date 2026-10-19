@@ -42,6 +42,7 @@ import {
   fetchOverpass,
   fetchTiled,
 } from './lib/overpass.ts'
+import { buildingColorType } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -170,6 +171,7 @@ interface BakedBuilding {
   ring: Pt[]
   height: number
   ringBand: number
+  colorType: number
   name?: string
   center: Pt
 }
@@ -232,7 +234,7 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
     }
     stats.heightFrom[source!]++
 
-    baked.push({ ring, height: meters, ringBand, name: f.tags.name, center })
+    baked.push({ ring, height: meters, ringBand, colorType: buildingColorType(f.tags.building, meters), name: f.tags.name, center })
   }
   return baked
 }
@@ -352,6 +354,7 @@ async function main() {
       counts: b.counts,
       heights: Uint16Array.from(buildings, (x) => Math.round(x.height / HEIGHT_QUANTUM)),
       ringBand: Uint8Array.from(buildings, (x) => Math.min(255, x.ringBand)),
+      colorType: Uint8Array.from(buildings, (x) => x.colorType),
       coords: b.coords,
     },
     streets: { counts: s.counts, classes: Uint8Array.from(streets, (x) => x.cls), coords: s.coords },

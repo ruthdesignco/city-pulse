@@ -15,8 +15,12 @@ export const palette = {
   neighborhood: '#4a3f33', // the three neighborhoods, lifted slightly off the ground
 
   // A notch below mid grey so the buses, not the buildings, are the brightest
-  // thing in the scene.
-  building: '#8a8ba5', // cool neutral grey; ring/near-camera fade pulls it toward the warm sky haze
+  // thing in the scene. Three color families by OSM building type/height
+  // (scripts/lib/buildingColor.ts), subtle -- not a rainbow -- so bloom and
+  // the ring-fade/near-dim shader math still hold for all three the same way.
+  building: '#8a8ba5', // Neutral: unknown/"yes"/commercial/industrial -- unchanged from before
+  buildingResidential: '#c9ab80', // cream/sandstone/pastel
+  buildingTower: '#93a0b4', // tall (>=60m) regardless of tag: cooler, glassier grey
   buildingBase: '#423f58', // street-level tone; walls brighten toward the roof
 
   // 20% brighter (in linear light) than the first pass, once the ring dimming

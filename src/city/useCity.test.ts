@@ -12,7 +12,13 @@ const bytes = encodeCity({
     bakedAt: '2026-10-18T20:00:00Z',
     landmarks: [],
   },
-  buildings: { counts: new Uint16Array(), heights: new Uint16Array(), ringBand: new Uint8Array(), coords: new Int16Array() },
+  buildings: {
+    counts: new Uint16Array(),
+    heights: new Uint16Array(),
+    ringBand: new Uint8Array(),
+    colorType: new Uint8Array(),
+    coords: new Int16Array(),
+  },
   streets: { counts: new Uint16Array(), classes: new Uint8Array(), coords: new Int16Array() },
   boundary: { counts: new Uint16Array(), coords: new Int16Array() },
 } satisfies CityData)
