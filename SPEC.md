@@ -1,7 +1,7 @@
 # City Pulse: Spec (v2, post board review)
 
 ## What we're building
-A live, stylized 3D view of SoMa, the Mission, and the Tenderloin in San Francisco that shows the neighborhood's rhythm. The city is rendered in golden-hour light: warm low sun, real shadows, a varied low poly material palette by building type, water and parks grounding the scene, street trees lining the blocks — still calm and art-directed, not photoreal. Live Muni vehicles are the hero layer, moving through it as light trails where you can see bunching, gaps, and flow. Police dispatch activity sits underneath as a soft ambient field, never as pins on a crime map.
+A live, stylized 3D view of SoMa, the Mission, and the Tenderloin in San Francisco that shows the neighborhood's rhythm. The city sits under a bright, warm daytime golden-hour sky, lit by a real HDRI with soft drifting clouds, real shadows — still calm and art-directed, not photoreal. Live Muni vehicles are the hero layer: low poly 3D models by type (bus, articulated bus, light rail, cable car), closer ones recognizable, distant ones a glowing marker, moving through it with light trails where you can see bunching, gaps, and flow. Police dispatch activity sits underneath as a soft ambient field, never as pins on a crime map.
 
 ## Why
 Primary: a portfolio piece that shows real time, data driven 3D UX at the craft level of a high-craft wildfire analysis prototype, running on real data. The real deliverable is the 2 minute walkthrough. Secondary: useful situational awareness for someone who lives or works in the cluster.
@@ -81,6 +81,7 @@ Primary: a portfolio piece that shows real time, data driven 3D UX at the craft 
 - **The OSM bake will take longer than expected.** Timebox it.
 
 ## Decision log
+- Daytime golden hour replaces the fixed-lighting-only dusk look (2026-10-19): a real CC0 HDRI (Poly Haven) drives both the visible sky and scene lighting, with soft drifting clouds, bright and warm rather than dark. Vehicles move from glowing pills to low poly 3D models by type (bus/articulated bus/light rail/cable car, generic liveries, no Muni branding), LOD'd by distance -- recognizable up close, a glowing marker far away. Bloom tones down for daylight; stale vehicles must stay visibly distinct from live ones and from the (now bright) background
 - Golden hour replaces the muted dusk look (2026-10-19): a fixed, art-directed sun from San Francisco's real autumn sunset bearing, not live solar tracking. Stale buses must stay visibly brighter than streets under the new lighting -- a tested invariant (`palette.test.ts`), re-verified under golden hour, not re-designed
 - Repo made public (2026-10-19) to deploy the site on Vercel Hobby
 - Hero layer is Muni; incidents are ambient context
