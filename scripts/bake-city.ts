@@ -46,9 +46,12 @@ import { loadFromPbf } from './lib/pbf.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
-const RING_METERS = 600
-// Cluster bbox padded ~650 m. Must stay fixed: it's part of the cache key.
-const QUERY_BBOX: Bbox = { south: 37.7418, west: -122.4344, north: 37.7943, east: -122.3852 }
+// 800 m (not 600) so the whole Transbay cluster is in: Salesforce Tower sits
+// ~600 m out, Millennium and 181 Fremont ~700 m.
+const RING_METERS = 800
+// Cluster bbox padded ~850 m; corners stay inside the Int16 range at 0.1 m.
+// Part of the Overpass cache key: changing it refetches every tile.
+const QUERY_BBOX: Bbox = { south: 37.74, west: -122.4367, north: 37.7961, east: -122.3829 }
 const TILES = 3
 
 const SIMPLIFY_BUILDING_M = 0.75
