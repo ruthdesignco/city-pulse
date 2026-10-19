@@ -17,7 +17,15 @@ export default function App() {
   const feed = useCurrentState()
   return (
     <>
-      <Canvas dpr={[1, 2]} camera={{ position: OPENING_POSITION, fov: 40, near: 10, far: 20000 }}>
+      {/* The bloom composer renders the whole scene again into a 4x
+          multisampled half-float buffer, so pixel count is the frame cost:
+          cap the pixel ratio at 1.5 (44% fewer pixels than 2 on Retina) and
+          skip the canvas's own antialiasing, which the composer replaces. */}
+      <Canvas
+        dpr={[1, 1.5]}
+        gl={{ antialias: false }}
+        camera={{ position: OPENING_POSITION, fov: 40, near: 10, far: 20000 }}
+      >
         <Atmosphere />
         <Suspense fallback={null}>
           <Ground />
