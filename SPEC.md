@@ -1,7 +1,7 @@
 # City Pulse: Spec (v2, post board review)
 
 ## What we're building
-A live, stylized 3D view of SoMa, the Mission, and the Tenderloin in San Francisco that shows the neighborhood's rhythm. The city is rendered as a calm, art-directed low poly scene. Live Muni vehicles are the hero layer, moving through it as light trails where you can see bunching, gaps, and flow. Police dispatch activity sits underneath as a soft ambient field, never as pins on a crime map.
+A live, stylized 3D view of SoMa, the Mission, and the Tenderloin in San Francisco that shows the neighborhood's rhythm. The city is rendered in golden-hour light: warm low sun, real shadows, a varied low poly material palette by building type, water and parks grounding the scene, street trees lining the blocks — still calm and art-directed, not photoreal. Live Muni vehicles are the hero layer, moving through it as light trails where you can see bunching, gaps, and flow. Police dispatch activity sits underneath as a soft ambient field, never as pins on a crime map.
 
 ## Why
 Primary: a portfolio piece that shows real time, data driven 3D UX at the craft level of a high-craft wildfire analysis prototype, running on real data. The real deliverable is the 2 minute walkthrough. Secondary: useful situational awareness for someone who lives or works in the cluster.
@@ -81,6 +81,7 @@ Primary: a portfolio piece that shows real time, data driven 3D UX at the craft 
 - **The OSM bake will take longer than expected.** Timebox it.
 
 ## Decision log
+- Golden hour replaces the muted dusk look (2026-10-19): a fixed, art-directed sun from San Francisco's real autumn sunset bearing, not live solar tracking. Stale buses must stay visibly brighter than streets under the new lighting -- a tested invariant (`palette.test.ts`), re-verified under golden hour, not re-designed
 - Repo made public (2026-10-19) to deploy the site on Vercel Hobby
 - Hero layer is Muni; incidents are ambient context
 - Police activity renders as an ambient field, not discrete pulses
