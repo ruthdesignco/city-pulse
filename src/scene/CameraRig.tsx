@@ -1,9 +1,9 @@
 import { type ComponentRef, useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import { TARGET } from './view.ts'
 
 // Constrained orbit around the cluster plus a slow idle drift.
-const TARGET: [number, number, number] = [0, 0, -300] // a little north of the origin, toward the skyline
 const MIN_DISTANCE = 800
 const MAX_DISTANCE = 6500
 const MIN_POLAR = 0.15 // near top-down
