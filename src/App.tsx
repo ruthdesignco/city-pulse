@@ -4,15 +4,24 @@ import { Stats } from '@react-three/drei'
 import { Bloom, EffectComposer, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
-import { DEMO } from './params.ts'
+import { DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Streets } from './city/Streets.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
 import { OPENING_POSITION } from './scene/view.ts'
 import { Freshness } from './transit/Freshness.tsx'
+import { RecordedBadge } from './transit/RecordedBadge.tsx'
 import { Vehicles } from './transit/Vehicles.tsx'
 import { useCurrentState } from './transit/useCurrentState.ts'
+import { type ReplayStatus, useRecordedState } from './transit/useRecordedState.ts'
+
+// The live feed, or ?replay=<name>'s recording. Chosen once per page load, so
+// the hooks called never change between renders.
+const REPLAY_OPTIONS = { startS: REPLAY_START_S, holdS: REPLAY_HOLD_S }
+const replayName = REPLAY
+const useFeed: () => ReturnType<typeof useCurrentState> & { replay: ReplayStatus | null } =
+  replayName !== null ? () => useRecordedState(replayName, REPLAY_OPTIONS) : () => ({ ...useCurrentState(), replay: null })
 
 // In demo mode, `h` hides the overlay for shots that should show only the city.
 function useOverlayToggle(): boolean {
@@ -29,7 +38,7 @@ function useOverlayToggle(): boolean {
 }
 
 export default function App() {
-  const feed = useCurrentState()
+  const feed = useFeed()
   const overlayHidden = useOverlayToggle()
   return (
     <>
@@ -47,7 +56,8 @@ export default function App() {
           <Ground />
           <Streets />
           <Buildings />
-          <Vehicles state={feed.state} />
+          {/* A looping recording restarts its clock: start the buses fresh. */}
+          <Vehicles key={feed.replay?.loop ?? 0} state={feed.state} />
         </Suspense>
         <CameraRig />
         {/* Only the buses are bright enough to bloom (Vehicles.tsx, GLOW).
@@ -60,6 +70,7 @@ export default function App() {
         {import.meta.env.DEV && !DEMO && <Stats />}
       </Canvas>
       {!overlayHidden && <Freshness feed={feed} />}
+      {feed.replay && <RecordedBadge replay={feed.replay} />}
     </>
   )
 }

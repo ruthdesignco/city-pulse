@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "bake": "node scripts/bake-city.ts",
-    "bake:routes": "node scripts/bake-routes.ts"
+    "bake:routes": "node scripts/bake-routes.ts",
+    "record": "node scripts/record-state.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

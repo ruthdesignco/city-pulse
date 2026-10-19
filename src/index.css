@@ -63,3 +63,35 @@ body,
 .freshness__note::before {
   content: '· ';
 }
+
+/* Recorded replay label (src/transit/RecordedBadge.tsx): never hidden, so a
+   recording can't pass for live data. */
+.recorded {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(27 30 48 / 0.72);
+  backdrop-filter: blur(6px);
+  color: #c9cde8;
+  font: 500 12px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
+.recorded__label {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recorded > span + span::before {
+  content: '· ';
+  color: #8e93b8;
+}
