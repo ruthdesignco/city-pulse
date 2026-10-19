@@ -11,7 +11,8 @@
     "test": "vitest run",
     "bake": "node --experimental-strip-types scripts/bake-city.ts",
     "bake:routes": "node --experimental-strip-types scripts/bake-routes.ts",
-    "record": "node --experimental-strip-types scripts/record-state.ts"
+    "record": "node --experimental-strip-types scripts/record-state.ts",
+    "shot": "node --experimental-strip-types scripts/shot.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
@@ -32,6 +33,7 @@
     "gtfs-realtime-bindings": "2.2.0",
     "oxlint": "^1.81.0",
     "pbf": "^5.1.2",
+    "playwright": "^1.64.1",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.5"

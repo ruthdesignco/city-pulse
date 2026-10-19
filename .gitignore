@@ -17,6 +17,10 @@ supabase/functions/**/.env
 # Bake intermediates (raw downloads are large and reproducible)
 scripts/.cache/
 
+# npm run shot's output: regenerate anytime, not a reference image
+# (reference images for comparison live in docs/look/, committed)
+shots/
+
 # OS / editor
 .DS_Store
 .vscode/*
