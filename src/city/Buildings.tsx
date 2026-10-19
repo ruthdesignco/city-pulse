@@ -69,5 +69,5 @@ export function Buildings() {
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
 
-  return <mesh geometry={geometry} material={material} />
+  return <mesh geometry={geometry} material={material} castShadow receiveShadow />
 }

@@ -1,5 +1,5 @@
-// The City Pulse dusk palette. Every scene color comes from here so the look
-// can be tuned in one place. Values are sRGB hex.
+// The City Pulse golden-hour palette. Every scene color comes from here so
+// the look can be tuned in one place. Values are sRGB hex.
 
 export const palette = {
   // Sky and fog share a color so the city dissolves into it with no seam.
@@ -28,7 +28,7 @@ export const palette = {
   // every street, so a stale bus never reads as a missing one (palette.test.ts).
   muniStale: '#a7adcf',
 
-  sun: '#ffb487', // low sunset key light
+  sun: '#ff9c5c', // golden-hour key light: warmer and more saturated than the old dusk sun
   skyFill: '#7d8cc4', // hemisphere fill from above: what lights the roofs at dusk
   groundFill: '#2a2236', // hemisphere bounce from below
 } as const

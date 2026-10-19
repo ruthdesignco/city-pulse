@@ -28,11 +28,11 @@ export function Ground() {
     <group rotation-x={-Math.PI / 2}>
       {/* Far wider than the city so its edge lies past the fog's far
           distance (11 km) and melts into the sky instead of drawing a line. */}
-      <mesh position-z={-0.2}>
+      <mesh position-z={-0.2} receiveShadow>
         <planeGeometry args={[40000, 40000]} />
         <meshStandardMaterial color={palette.ground} />
       </mesh>
-      <mesh geometry={boundary} position-z={0.1}>
+      <mesh geometry={boundary} position-z={0.1} receiveShadow>
         <meshStandardMaterial color={palette.neighborhood} />
       </mesh>
     </group>
