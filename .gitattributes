@@ -1,0 +1,10 @@
+# Normalize everything to LF in the repo and on checkout, regardless of each
+# contributor's own core.autocrlf. Without this, a Mac checkout (LF-native)
+# and a Windows one (CRLF on checkout unless autocrlf is set just right) can
+# disagree, and whichever side has it wrong gets a wall of whitespace-only
+# diff noise the moment they touch a file.
+* text=auto eol=lf
+
+# Baked binary asset (src/city/format.ts): never touched by line-ending
+# conversion, whatever text=auto guesses.
+public/city.bin binary
