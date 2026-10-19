@@ -1,9 +1,10 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Stats } from '@react-three/drei'
 import { Bloom, EffectComposer, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
+import { DEMO } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Streets } from './city/Streets.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
@@ -13,8 +14,23 @@ import { Freshness } from './transit/Freshness.tsx'
 import { Vehicles } from './transit/Vehicles.tsx'
 import { useCurrentState } from './transit/useCurrentState.ts'
 
+// In demo mode, `h` hides the overlay for shots that should show only the city.
+function useOverlayToggle(): boolean {
+  const [hidden, setHidden] = useState(false)
+  useEffect(() => {
+    if (!DEMO) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey) setHidden((h) => !h)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  return hidden
+}
+
 export default function App() {
   const feed = useCurrentState()
+  const overlayHidden = useOverlayToggle()
   return (
     <>
       {/* The bloom composer renders the whole scene again into a 4x
@@ -41,9 +57,9 @@ export default function App() {
           <Bloom luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.9} mipmapBlur />
           <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
         </EffectComposer>
-        {import.meta.env.DEV && <Stats />}
+        {import.meta.env.DEV && !DEMO && <Stats />}
       </Canvas>
-      <Freshness feed={feed} />
+      {!overlayHidden && <Freshness feed={feed} />}
     </>
   )
 }
