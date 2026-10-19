@@ -81,6 +81,7 @@ Primary: a portfolio piece that shows real time, data driven 3D UX at the craft 
 - **The OSM bake will take longer than expected.** Timebox it.
 
 ## Decision log
+- Repo made public (2026-10-19) to deploy the site on Vercel Hobby
 - Hero layer is Muni; incidents are ambient context
 - Police activity renders as an ambient field, not discrete pulses
 - Fire/EMS dropped from v1
