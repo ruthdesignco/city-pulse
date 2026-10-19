@@ -7,7 +7,7 @@ const polar = (p: Pose) => Math.acos((p.position[1] - p.target[1]) / distance(p)
 
 describe('poseAround', () => {
   it('reproduces the opening view from its distance and angles', () => {
-    const p = poseAround(TARGET, 1800, 1.2, -0.47)
+    const p = poseAround(TARGET, 1800, 0.85, -0.47)
     p.position.forEach((v, i) => expect(v).toBeCloseTo(OPENING_POSITION[i]))
   })
 })

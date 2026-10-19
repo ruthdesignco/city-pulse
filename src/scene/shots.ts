@@ -66,7 +66,7 @@ const ORBIT = poseAround(TARGET, 2600, 1.0, -0.47)
 
 export const SHOTS: Shot[] = [
   { name: 'Hook: drift over SoMa', durationS: 15, from: OPENING, to: OPENING, orbitRadPerS: (2 * Math.PI) / 240 },
-  { name: "It's live: push in to Market", durationS: 10, from: OPENING, to: poseAround(MARKET_5TH, 950, 1.1, -0.47) },
+  { name: "It's live: push in to Market", durationS: 10, from: OPENING, to: poseAround(MARKET_5TH, 950, 1.0, -0.47) },
   {
     name: 'Two systems: track along Market',
     durationS: 15,
