@@ -1,22 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { downloadGtfs, redact } from './gtfs511.ts'
+import { downloadGtfs } from './gtfs511.ts'
 
+// redact() itself is tested in supabase/functions/_shared/redact.test.ts.
 const KEY = 'synthetic-key+/=42'
-
-describe('redact', () => {
-  it('removes the key in raw and URL-encoded form, every occurrence', () => {
-    const text = `https://x/?api_key=${encodeURIComponent(KEY)} and ${KEY} again ${KEY}`
-    const out = redact(text, KEY)
-    expect(out).not.toContain(KEY)
-    expect(out).not.toContain(encodeURIComponent(KEY))
-    expect(out.match(/\[redacted\]/g)).toHaveLength(3)
-  })
-
-  it('leaves text alone without a key', () => {
-    expect(redact('nothing secret', undefined)).toBe('nothing secret')
-    expect(redact('nothing secret', '')).toBe('nothing secret')
-  })
-})
 
 describe('downloadGtfs never leaks the key in errors', () => {
   const expectNoKey = async (fetchImpl: typeof fetch) => {

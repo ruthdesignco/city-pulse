@@ -9,16 +9,12 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
+import { redact } from '../../supabase/functions/_shared/redact.ts'
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const ENDPOINT = 'https://api.511.org/transit/datafeeds'
 // Its own directory: the archive is untrusted input, read only via unzip -p.
 export const GTFS_ZIP = join(ROOT, 'scripts', '.cache', 'gtfs-511-sf', 'gtfs.zip')
-
-export function redact(text: string, secret: string | undefined): string {
-  if (!secret) return text
-  return text.split(secret).join('[redacted]').split(encodeURIComponent(secret)).join('[redacted]')
-}
 
 function describeError(err: unknown): string {
   if (!(err instanceof Error)) return String(err)
