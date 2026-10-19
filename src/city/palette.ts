@@ -19,7 +19,10 @@ export const palette = {
   muniBus: '#ffcf7a',
   muniRail: '#7fe8ff', // light rail and streetcars (route_type 0)
   muniCable: '#ff9fc4', // cable cars (route_type 5)
-  muniStale: '#5a5f86', // what a bus fades toward once its data is ~3 min old: it recedes into the streets
+  // What a bus fades to once its data is ~3 min old: a muted lavender grey,
+  // dimmer than any live vehicle and without their glow, but brighter than
+  // every street, so a stale bus never reads as a missing one (palette.test.ts).
+  muniStale: '#a7adcf',
 
   sun: '#ffb487', // low sunset key light
   skyFill: '#7d8cc4', // hemisphere fill from above: what lights the roofs at dusk

@@ -41,7 +41,9 @@ const COLOR_BY_TYPE: Record<number, Color> = {
 }
 const BUS_COLOR = new Color(palette.muniBus)
 const STALE_COLOR = new Color(palette.muniStale)
-const STALE_MIX = 0.8 // how far a fully stale bus moves toward STALE_COLOR
+// A fully stale bus takes STALE_COLOR exactly. Mixing in linear light keeps
+// every step between a live color and it above the streets' luminance.
+const STALE_MIX = 1
 // Fresh buses are drawn this many times brighter than their palette color,
 // past the bloom threshold (App.tsx), so they glow and nothing else in the
 // scene does. The boost fades out with staleness: a stale bus doesn't glow.
