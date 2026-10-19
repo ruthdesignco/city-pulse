@@ -55,6 +55,83 @@ export function distToRing(p: Pt, ring: Pt[]): number {
   return d
 }
 
+// The bake area: inside any of the neighborhood rings, or within `meters` of
+// one (the context ring).
+export function inBakeArea(p: Pt, rings: Pt[][], meters: number): boolean {
+  return rings.some((r) => pointInRing(p, r)) || rings.some((r) => distToRing(p, r) <= meters)
+}
+
+export interface Rect {
+  minX: number
+  minZ: number
+  maxX: number
+  maxZ: number
+}
+
+// Liang-Barsky: the [t0, t1] part of segment a->b inside r, or null.
+function clipSegment(a: Pt, b: Pt, r: Rect): [number, number] | null {
+  const dx = b[0] - a[0]
+  const dz = b[1] - a[1]
+  const p = [-dx, dx, -dz, dz]
+  const q = [a[0] - r.minX, r.maxX - a[0], a[1] - r.minZ, r.maxZ - a[1]]
+  let t0 = 0
+  let t1 = 1
+  for (let k = 0; k < 4; k++) {
+    if (p[k] === 0) {
+      if (q[k] < 0) return null
+    } else {
+      const t = q[k] / p[k]
+      if (p[k] < 0) {
+        if (t > t1) return null
+        if (t > t0) t0 = t
+      } else {
+        if (t < t0) return null
+        if (t < t1) t1 = t
+      }
+    }
+  }
+  return [t0, t1]
+}
+
+// Split a polyline into the runs inside r, cut at the exact boundary
+// crossings so a long segment that crosses the edge isn't lost.
+export function clipPolylineToRect(line: Pt[], r: Rect): Pt[][] {
+  const out: Pt[][] = []
+  let run: Pt[] = []
+  const flush = () => {
+    if (run.length >= 2) out.push(run)
+    run = []
+  }
+  const push = (p: Pt) => {
+    const last = run[run.length - 1]
+    if (!last || last[0] !== p[0] || last[1] !== p[1]) run.push(p)
+  }
+  // Clamp crossings so float error can't put a point a hair outside r.
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+  const at = (a: Pt, b: Pt, t: number): Pt =>
+    t === 0
+      ? a
+      : t === 1
+        ? b
+        : [clamp(a[0] + (b[0] - a[0]) * t, r.minX, r.maxX), clamp(a[1] + (b[1] - a[1]) * t, r.minZ, r.maxZ)]
+
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i]
+    const b = line[i + 1]
+    const c = clipSegment(a, b, r)
+    if (!c) {
+      flush()
+      continue
+    }
+    if (c[0] > 0) flush() // entering from outside
+    push(at(a, b, c[0]))
+    push(at(a, b, c[1]))
+    if (c[1] < 1) flush() // leaving
+  }
+  flush()
+  return out
+}
+
 // Douglas-Peucker on an open polyline; always keeps both ends.
 export function simplifyLine(points: Pt[], tolerance: number): Pt[] {
   if (points.length <= 2) return points

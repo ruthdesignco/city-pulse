@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   type Pt,
   centroid,
+  clipPolylineToRect,
   distToRing,
+  inBakeArea,
   openRing,
   parseHeight,
   pointInRing,
@@ -129,5 +131,108 @@ describe('parseHeight', () => {
 
   it.each([undefined, '', 'tall', '-5', '0', '12;15', '2000'])('rejects %j', (raw) => {
     expect(parseHeight(raw)).toBeUndefined()
+  })
+})
+
+describe('inBakeArea', () => {
+  it('accepts points inside a ring or within the margin of one', () => {
+    expect(inBakeArea([5, 5], [square], 3)).toBe(true)
+    expect(inBakeArea([12, 5], [square], 3)).toBe(true)
+    expect(inBakeArea([14, 5], [square], 3)).toBe(false)
+  })
+})
+
+describe('clipPolylineToRect', () => {
+  const r = { minX: 0, minZ: 0, maxX: 10, maxZ: 10 }
+
+  it('keeps a line fully inside unchanged', () => {
+    const line: Pt[] = [
+      [1, 1],
+      [5, 5],
+      [9, 2],
+    ]
+    expect(clipPolylineToRect(line, r)).toEqual([line])
+  })
+
+  it('drops a line fully outside', () => {
+    expect(
+      clipPolylineToRect(
+        [
+          [-5, -5],
+          [-1, 20],
+        ],
+        r,
+      ),
+    ).toEqual([])
+  })
+
+  it('cuts at the exact crossing when entering and leaving', () => {
+    expect(
+      clipPolylineToRect(
+        [
+          [-10, 5],
+          [5, 5],
+          [5, 20],
+        ],
+        r,
+      ),
+    ).toEqual([
+      [
+        [0, 5],
+        [5, 5],
+        [5, 10],
+      ],
+    ])
+  })
+
+  it('keeps a long segment that passes through with both ends outside', () => {
+    expect(
+      clipPolylineToRect(
+        [
+          [-100, 5],
+          [100, 5],
+        ],
+        r,
+      ),
+    ).toEqual([
+      [
+        [0, 5],
+        [10, 5],
+      ],
+    ])
+  })
+
+  it('splits into separate runs when the line leaves and re-enters', () => {
+    const pieces = clipPolylineToRect(
+      [
+        [2, 2],
+        [2, 20],
+        [8, 20],
+        [8, 2],
+      ],
+      r,
+    )
+    expect(pieces).toEqual([
+      [
+        [2, 2],
+        [2, 10],
+      ],
+      [
+        [8, 10],
+        [8, 2],
+      ],
+    ])
+  })
+
+  it('drops a run that only touches a corner', () => {
+    expect(
+      clipPolylineToRect(
+        [
+          [-5, 5],
+          [5, -5],
+        ],
+        { minX: 0, minZ: 0, maxX: 10, maxZ: 10 },
+      ),
+    ).toEqual([])
   })
 })
