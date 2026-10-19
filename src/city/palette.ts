@@ -3,18 +3,27 @@
 
 export const palette = {
   // Fog, the ring/near-camera dim target (Buildings.tsx, Streets.tsx), and
-  // SkyDome's horizon color (Atmosphere.tsx) all share this tone -- the
-  // fogged ground and the sky dome meet with no seam by construction, since
-  // SkyDome is given this exact value, not a close guess. Warm but
-  // deliberately NOT vivid: pulled back from earlier, more saturated
-  // orange-tan passes toward something closer to neutral.
-  sky: '#c7b49c',
-  skyZenith: '#aec4da', // SkyDome's upper-frame color: soft pale blue, not warm
+  // the sky background's horizon color (Atmosphere.tsx, skyBackground.ts)
+  // all share this tone -- the fogged ground and the sky meet with no seam
+  // by construction. Pulled further toward neutral than the first pass
+  // (R/G/B closer together): mostly-neutral haze, warm only at the very
+  // edges, not an overall tan wash.
+  sky: '#c2bdae',
+  skyZenith: '#8fb2d6', // sky background's upper-frame color: a real pale blue, not a tint of the horizon tan
 
-  // Clean warm-neutral ground, dark enough that streetLocal (#404671, the
-  // darkest street color) still reads on top of it.
-  ground: '#483f35',
-  neighborhood: '#564c40', // the three neighborhoods, lifted slightly off the ground
+  // Mid-gray asphalt, not near-black: dark enough that streetLocal
+  // (#404671, the darkest street color) still reads on top of it, light
+  // enough that it doesn't read as a near-black void next to the fogged
+  // ground further out (the gap between the two was the "dark band" bug).
+  ground: '#6b6862',
+  neighborhood: '#78746b', // the three neighborhoods, lifted slightly off the ground
+
+  // Hemisphere light's "sky" (upward ambient fill) term -- kept distinct
+  // from `sun` deliberately: `sun` is the directional light's color, so
+  // warmth from it only shows on faces it actually hits; this ambient term
+  // lights every upward surface uniformly, so keeping it near-neutral stops
+  // shadowed/ambient-only areas from reading as uniformly sepia-tinted.
+  ambient: '#d8d3c7',
 
   // Three color families by OSM building type/height, each with 3
   // deterministic per-building shade variants (scripts/lib/buildingColor.ts:
@@ -59,9 +68,11 @@ export const palette = {
   // every street, so a stale bus never reads as a missing one (palette.test.ts).
   muniStale: '#a7adcf',
 
-  // Warm key light, also driving SkyDome's sun glow and (tinted toward
-  // ground) the hemisphere fill (Atmosphere.tsx). Pulled back from earlier,
-  // more saturated orange passes to a paler gold -- "warm but neutral,"
-  // so it tints the scene without washing out buildingColors' variety.
-  sun: '#ffd9a8',
+  // The directional light's color and the sky background's sun-glow accent
+  // (Atmosphere.tsx, skyBackground.ts) -- NOT hemisphereLight's ambient
+  // term anymore (see `ambient` above), so this warmth only shows on faces
+  // the light actually hits, not as a uniform tint over everything. Pulled
+  // back further toward pale gold than the first pass, which still read as
+  // an overall sepia wash even after the ambient split.
+  sun: '#ffe6c4',
 } as const

@@ -38,7 +38,12 @@ const SHADOW_EXTENT_M = 3600
 // just above the horizon line within the frame (the opening shot's own top
 // edge sits almost exactly at the horizon, so "low in the sky" is the only
 // band that's actually visible there).
-const CLOUD_HEIGHT_M = 950
+//
+// Fewer, higher, thinner than the first pass (6 instead of 12, taller and
+// further out, a flat 0.22 aspect instead of 0.6): round-ish puffs this
+// close read as distinct sprite blobs, not a cloud layer. Spread thin and
+// high, lower-opacity, they read as haze/streak instead.
+const CLOUD_HEIGHT_M = 1500
 const CLOUD_DRIFT_RAD_PER_S = 0.005
 
 interface CloudPuff {
@@ -47,19 +52,17 @@ interface CloudPuff {
   opacity: number
   color: string
 }
+// Recomputed along the opening camera's actual view direction (same
+// technique as the first pass, now for CLOUD_HEIGHT_M=1500): bearing
+// offsets of -16..+18deg from view center, elevation -1deg (just inside the
+// top edge, which sits almost exactly at the horizon), 4200m out.
 const CLOUD_PUFFS: CloudPuff[] = [
-  { position: [-218, -512, -2960], scale: 750, opacity: 0.8, color: '#ffffff' },
-  { position: [-80, -460, -3050], scale: 480, opacity: 0.65, color: '#fff6ec' },
-  { position: [695, -416, -3283], scale: 700, opacity: 0.75, color: '#fff6ec' },
-  { position: [850, -370, -3200], scale: 460, opacity: 0.6, color: '#ffffff' },
-  { position: [1410, -491, -2776], scale: 750, opacity: 0.8, color: '#ffffff' },
-  { position: [1560, -450, -2850], scale: 480, opacity: 0.65, color: '#fffaf0' },
-  { position: [2363, -379, -2658], scale: 700, opacity: 0.75, color: '#fffaf0' },
-  { position: [2220, -330, -2600], scale: 460, opacity: 0.6, color: '#fff6ec' },
-  { position: [2588, -599, -1634], scale: 680, opacity: 0.7, color: '#fff6ec' },
-  { position: [2450, -560, -1550], scale: 440, opacity: 0.55, color: '#ffffff' },
-  { position: [-838, -637, -2681], scale: 700, opacity: 0.75, color: '#ffffff' },
-  { position: [-980, -590, -2600], scale: 460, opacity: 0.6, color: '#fffaf0' },
+  { position: [2100, -821, -1579], scale: 1300, opacity: 0.45, color: '#ffffff' },
+  { position: [1704, -821, -1905], scale: 1100, opacity: 0.4, color: '#fff6ec' },
+  { position: [1335, -821, -2144], scale: 1400, opacity: 0.48, color: '#fffaf0' },
+  { position: [876, -821, -2372], scale: 1150, opacity: 0.38, color: '#ffffff' },
+  { position: [393, -821, -2542], scale: 1250, opacity: 0.42, color: '#fff6ec' },
+  { position: [-108, -821, -2653], scale: 1200, opacity: 0.4, color: '#fffaf0' },
 ]
 
 export function Atmosphere() {
@@ -98,20 +101,24 @@ export function Atmosphere() {
 
   return (
     <>
-      <hemisphereLight args={[palette.sun, palette.ground, 0.75]} />
+      {/* palette.ambient, not palette.sun, for the uniform upward fill:
+          `sun` (the directional light below) only warms faces it actually
+          hits, so keeping ambient near-neutral is what keeps shadowed areas
+          from reading as uniformly sepia-tinted. */}
+      <hemisphereLight args={[palette.ambient, palette.ground, 0.75]} />
       {/* City buildings mostly sit within ~2-3 km of TARGET (SPEC.md): near
-          keeps most of downtown crisp. far is well inside Ground.tsx's dark
-          near-plane edge (4500 m radius) so that plane always finishes
-          fading to this same palette.sky color before reaching it -- the
-          unlit backdrop plane beyond takes over already in that color, so
-          there's no edge or gradient left exposed to show as a seam. */}
-      <fog attach="fog" args={[palette.sky, 2000, 4200]} />
+          keeps most of downtown crisp. far is gentle enough, now that
+          Ground.tsx's plane is a mid-gray instead of near-black, to read as
+          a continuous haze gradient out to its edge rather than either a
+          dark band (too-short far, old dark ground) or a flat plateau
+          (full convergence too early). */}
+      <fog attach="fog" args={[palette.sky, 2000, 8000]} />
       <object3D ref={lightTargetRef} position={TARGET} />
       <directionalLight
         ref={lightRef}
         color={palette.sun}
         position={SUN_POSITION}
-        intensity={2.3}
+        intensity={2}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-SHADOW_EXTENT_M}
@@ -126,7 +133,7 @@ export function Atmosphere() {
       />
       <group ref={cloudsRef} position={[TARGET[0], CLOUD_HEIGHT_M, TARGET[2]]}>
         {CLOUD_PUFFS.map((p, i) => (
-          <sprite key={i} position={p.position} scale={[p.scale, p.scale * 0.6, 1]}>
+          <sprite key={i} position={p.position} scale={[p.scale, p.scale * 0.22, 1]}>
             {/* fog off: these sit just above the horizon specifically to read
               as a cloud layer against the sky -- the tighter near-camera
               fog tuned for Ground.tsx's dark-to-sky fade (its own comment)

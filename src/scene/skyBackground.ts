@@ -19,11 +19,14 @@ import { CanvasTexture, SRGBColorSpace } from 'three'
 const WIDTH = 2
 const HEIGHT = 512
 
-// Fraction of the gradient's height spent at the true zenith color before
-// blending toward the horizon -- keeps the upper frame reading as open sky
-// instead of haze, per the look-pass note ("sky should occupy more of the
-// upper frame").
-const ZENITH_HOLD = 0.45
+// Only the top ~15-20% of this texture is ever actually visible (Ground.tsx's
+// plane and its fog cover the rest before the texture would show through),
+// so the zenith-to-horizon blend needs to mostly finish within that same
+// top slice -- holding the old ZENITH_HOLD (0.45) past it meant almost the
+// entire visible strip was flat zenith blue, then the horizon tone only
+// showed up as a late, abrupt hand-off right at the ground's edge.
+const ZENITH_HOLD = 0.02
+const HORIZON_START = 0.11
 
 export function createSkyBackgroundTexture(horizon: string, zenith: string, sunColor: string, sunScreenY: number): CanvasTexture {
   const canvas = document.createElement('canvas')
@@ -34,6 +37,7 @@ export function createSkyBackgroundTexture(horizon: string, zenith: string, sunC
   const gradient = ctx.createLinearGradient(0, 0, 0, HEIGHT)
   gradient.addColorStop(0, zenith)
   gradient.addColorStop(ZENITH_HOLD, zenith)
+  gradient.addColorStop(HORIZON_START, horizon)
   gradient.addColorStop(1, horizon)
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, WIDTH, HEIGHT)
@@ -41,15 +45,19 @@ export function createSkyBackgroundTexture(horizon: string, zenith: string, sunC
   // Soft warm glow band near the sun's approximate screen height -- a 2px-
   // wide canvas has no horizontal extent to localize it, so this reads as a
   // warm horizontal band rather than a sun disc, which is fine: it's an
-  // atmospheric accent, not a pixel-accurate sun position.
-  const glowRadius = HEIGHT * 0.18
+  // atmospheric accent, not a pixel-accurate sun position. Partial alpha, not
+  // full-strength sunColor: at full strength this washed the zenith blue out
+  // to near-white across most of the visible strip.
+  const glowRadius = HEIGHT * 0.12
   const glowY = sunScreenY * HEIGHT
   const glow = ctx.createRadialGradient(WIDTH / 2, glowY, 0, WIDTH / 2, glowY, glowRadius)
   glow.addColorStop(0, sunColor)
   glow.addColorStop(1, `${sunColor}00`)
   ctx.globalCompositeOperation = 'lighter'
+  ctx.globalAlpha = 0.45
   ctx.fillStyle = glow
   ctx.fillRect(0, glowY - glowRadius, WIDTH, glowRadius * 2)
+  ctx.globalAlpha = 1
 
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace

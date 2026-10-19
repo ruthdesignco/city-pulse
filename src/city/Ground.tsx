@@ -26,28 +26,22 @@ export function Ground() {
 
   return (
     <group rotation-x={-Math.PI / 2}>
-      {/* Two planes, not one: palette.ground is deliberately dark (for
-          street contrast near the camera), but this camera's shallow
-          downward pitch means most of the upper frame is ground at steep
-          grazing angles, kilometers out -- scene <fog> blends that LIT dark
-          color toward the sky color with distance, but the blend reads as a
-          muddy dark band for a wide stretch before it finishes, because a
-          dark-albedo surface lit then fogged stays visibly dim through most
-          of the transition (confirmed by isolating this plane with a white
-          albedo instead, which fogged to a clean bright tan over the same
-          distances -- it's the dark albedo slowing the visible fade, not a
-          lighting or shadow bug). Capping the dark plane's extent so fog
-          fully finishes (to the exact same palette.sky used below) before
-          its edge, then backing it with a flat, unlit, already-sky-colored
-          plane, skips that slow fade for anything beyond the near plane
-          instead of trying to out-tune fog against a dark base color. */}
+      {/* A single plane again (an earlier pass here briefly added a second,
+          flat-colored backdrop plane to hide a dark horizon band -- fixed,
+          it just traded that bug for a flat tan plateau filling the same
+          area, since every pixel out there was the exact same unlit hex).
+          Large enough that its edge sits well past the fog's far distance,
+          so it fades smoothly all the way out to the same color the sky
+          background uses at its own horizon, and grazing-angle rays that
+          miss this plane's edge entirely fall through to that same
+          background directly -- no seam either way. palette.ground is now a
+          mid-gray close to palette.sky's value already, so the fogged
+          fade reads as continuous haze instead of a muddy dark-to-light
+          transition (the old near-black ground was what made that
+          transition read as a band in the first place). */}
       <mesh position-z={-0.2} receiveShadow>
-        <planeGeometry args={[9000, 9000]} />
+        <planeGeometry args={[20000, 20000]} />
         <meshStandardMaterial color={palette.ground} />
-      </mesh>
-      <mesh position-z={-0.4}>
-        <planeGeometry args={[40000, 40000]} />
-        <meshBasicMaterial color={palette.sky} fog />
       </mesh>
       <mesh geometry={boundary} position-z={0.1} receiveShadow>
         <meshStandardMaterial color={palette.neighborhood} />
