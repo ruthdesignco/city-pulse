@@ -14,7 +14,12 @@ export function staleDim(ageMs: number): number {
   return x * x * (3 - 2 * x)
 }
 
-export type FreshnessLevel = 'live' | 'stale' | 'waiting' | 'offline'
+export type FreshnessLevel = 'live' | 'stale' | 'waiting' | 'offline' | 'clock-error'
+
+// Beyond this far ahead of the server clock, a feed timestamp isn't "live ·
+// 0 s ago" anymore, it's broken: either the feed froze on a header that's
+// ahead of now, or a clock somewhere is wrong.
+const CLOCK_ERROR_MS = 60_000
 
 export interface FreshnessView {
   level: FreshnessLevel
@@ -43,6 +48,7 @@ export function describeFreshness(feed: FeedStatus, nowMs: number): FreshnessVie
   const age = nowMs + state.serverOffsetMs - newest
   const pollFailing = state.muni.lastPollOk === false ? 'feed errors' : null
   const note = [unreachable, pollFailing].filter(Boolean).join(' · ') || null
+  if (age < -CLOCK_ERROR_MS) return { level: 'clock-error', text: 'Muni · clock error', note }
   if (age <= STALE_MS) return { level: 'live', text: `Muni · live · updated ${formatAge(age)}`, note }
   return { level: 'stale', text: `Muni · stale · last update ${formatAge(age)}`, note }
 }

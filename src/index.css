@@ -56,6 +56,11 @@ body,
   background: #d46a6a;
 }
 
+.freshness--clock-error .freshness__dot {
+  background: #d46a6a;
+  box-shadow: 0 0 8px #d46a6a;
+}
+
 .freshness__note {
   color: #8e93b8;
 }

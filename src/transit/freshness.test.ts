@@ -45,6 +45,15 @@ describe('describeFreshness', () => {
     expect(describeFreshness(feed(state({}, -300_000)), NOW + 300_000).text).toBe('Muni · live · updated 42 s ago')
   })
 
+  it('is a clock error, not "live · 0 s ago", when the newest data is from the future', () => {
+    expect(describeFreshness(feed(state({ newestFeedAt: NOW + 61_000 })), NOW)).toMatchObject({
+      level: 'clock-error',
+      text: 'Muni · clock error',
+    })
+    // 60 s ahead is still within clock-skew tolerance: stays "live".
+    expect(describeFreshness(feed(state({ newestFeedAt: NOW + 60_000 })), NOW).level).toBe('live')
+  })
+
   it('stale past 3 minutes', () => {
     expect(describeFreshness(feed(state({ newestFeedAt: NOW - 6 * 60_000 })), NOW)).toMatchObject({
       level: 'stale',
