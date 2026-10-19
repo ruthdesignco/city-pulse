@@ -89,6 +89,15 @@ Primary: a portfolio piece that shows real time, data driven 3D UX at the craft 
 - Supabase free during build, Pro at public launch
 - Vercel for hosting
 - Build in an isolated Claude Code profile
+- Live Muni (2026-10-18):
+  - pg_cron ticks the poller every 20 s and every tick is logged to `ingest_runs`; a 511 call needs 75 s since the last one and calls left in a fixed hourly window of 60, claimed by compare-and-swap on `poll_budget`. In practice one call every ~80 s, ~45/hour
+  - The poller only answers an `x-poller-secret` header (Vault ↔ `POLLER_SECRET`) and fails closed without one; deployed with `--no-verify-jwt`. Every error is redacted of the 511 key before it is stored or logged
+  - Vehicles are clipped to the bake area (neighborhoods + 800 m ring, generated from `city.bin`) before anything is written; the table keeps the last two observations per vehicle
+  - Route shapes come from 511's static GTFS (operator SF, one call), baked into `public/routes.json`; rebake when SFMTA publishes a new schedule. Never fetched at runtime
+  - The anon key reads only `current_state`. It exposes vehicle id, route, direction, two timestamped positions and per-layer freshness; never `ingest_runs` error text. Vehicles without a route are hidden; a vehicle drops out after missing two consecutive feed snapshots, measured against the newest snapshot so a dead feed keeps buses visible
+  - 511 stamps every vehicle with the feed's timestamp, not its own, so a bus's freshness is the feed's freshness
+  - Interpolation: extrapolate and ease, chosen over delayed playback, which would run ~2-3 min behind. Speed between the last two points (averaged with the previous interval) projected along the route shape; coast linearly for 45 s, then ease to a halt within 75 s of travel; the drawn bus never moves backward and never exceeds 30 m/s. Off-route buses sit at their raw position; corrections of 400+ m crossfade. Tuned against simulated trips: buses wait for the next point ~7% of the time (31% with a 90 s linear coast)
+  - Freshness: buses fade to a muted tone and freeze as their data reaches 3 minutes; a corner indicator shows the age of the newest Muni data on the database clock
 
 ## Open questions
 1. Exact cluster boundary: SF Analysis Neighborhoods polygons or a hand drawn shape?
