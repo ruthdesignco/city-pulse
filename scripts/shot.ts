@@ -3,6 +3,9 @@
 //
 //   npm run shot              shots/opening.png
 //   npm run shot -- closer    shots/closer.png (any name, same opening camera)
+//   npm run shot -- closeup --view market
+//                             shots/closeup.png from a camera preset
+//                             (src/scene/shots.ts PRESETS, ?view=<name>)
 //
 // Starts Vite's dev server in-process (its own JS API, not a spawned CLI
 // child process, so there's nothing to leak or orphan on Windows) on an
@@ -27,7 +30,11 @@ const HEIGHT = 1080
 const SETTLE_MS = 4000
 
 async function main() {
-  const name = process.argv[2] ?? 'opening'
+  const args = process.argv.slice(2)
+  const viewAt = args.indexOf('--view')
+  const view = viewAt >= 0 ? args[viewAt + 1] : undefined
+  if (viewAt >= 0 && !view) throw new Error('shot: --view needs a preset name')
+  const name = args.find((a, i) => !a.startsWith('--') && i !== viewAt + 1) ?? 'opening'
   mkdirSync(SHOTS_DIR, { recursive: true })
 
   const server = await createServer({ root: ROOT, server: { port: 0 }, logLevel: 'warn' })
@@ -49,7 +56,9 @@ async function main() {
     page.on('response', (res) => {
       if (!res.ok()) console.error(`shot: [http ${res.status()}] ${res.url()}`)
     })
-    await page.goto(`${url}?demo`, { waitUntil: 'networkidle' })
+    const query = new URLSearchParams({ demo: '' })
+    if (view) query.set('view', view)
+    await page.goto(`${url}?${query}`, { waitUntil: 'networkidle' })
     await page.waitForSelector('canvas', { timeout: 15_000 })
     await page.waitForTimeout(SETTLE_MS)
     const out = join(SHOTS_DIR, `${name}.png`)

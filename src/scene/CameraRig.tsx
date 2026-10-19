@@ -2,14 +2,11 @@ import { type ComponentRef, useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { DEMO } from '../params.ts'
-import { SHOTS, type Shot, shotPose } from './shots.ts'
-import { TARGET } from './view.ts'
+import { type Pose, SHOTS, type Shot, shotPose } from './shots.ts'
+import { ORBIT_LIMITS } from './view.ts'
 
-// Constrained orbit around the cluster plus a slow idle drift.
-const MIN_DISTANCE = 800
-const MAX_DISTANCE = 6500
-const MIN_POLAR = 0.15 // near top-down
-const MAX_POLAR = 1.25 // ~72° from vertical: a user drag ceiling, steeper than the opening view's tilt
+// Constrained orbit around the cluster (view.ts ORBIT_LIMITS) plus a slow
+// idle drift, starting from `start` (the opening view or a ?view preset, App.tsx).
 
 const DRIFT_RAD_PER_S = (2 * Math.PI) / 240 // one orbit every 4 minutes
 const IDLE_BEFORE_DRIFT_MS = 4000
@@ -17,7 +14,7 @@ const DRIFT_EASE_IN_MS = 2000
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-export function CameraRig() {
+export function CameraRig({ start }: { start: Pose }) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null)
   const interacting = useRef(false)
   const lastInteraction = useRef(0)
@@ -81,16 +78,16 @@ export function CameraRig() {
     <OrbitControls
       ref={controls}
       makeDefault
-      target={TARGET}
+      target={start.target}
       enablePan={false}
       enableDamping
       dampingFactor={0.08}
       rotateSpeed={0.6}
       zoomSpeed={0.8}
-      minDistance={MIN_DISTANCE}
-      maxDistance={MAX_DISTANCE}
-      minPolarAngle={MIN_POLAR}
-      maxPolarAngle={MAX_POLAR}
+      minDistance={ORBIT_LIMITS.minDistance}
+      maxDistance={ORBIT_LIMITS.maxDistance}
+      minPolarAngle={ORBIT_LIMITS.minPolar}
+      maxPolarAngle={ORBIT_LIMITS.maxPolar}
       onStart={() => {
         interacting.current = true
         playing.current = null

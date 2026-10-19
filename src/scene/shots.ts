@@ -5,7 +5,10 @@
 //
 // Scene meters, north is -z. Market Street runs from Van Ness (-555, -788)
 // northeast through 5th (502, -1776) to Montgomery (1013, -2331). Distances
-// stay inside the orbit's 800-6500 m and polar angles under its 1.25 rad.
+// stay inside the orbit's limits (view.ts ORBIT_LIMITS).
+//
+// PRESETS are still camera poses a page can open on (?view=<name>, params.ts),
+// for screenshots (npm run shot -- <name> --view <name>) and close looks.
 
 import { OPENING_POSITION, TARGET } from './view.ts'
 
@@ -78,3 +81,22 @@ export const SHOTS: Shot[] = [
   { name: 'The craft: pull back to the ring', durationS: 15, from: CLOSE_ON_MARKET, to: poseAround(TARGET, 4800, 1.05, -0.2) },
   { name: 'Performance: fast orbit', durationS: 15, from: ORBIT, to: ORBIT, orbitRadPerS: (2 * Math.PI) / 24 },
 ]
+
+// Over Market at 3rd (Kearny), where the most routes meet, ~380 m out,
+// looking northeast straight up the street
+// so it runs down the middle of the frame between the buildings: close
+// enough that a 40 ft bus is ~60+ px, the vehicle models' near band
+// (lod.ts). The point is on the F's route shape (routes.json), at street
+// level; Market's axis there is azimuth ~-0.79.
+const ON_MARKET_3RD: Vec3 = [741, 0, -2078]
+const UP_MARKET = -0.79
+
+export const PRESETS: Record<string, Pose> = {
+  opening: OPENING,
+  market: poseAround(ON_MARKET_3RD, 380, 0.75, UP_MARKET),
+}
+
+// A preset by name, or the opening view for none or an unknown one.
+export function presetPose(name: string | null): Pose {
+  return (name !== null && Object.hasOwn(PRESETS, name) ? PRESETS[name] : undefined) ?? OPENING
+}

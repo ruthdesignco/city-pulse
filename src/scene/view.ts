@@ -22,3 +22,13 @@ export const OPENING_POSITION: [number, number, number] = [
   TARGET[1] + OPEN_DISTANCE * Math.cos(OPEN_POLAR),
   TARGET[2] + OPEN_DISTANCE * Math.sin(OPEN_POLAR) * Math.cos(OPEN_AZIMUTH),
 ]
+
+// The orbit's limits (CameraRig.tsx), shared with the scripted shots' tests.
+// Down to 150 m so the vehicle models (vehicleModels.ts) can be seen up close;
+// at the old 800 m minimum a bus never got past ~20 px.
+export const ORBIT_LIMITS = {
+  minDistance: 150,
+  maxDistance: 6500,
+  minPolar: 0.15, // near top-down
+  maxPolar: 1.25, // ~72° from vertical: a user drag ceiling, steeper than the opening view's tilt
+} as const

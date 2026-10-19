@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { type Pose, SHOTS, poseAround, shotPose } from './shots.ts'
-import { OPENING_POSITION, TARGET } from './view.ts'
+import { PRESETS, type Pose, SHOTS, poseAround, presetPose, shotPose } from './shots.ts'
+import { ORBIT_LIMITS, OPENING_POSITION, TARGET } from './view.ts'
 
 const distance = (p: Pose) => Math.hypot(p.position[0] - p.target[0], p.position[1] - p.target[1], p.position[2] - p.target[2])
 const polar = (p: Pose) => Math.acos((p.position[1] - p.target[1]) / distance(p))
+// OrbitControls clamps anything outside these, which would jolt a take.
+const expectInOrbit = (p: Pose, label: string) => {
+  expect(distance(p), label).toBeGreaterThanOrEqual(ORBIT_LIMITS.minDistance)
+  expect(distance(p), label).toBeLessThanOrEqual(ORBIT_LIMITS.maxDistance)
+  expect(polar(p), label).toBeGreaterThanOrEqual(ORBIT_LIMITS.minPolar)
+  expect(polar(p), label).toBeLessThanOrEqual(ORBIT_LIMITS.maxPolar)
+}
 
 describe('poseAround', () => {
   it('reproduces the opening view from its distance and angles', () => {
@@ -44,15 +51,21 @@ describe('SHOTS', () => {
     expect(SHOTS).toHaveLength(7)
   })
 
-  // OrbitControls clamps anything outside these, which would jolt a take.
   it('stays inside the orbit limits for the whole of every shot', () => {
     for (const shot of SHOTS)
-      for (let t = 0; t <= shot.durationS; t += 0.5) {
-        const p = shotPose(shot, t)
-        expect(distance(p), `${shot.name} at ${t}s`).toBeGreaterThanOrEqual(800)
-        expect(distance(p), `${shot.name} at ${t}s`).toBeLessThanOrEqual(6500)
-        expect(polar(p), `${shot.name} at ${t}s`).toBeGreaterThanOrEqual(0.15)
-        expect(polar(p), `${shot.name} at ${t}s`).toBeLessThanOrEqual(1.25)
-      }
+      for (let t = 0; t <= shot.durationS; t += 0.5) expectInOrbit(shotPose(shot, t), `${shot.name} at ${t}s`)
+  })
+})
+
+describe('PRESETS', () => {
+  it('stays inside the orbit limits', () => {
+    for (const [name, p] of Object.entries(PRESETS)) expectInOrbit(p, name)
+  })
+
+  it('opens on the opening view by default or for an unknown name', () => {
+    expect(presetPose(null).position).toEqual(OPENING_POSITION)
+    expect(presetPose('nowhere').position).toEqual(OPENING_POSITION)
+    expect(presetPose('toString').position).toEqual(OPENING_POSITION)
+    expect(presetPose('market')).toBe(PRESETS.market)
   })
 })

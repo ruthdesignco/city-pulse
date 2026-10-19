@@ -4,12 +4,12 @@ import { Stats } from '@react-three/drei'
 import { Bloom, EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
-import { DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S } from './params.ts'
+import { DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, VIEW } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Streets } from './city/Streets.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
-import { OPENING_POSITION } from './scene/view.ts'
+import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
 import { RecordedBadge } from './transit/RecordedBadge.tsx'
 import { Vehicles } from './transit/Vehicles.tsx'
@@ -21,6 +21,8 @@ import { WebGLGate } from './scene/WebGLGate.tsx'
 // the hooks called never change between renders.
 const REPLAY_OPTIONS = { startS: REPLAY_START_S, holdS: REPLAY_HOLD_S }
 const replayName = REPLAY
+// The camera's first pose: ?view's preset (shots.ts PRESETS), or the opening view.
+const START_POSE = presetPose(VIEW)
 const useFeed: () => ReturnType<typeof useCurrentState> & { replay: ReplayStatus | null } =
   replayName !== null ? () => useRecordedState(replayName, REPLAY_OPTIONS) : () => ({ ...useCurrentState(), replay: null })
 
@@ -54,7 +56,7 @@ export default function App() {
         // back to hard PCF with a console warning. VSM is the remaining
         // soft-shadow type (Atmosphere.tsx's shadow-radius controls blur).
         shadows="variance"
-        camera={{ position: OPENING_POSITION, fov: 40, near: 10, far: 20000 }}
+        camera={{ position: START_POSE.position, fov: 40, near: 10, far: 20000 }}
       >
         {/* Each independently-loading resource (HDRI, city.bin, routes.json)
             gets its own Suspense boundary. Sharing one boundary across
@@ -76,7 +78,7 @@ export default function App() {
           {/* A looping recording restarts its clock: start the buses fresh. */}
           <Vehicles key={feed.replay?.loop ?? 0} state={feed.state} />
         </Suspense>
-        <CameraRig />
+        <CameraRig start={START_POSE} />
         {/* Only the buses are bright enough to bloom (Vehicles.tsx, GLOW).
             The composer turns off the renderer's tone mapping, so it's
             reapplied here as the same ACES curve, after the bloom. SSAO runs

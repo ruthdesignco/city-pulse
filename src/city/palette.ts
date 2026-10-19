@@ -75,6 +75,23 @@ export const palette = {
   // every street, so a stale bus never reads as a missing one (palette.test.ts).
   muniStale: '#a7adcf',
 
+  // Vehicle models (vehicleModels.ts): lit like the buildings, generic
+  // liveries, no operator branding. The accent band (and the headlamps) takes
+  // the vehicle's color above -- amber bus, cyan rail -- so models, markers
+  // and trails share one color code. Cable cars are natural wood instead,
+  // their accent a warm lamp glow rather than muniCable's pink.
+  liveryBody: '#e9e6df', // off-white bus body
+  liveryRail: '#c9ced4', // brushed silver light rail body
+  liveryGlass: '#2b333d',
+  liverySkirt: '#55585d',
+  liveryRoof: '#b3b6ba',
+  liveryJoint: '#3b3d41', // articulation bellows
+  liveryWheel: '#25272a',
+  cableWood: '#b37a45',
+  cableWoodDark: '#6e4728',
+  cableRoof: '#5f5951',
+  cableLamp: '#ffcf87',
+
   // The directional light's color and the sky background's sun-glow accent
   // (Atmosphere.tsx, skyBackground.ts) -- NOT hemisphereLight's ambient
   // term anymore (see `ambient` above), so this warmth only shows on faces
