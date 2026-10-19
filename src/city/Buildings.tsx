@@ -3,6 +3,7 @@ import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'th
 import type { CityData } from './format.ts'
 import { extrudeBuildings } from './extrude.ts'
 import { palette } from './palette.ts'
+import { RING_DIM_MIN, RING_DIM_RANGE } from './ring.ts'
 import { useCity } from './useCity.ts'
 
 // Walls (not roofs) reach full color by this height; below it they blend
@@ -10,10 +11,7 @@ import { useCity } from './useCity.ts'
 // level. Most SF buildings are 10-15 m, so keep this short and gentle.
 const BASE_FADE_M = 12
 const BASE_FLOOR = 0.55 // darkest a wall gets at street level, as a mix toward full color
-// Context-ring buildings blend toward the sky color: RING_DIM_MIN at the
-// neighborhood edge, up to RING_DIM_MIN + RING_DIM_RANGE at the ring's edge.
-const RING_DIM_MIN = 0.35
-const RING_DIM_RANGE = 0.45
+// Context-ring buildings blend toward the sky color as ring.ts's ringDim().
 
 function buildGeometry(city: CityData): BufferGeometry {
   const started = performance.now()
@@ -48,7 +46,7 @@ function buildMaterial(): MeshStandardMaterial {
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, vRing > 0.0 ? ${RING_DIM_MIN.toFixed(2)} + ${RING_DIM_RANGE.toFixed(2)} * vRing : 0.0);`,
       )
   }
-  material.customProgramCacheKey = () => 'city-buildings-v2'
+  material.customProgramCacheKey = () => 'city-buildings-v3'
   return material
 }
 
