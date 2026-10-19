@@ -2,6 +2,8 @@ import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
 import { Buildings } from './city/Buildings.tsx'
+import { Ground } from './city/Ground.tsx'
+import { Streets } from './city/Streets.tsx'
 
 export default function App() {
   return (
@@ -9,6 +11,8 @@ export default function App() {
       <ambientLight intensity={0.6} />
       <directionalLight position={[2000, 4000, 1000]} intensity={1.5} />
       <Suspense fallback={null}>
+        <Ground />
+        <Streets />
         <Buildings />
       </Suspense>
       <OrbitControls />
