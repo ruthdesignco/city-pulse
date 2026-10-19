@@ -1,6 +1,8 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Stats } from '@react-three/drei'
+import { Bloom, EffectComposer, ToneMapping } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
 import { Ground } from './city/Ground.tsx'
 import { Streets } from './city/Streets.tsx'
@@ -24,6 +26,13 @@ export default function App() {
           <Vehicles state={feed.state} />
         </Suspense>
         <CameraRig />
+        {/* Only the buses are bright enough to bloom (Vehicles.tsx, GLOW).
+            The composer turns off the renderer's tone mapping, so it's
+            reapplied here as the same ACES curve, after the bloom. */}
+        <EffectComposer>
+          <Bloom luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.9} mipmapBlur />
+          <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+        </EffectComposer>
         {import.meta.env.DEV && <Stats />}
       </Canvas>
       <Freshness feed={feed} />
