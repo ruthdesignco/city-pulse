@@ -18,6 +18,13 @@ export const palette = {
   ground: '#6b6862',
   neighborhood: '#78746b', // the three neighborhoods, lifted slightly off the ground
 
+  // The Bay (Ground.tsx) and the East Bay hills beyond it: pale, closer to
+  // `skyZenith` than `ground`, so both read as "distance" even before fog
+  // finishes fading them -- water and far land already look closer to sky
+  // color than solid ground does, even up close.
+  bay: '#93aebe',
+  hills: '#9aa7ad',
+
   // Hemisphere light's "sky" (upward ambient fill) term -- kept distinct
   // from `sun` deliberately: `sun` is the directional light's color, so
   // warmth from it only shows on faces it actually hits; this ambient term
