@@ -53,11 +53,23 @@ export default function App() {
         shadows="soft"
         camera={{ position: OPENING_POSITION, fov: 40, near: 10, far: 20000 }}
       >
+        {/* Each independently-loading resource (HDRI, city.bin, routes.json)
+            gets its own Suspense boundary. Sharing one boundary across
+            siblings suspending on different promises that resolve at
+            different real times makes React discard and remount the WHOLE
+            subtree every time any one of them resolves -- Buildings' city
+            geometry was extruding 4 times on a single page load because of
+            this, not twice (React StrictMode's expected dev-only double
+            render). */}
         <Suspense fallback={null}>
           <Atmosphere />
+        </Suspense>
+        <Suspense fallback={null}>
           <Ground />
           <Streets />
           <Buildings />
+        </Suspense>
+        <Suspense fallback={null}>
           {/* A looping recording restarts its clock: start the buses fresh. */}
           <Vehicles key={feed.replay?.loop ?? 0} state={feed.state} />
         </Suspense>
