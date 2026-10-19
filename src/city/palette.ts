@@ -15,6 +15,11 @@ export const palette = {
   streetMinor: '#545c8c',
   streetLocal: '#3a4068',
 
+  // Muni vehicles: unlit, so they read as lights moving through the dusk.
+  muniBus: '#ffcf7a',
+  muniRail: '#7fe8ff', // light rail and streetcars (route_type 0)
+  muniCable: '#ff9fc4', // cable cars (route_type 5)
+
   sun: '#ffb487', // low sunset key light
   skyFill: '#7d8cc4', // hemisphere fill from above: what lights the roofs at dusk
   groundFill: '#2a2236', // hemisphere bounce from below
