@@ -7,7 +7,7 @@ import { TARGET } from './view.ts'
 const MIN_DISTANCE = 800
 const MAX_DISTANCE = 6500
 const MIN_POLAR = 0.15 // near top-down
-const MAX_POLAR = 1.15 // ~66° from vertical: never at or below the horizon
+const MAX_POLAR = 1.25 // ~72° from vertical: low enough for the opening view, never at the horizon
 
 const DRIFT_RAD_PER_S = (2 * Math.PI) / 240 // one orbit every 4 minutes
 const IDLE_BEFORE_DRIFT_MS = 4000
