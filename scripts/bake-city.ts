@@ -3,6 +3,7 @@
 //
 //   npm run bake                    fetch what's missing, then bake
 //   npm run bake -- --cached-only   bake from cache only (partial preview)
+//   npm run bake -- --pbf <file>    bake from a Geofabrik .osm.pbf via osmium-tool
 //
 // Inputs:  scripts/data/analysis-neighborhoods.geojson (DataSF)
 //          OpenStreetMap via Overpass, cached in scripts/.cache/
@@ -41,6 +42,7 @@ import {
   fetchOverpass,
   fetchTiled,
 } from './lib/overpass.ts'
+import { loadFromPbf } from './lib/pbf.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
@@ -296,11 +298,7 @@ function packLines(lines: Pt[][]): { counts: Uint16Array; coords: Int16Array } {
 
 // ----------------------------------------------------------------- main
 
-async function main() {
-  const started = Date.now()
-  const boundary = loadBoundary()
-  console.log(`boundary: ${boundary.length} rings, ${boundary.reduce((n, r) => n + r.length, 0)} points`)
-
+async function loadFromOverpass(): Promise<OsmElement[]> {
   const cachedOnly = process.argv.includes('--cached-only')
   if (cachedOnly) console.warn('bake: --cached-only. Output may be PARTIAL; do not commit it.')
   const tiled = await fetchTiled(QUERY_BBOX, TILES, TILES, cityQuery, { cachedOnly })
@@ -314,8 +312,17 @@ async function main() {
   // Full-geometry relations replace the tag-only copies from the tiles.
   const byId = new Map(tiled.map((e) => [`${e.type}/${e.id}`, e]))
   for (const r of relations) byId.set(`${r.type}/${r.id}`, r)
-  const elements = [...byId.values()]
-  console.log(`osm: ${elements.length} elements after tile dedupe`)
+  return [...byId.values()]
+}
+
+async function main() {
+  const started = Date.now()
+  const boundary = loadBoundary()
+  console.log(`boundary: ${boundary.length} rings, ${boundary.reduce((n, r) => n + r.length, 0)} points`)
+
+  const pbfIdx = process.argv.indexOf('--pbf')
+  const elements = pbfIdx !== -1 ? loadFromPbf(process.argv[pbfIdx + 1] ?? '', QUERY_BBOX) : await loadFromOverpass()
+  console.log(`osm: ${elements.length} elements`)
 
   const buildings = bakeBuildings(elements, boundary)
   const streets = bakeStreets(elements, boundary)
