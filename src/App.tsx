@@ -53,8 +53,8 @@ export default function App() {
         shadows="soft"
         camera={{ position: OPENING_POSITION, fov: 40, near: 10, far: 20000 }}
       >
-        <Atmosphere />
         <Suspense fallback={null}>
+          <Atmosphere />
           <Ground />
           <Streets />
           <Buildings />
