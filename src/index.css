@@ -100,3 +100,35 @@ body,
   content: '· ';
   color: #8e93b8;
 }
+
+/* Full-page fallbacks: a failed loader (src/ErrorBoundary.tsx) or no WebGL
+   (src/scene/WebGLGate.tsx). Same dark backing as the canvas, so there's no
+   flash of white while nothing has rendered yet. */
+.error-boundary,
+.webgl-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: #c9cde8;
+  font: 500 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.error-boundary button {
+  padding: 8px 20px;
+  border: 1px solid #6c7199;
+  border-radius: 999px;
+  background: transparent;
+  color: #c9cde8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.error-boundary button:hover {
+  background: rgb(108 113 153 / 0.2);
+}

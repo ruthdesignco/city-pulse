@@ -15,6 +15,7 @@ import { RecordedBadge } from './transit/RecordedBadge.tsx'
 import { Vehicles } from './transit/Vehicles.tsx'
 import { useCurrentState } from './transit/useCurrentState.ts'
 import { type ReplayStatus, useRecordedState } from './transit/useRecordedState.ts'
+import { WebGLGate } from './scene/WebGLGate.tsx'
 
 // The live feed, or ?replay=<name>'s recording. Chosen once per page load, so
 // the hooks called never change between renders.
@@ -41,7 +42,7 @@ export default function App() {
   const feed = useFeed()
   const overlayHidden = useOverlayToggle()
   return (
-    <>
+    <WebGLGate>
       {/* The bloom composer renders the whole scene again into a 4x
           multisampled half-float buffer, so pixel count is the frame cost:
           cap the pixel ratio at 1.5 (44% fewer pixels than 2 on Retina) and
@@ -71,6 +72,6 @@ export default function App() {
       </Canvas>
       {!overlayHidden && <Freshness feed={feed} />}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
-    </>
+    </WebGLGate>
   )
 }
