@@ -50,5 +50,6 @@ jobs:
             -f supabase/migrations/20261019030000_current_state_filters.sql \
             -f supabase/migrations/20261019050000_prune_relative_to_newest.sql \
             -f supabase/migrations/20261019070000_healthcheck_ping.sql \
+            -f supabase/migrations/20261019080000_log_healthcheck_ping_failures.sql \
             -f supabase/tests/current_state.test.sql \
             -f supabase/tests/healthcheck_ping.test.sql
