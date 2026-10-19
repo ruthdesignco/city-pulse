@@ -3,15 +3,16 @@
 
 export const palette = {
   // Fog and the ring/near-camera dim target (Buildings.tsx, Streets.tsx)
-  // share this bright warm tone, matching the HDRI sky's horizon haze
-  // (Atmosphere.tsx) -- the rendered background itself is the HDRI texture,
-  // not this color, but buildings/streets still fade toward it at the ring
-  // edge and near the camera, so it has to read as "distant bright haze,"
-  // not "distant darkness," under daylight.
-  sky: '#f4c892',
+  // share this pale, desaturated haze tone -- atmospheric perspective: the
+  // ring should recede (hazier, lower contrast), not become the brightest,
+  // most vivid thing in frame, which a fully-saturated sky color did. The
+  // rendered background itself is the HDRI texture, not this color.
+  sky: '#cdc0ac',
 
-  ground: '#20233a',
-  neighborhood: '#272b45', // the three neighborhoods, lifted slightly off the ground
+  // Warm neutral daylight ground -- dark enough that streetLocal (#404671,
+  // the darkest street color) still reads clearly on top of it.
+  ground: '#3d342a',
+  neighborhood: '#4a3f33', // the three neighborhoods, lifted slightly off the ground
 
   // A notch below mid grey so the buses, not the buildings, are the brightest
   // thing in the scene.
