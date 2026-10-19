@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bearingToScene, SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, SUN_POSITION } from './sun.ts'
+import { bearingToScene, SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, SUN_POSITION, sunLightPosition } from './sun.ts'
 
 describe('bearingToScene', () => {
   it('points north (-z) at bearing 0, elevation 0', () => {
@@ -50,5 +50,17 @@ describe('SUN_POSITION', () => {
     expect(SUN_AZIMUTH_DEG).toBeGreaterThan(180)
     expect(SUN_AZIMUTH_DEG).toBeLessThan(270)
     expect(SUN_ELEVATION_DEG).toBeLessThan(20) // golden hour, not midday
+  })
+})
+
+describe('sunLightPosition', () => {
+  it('lights a far-off target from the intended bearing and elevation', () => {
+    const target = [950, 100, -1550] as const
+    const [x, y, z] = sunLightPosition(target)
+    const dx = x - target[0]
+    const dy = y - target[1]
+    const dz = z - target[2]
+    expect((Math.atan2(dy, Math.hypot(dx, dz)) * 180) / Math.PI).toBeCloseTo(SUN_ELEVATION_DEG, 6)
+    expect((((Math.atan2(dx, -dz) * 180) / Math.PI + 360) % 360)).toBeCloseTo(SUN_AZIMUTH_DEG, 6)
   })
 })

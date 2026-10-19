@@ -12,7 +12,8 @@
     "bake": "node --experimental-strip-types scripts/bake-city.ts",
     "bake:routes": "node --experimental-strip-types scripts/bake-routes.ts",
     "record": "node --experimental-strip-types scripts/record-state.ts",
-    "shot": "node --experimental-strip-types scripts/shot.ts"
+    "shot": "node --experimental-strip-types scripts/shot.ts",
+    "calibrate": "node --experimental-strip-types scripts/calibrate.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

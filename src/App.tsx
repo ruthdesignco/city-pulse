@@ -4,10 +4,11 @@ import { Stats } from '@react-three/drei'
 import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
-import { DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, VIEW } from './params.ts'
+import { CALIBRATE, DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, VIEW } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Streets } from './city/Streets.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
+import { Calibration } from './scene/Calibration.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
 import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
@@ -78,15 +79,17 @@ export default function App() {
           {/* A looping recording restarts its clock: start the buses fresh. */}
           <Vehicles key={feed.replay?.loop ?? 0} state={feed.state} />
         </Suspense>
+        {CALIBRATE && <Calibration />}
         <CameraRig start={START_POSE} />
         {/* No bloom: the look is realistic, nothing in the scene glows. The
-            composer turns off the renderer's tone mapping, so it's reapplied
-            here as the same ACES curve. SSAO: soft contact shadows in corners
+            composer turns off the renderer's tone mapping, so it's applied
+            here: Khronos PBR Neutral, which shows base colors as authored
+            and only rolls off highlights (lighting.ts). SSAO: soft contact shadows in corners
             and at street level, subtle enough not to compete with the real
             shadows from Atmosphere's sun. */}
         <EffectComposer enableNormalPass>
           <SSAO radius={0.12} intensity={12} luminanceInfluence={0.6} distanceFalloff={0.5} />
-          <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+          <ToneMapping mode={ToneMappingMode.NEUTRAL} />
         </EffectComposer>
         {import.meta.env.DEV && !DEMO && <Stats />}
       </Canvas>

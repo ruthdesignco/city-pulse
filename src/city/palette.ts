@@ -11,11 +11,11 @@ export const palette = {
   sky: '#c2bdae',
   skyZenith: '#8fb2d6', // sky background's upper-frame color: a real pale blue, not a tint of the horizon tan
 
-  // Bare ground between and beyond the roads: light enough that it doesn't
-  // read as a near-black void next to the fogged ground further out (the gap
-  // between the two was the "dark band" bug).
-  ground: '#6b6862',
-  neighborhood: '#78746b', // the three neighborhoods, lifted slightly off the ground
+  // The ground beyond the baked city: San Francisco carries on past the
+  // context ring, so this is the hazy urban tone the ring's paving fades to
+  // (paving.ts: sidewalk mixed ~85% toward sky), not bare earth -- no seam
+  // or halo where the ring ends, and it melts into the fog and sky.
+  ground: '#c0bbac',
 
   // The Bay (Ground.tsx) and the East Bay hills beyond it: pale, closer to
   // `skyZenith` than `ground`, so both read as "distance" even before fog
@@ -24,12 +24,6 @@ export const palette = {
   bay: '#93aebe',
   hills: '#9aa7ad',
 
-  // Hemisphere light's "sky" (upward ambient fill) term -- kept distinct
-  // from `sun` deliberately: `sun` is the directional light's color, so
-  // warmth from it only shows on faces it actually hits; this ambient term
-  // lights every upward surface uniformly, so keeping it near-neutral stops
-  // shadowed/ambient-only areas from reading as uniformly sepia-tinted.
-  ambient: '#d8d3c7',
 
   // Three color families by OSM building type/height, each with 3
   // deterministic per-building shade variants (scripts/lib/buildingColor.ts:
@@ -56,13 +50,13 @@ export const palette = {
   ],
   buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
-  // Roads (Streets.tsx, roads.ts): mid-gray asphalt, lighter concrete
-  // sidewalks, worn off-white lane lines -- lit by the sun like everything
-  // else. Lighter than the swatches suggest they need to be: the sun, haze
-  // and ACES grade render them about half as bright.
-  asphalt: '#7f7f80',
-  sidewalk: '#c2beb5',
-  laneMarking: '#cfccc3',
+  // Roads (Streets.tsx, roads.ts) and paving (paving.ts): mid-gray asphalt,
+  // lighter concrete for sidewalks and everything else between the
+  // buildings, worn off-white lane lines. Lit to render as these values
+  // (scene/lighting.ts; check with npm run calibrate).
+  asphalt: '#666668',
+  sidewalk: '#b4b0a7',
+  laneMarking: '#d6d3ca',
 
   // Vehicle models (vehicleModels.ts): lit by the sun like the buildings, in
   // their real body colors at every distance. Generic liveries, no operator
@@ -83,10 +77,10 @@ export const palette = {
   cableRoof: '#5f5951',
 
   // The directional light's color and the sky background's sun-glow accent
-  // (Atmosphere.tsx, skyBackground.ts) -- NOT hemisphereLight's ambient
-  // term anymore (see `ambient` above), so this warmth only shows on faces
-  // the light actually hits, not as a uniform tint over everything. Pulled
-  // back further toward pale gold than the first pass, which still read as
-  // an overall sepia wash even after the ambient split.
-  sun: '#ffe6c4',
+  // (Atmosphere.tsx, skyBackground.ts). The sky fill light's color is solved
+  // from it (scene/lighting.ts) so sunlit ground comes out neutral, and this
+  // warmth only shows on faces the sun actually hits. A pale gold: the more
+  // saturated the sun, the bluer the solved sky fill and the bluer every
+  // shadow.
+  sun: '#fff0dc',
 } as const

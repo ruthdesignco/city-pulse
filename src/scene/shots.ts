@@ -91,8 +91,14 @@ export const SHOTS: Shot[] = [
 const ON_MARKET_3RD: Vec3 = [741, 0, -2078]
 const UP_MARKET = -0.79
 
+// High above the city, clear of every tower and its shadow (Salesforce
+// Tower is ~330 m): where ?calibrate puts its swatches (Calibration.tsx),
+// looked at nearly straight down.
+export const CALIBRATION_CENTER: Vec3 = [TARGET[0], 500, TARGET[2]]
+
 export const PRESETS: Record<string, Pose> = {
   opening: OPENING,
+  calibrate: poseAround(CALIBRATION_CENTER, 400, 0.15, -0.47),
   market: poseAround(ON_MARKET_3RD, 380, 0.75, UP_MARKET),
 }
 

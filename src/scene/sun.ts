@@ -26,3 +26,12 @@ export const SUN_ELEVATION_DEG = 16
 export const SUN_DISTANCE = 3400
 
 export const SUN_POSITION = bearingToScene(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, SUN_DISTANCE)
+
+// Where to put a directional light aimed at `target` so the light arrives
+// from SUN_AZIMUTH_DEG / SUN_ELEVATION_DEG there. A directional light shines
+// from its position toward its target, so the offset must be applied to the
+// target: placing it at SUN_POSITION (an offset from the world origin) while
+// aiming at a target ~1.8 km away tilted the light to ~10 deg elevation.
+export function sunLightPosition(target: readonly [number, number, number]): [number, number, number] {
+  return [target[0] + SUN_POSITION[0], target[1] + SUN_POSITION[1], target[2] + SUN_POSITION[2]]
+}

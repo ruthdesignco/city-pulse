@@ -3,8 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import type { DirectionalLight, Group, Object3D } from 'three'
 import { palette } from '../city/palette.ts'
 import { createCloudTexture } from './cloudTexture.ts'
+import { SKY_INTENSITY, SKY_LIGHT_COLOR, SUN_INTENSITY } from './lighting.ts'
 import { createSkyBackgroundTexture } from './skyBackground.ts'
-import { SUN_POSITION } from './sun.ts'
+import { SUN_POSITION, sunLightPosition } from './sun.ts'
 import { TARGET } from './view.ts'
 
 // Fraction from the top of frame where the sun's glow reads, for the
@@ -101,11 +102,11 @@ export function Atmosphere() {
 
   return (
     <>
-      {/* palette.ambient, not palette.sun, for the uniform upward fill:
-          `sun` (the directional light below) only warms faces it actually
-          hits, so keeping ambient near-neutral is what keeps shadowed areas
-          from reading as uniformly sepia-tinted. */}
-      <hemisphereLight args={[palette.ambient, palette.ground, 0.75]} />
+      {/* Sky fill and sun, both from lighting.ts: intensities and the sky's
+          color are solved so a sunlit horizontal surface renders as its
+          palette color, neutral -- the sun's warmth shows only on faces it
+          hits, the sky's cool only in shadow. */}
+      <hemisphereLight args={[SKY_LIGHT_COLOR, palette.ground, SKY_INTENSITY]} />
       {/* City buildings mostly sit within ~2-3 km of TARGET (SPEC.md): near
           keeps most of downtown crisp. far is gentle enough, now that
           Ground.tsx's plane is a mid-gray instead of near-black, to read as
@@ -117,8 +118,8 @@ export function Atmosphere() {
       <directionalLight
         ref={lightRef}
         color={palette.sun}
-        position={SUN_POSITION}
-        intensity={2}
+        position={sunLightPosition(TARGET)}
+        intensity={SUN_INTENSITY}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-SHADOW_EXTENT_M}

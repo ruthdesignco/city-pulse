@@ -1,24 +1,31 @@
 import { useEffect, useMemo } from 'react'
-import { Shape, ShapeGeometry, Vector2 } from 'three'
+import { BufferAttribute, BufferGeometry, Shape, ShapeGeometry, Vector2 } from 'three'
 import { TARGET } from '../scene/view.ts'
-import { COORD_QUANTUM, type CityData } from './format.ts'
+import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
+import { buildPaving } from './paving.ts'
 import { useCity } from './useCity.ts'
+
+// Concrete paving over the whole bake area (paving.ts), between the ground
+// plane (y -0.2) and the sidewalks (Streets.tsx, y 0.2), polygon-offset
+// just under the sidewalks so it never z-fights them from far away.
+const PAVING_Y = 0.1
+
+function buildPavingGeometry(city: CityData): BufferGeometry {
+  const { position, color, index } = buildPaving(city, PAVING_Y)
+  const normal = new Float32Array(position.length)
+  for (let i = 1; i < normal.length; i += 3) normal[i] = 1
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(position, 3))
+  g.setAttribute('normal', new BufferAttribute(normal, 3))
+  g.setAttribute('color', new BufferAttribute(color, 3))
+  g.setIndex(new BufferAttribute(index, 1))
+  g.computeBoundingSphere()
+  return g
+}
 
 // Shapes are built in (x, -z) and rotated -90° about X, which maps shape
 // (u, v) to scene (u, 0, -v); so v = -z lands the outline at scene z.
-function buildBoundary(boundary: CityData['boundary']): ShapeGeometry {
-  const shapes: Shape[] = []
-  let c = 0
-  for (const n of boundary.counts) {
-    const pts: Vector2[] = []
-    for (let i = 0; i < n; i++, c += 2) {
-      pts.push(new Vector2(boundary.coords[c] * COORD_QUANTUM, -boundary.coords[c + 1] * COORD_QUANTUM))
-    }
-    shapes.push(new Shape(pts))
-  }
-  return new ShapeGeometry(shapes)
-}
 
 // Downtown sits roughly north-northeast of TARGET (view.ts), and so does the
 // real SF Bay from this part of the city -- the Embarcadero waterfront is
@@ -81,9 +88,9 @@ const HILLS: Hill[] = [
 
 export function Ground() {
   const city = useCity()
-  const boundary = useMemo(() => buildBoundary(city.boundary), [city])
+  const paving = useMemo(() => buildPavingGeometry(city), [city])
   const bay = useMemo(() => buildBay(), [])
-  useEffect(() => () => boundary.dispose(), [boundary])
+  useEffect(() => () => paving.dispose(), [paving])
   useEffect(() => () => bay.dispose(), [bay])
 
   return (
@@ -105,9 +112,6 @@ export function Ground() {
           <planeGeometry args={[24000, 24000]} />
           <meshStandardMaterial color={palette.ground} />
         </mesh>
-        <mesh geometry={boundary} position-z={0.1} receiveShadow>
-          <meshStandardMaterial color={palette.neighborhood} />
-        </mesh>
         {/* Pale water, lifted just above the ground plane so it draws on
             top within its own outline. */}
         {/* Pale water, lifted just above the ground plane so it draws on
@@ -122,6 +126,9 @@ export function Ground() {
           <meshStandardMaterial color={palette.bay} />
         </mesh>
       </group>
+      <mesh geometry={paving} receiveShadow>
+        <meshStandardMaterial vertexColors roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} polygonOffsetUnits={-2} />
+      </mesh>
       {HILLS.map((hill, i) => {
         const [x, z] = bearingPoint(hill.bearingDeg, hill.distanceM)
         return (

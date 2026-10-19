@@ -12,15 +12,9 @@ import { useCity } from './useCity.ts'
 const BASE_FADE_M = 12
 const BASE_FLOOR = 0.55 // darkest a wall gets at street level, as a mix toward full color
 // Context-ring buildings blend toward the sky color as ring.ts's ringDim().
-// Roofs face the whole sky fill and read brightest from above; shade them so
-// the buses, not the rooftops, are the brightest thing on screen.
+// Roofs face the whole sky fill and read brightest from above; most real
+// flat roofs (tar, gravel, membrane) are darker than the walls anyway.
 const ROOF_SHADE = 0.8
-// Buildings near the camera are otherwise the brightest in view (fog only
-// starts at 4.5 km): blend them toward the sky by up to NEAR_DIM, fully
-// within NEAR_FULL_M of the camera and easing out by NEAR_NONE_M.
-const NEAR_DIM = 0.3
-const NEAR_FULL_M = 900
-const NEAR_NONE_M = 1800
 
 function buildGeometry(city: CityData): BufferGeometry {
   const started = performance.now()
@@ -65,12 +59,10 @@ function buildMaterial(): MeshStandardMaterial {
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, vRing > 0.0 ? ${RING_DIM_MIN.toFixed(2)} + ${RING_DIM_RANGE.toFixed(2)} * vRing : 0.0);
-        diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);
-        float nearCam = 1.0 - smoothstep(${NEAR_FULL_M.toFixed(1)}, ${NEAR_NONE_M.toFixed(1)}, length(vViewPosition));
-        diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${NEAR_DIM.toFixed(2)} * nearCam);`,
+        diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);`,
       )
   }
-  material.customProgramCacheKey = () => 'city-buildings-v6'
+  material.customProgramCacheKey = () => 'city-buildings-v7'
   return material
 }
 

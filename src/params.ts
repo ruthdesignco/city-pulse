@@ -9,6 +9,8 @@
 //                    so the feed goes stale on screen the way a dead one does
 //   ?view=<name>     start the camera on a preset pose (shots.ts PRESETS),
 //                    e.g. ?view=market for a close look at vehicles
+//   ?calibrate       palette swatches in full sun (Calibration.tsx), for
+//                    npm run calibrate
 
 const params = new URLSearchParams(window.location.search)
 
@@ -29,3 +31,4 @@ export const REPLAY_HOLD_S = seconds('hold')
 
 const view = params.get('view')
 export const VIEW = view && /^[a-z0-9-]{1,32}$/.test(view) ? view : null
+export const CALIBRATE = params.has('calibrate')
