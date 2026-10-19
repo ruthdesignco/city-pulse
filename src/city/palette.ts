@@ -15,12 +15,27 @@ export const palette = {
   neighborhood: '#4a3f33', // the three neighborhoods, lifted slightly off the ground
 
   // A notch below mid grey so the buses, not the buildings, are the brightest
-  // thing in the scene. Three color families by OSM building type/height
-  // (scripts/lib/buildingColor.ts), subtle -- not a rainbow -- so bloom and
-  // the ring-fade/near-dim shader math still hold for all three the same way.
-  building: '#8a8ba5', // Neutral: unknown/"yes"/commercial/industrial -- unchanged from before
-  buildingResidential: '#c9ab80', // cream/sandstone/pastel
-  buildingTower: '#93a0b4', // tall (>=60m) regardless of tag: cooler, glassier grey
+  // thing in the scene. Three color families by OSM building type/height,
+  // each with 3 deterministic per-building shade variants
+  // (scripts/lib/buildingColor.ts: BuildingColorType*3 + buildingVariant
+  // indexes this flat array) -- 92% of buildings carry no usable `building`
+  // tag value, so without per-building variety within Neutral especially,
+  // the city reads as one flat grey. Subtle -- SF's actual palette (cream,
+  // sandstone, muted pastels, grays) -- not a rainbow: every variant stays
+  // close enough in value that bloom and the ring-fade/near-dim shader math
+  // hold the same way for all nine.
+  building: '#8a8ba5', // = buildingColors[0]: kept as the material's fallback color
+  buildingColors: [
+    '#8a8ba5', // Neutral 0: cool grey (unchanged from the original single color)
+    '#9c9686', // Neutral 1: warm taupe-grey
+    '#b8a888', // Neutral 2: muted sandstone
+    '#c9ab80', // Residential 0: sandstone
+    '#d4bb95', // Residential 1: light cream
+    '#b89a8c', // Residential 2: dusty pastel terracotta
+    '#93a0b4', // Tower 0: glass grey
+    '#a6b0bf', // Tower 1: light glass
+    '#7e8da3', // Tower 2: deep blue-glass
+  ],
   buildingBase: '#423f58', // street-level tone; walls brighten toward the roof
 
   // 20% brighter (in linear light) than the first pass, once the ring dimming

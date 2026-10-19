@@ -44,7 +44,7 @@ export interface CityData {
     counts: Uint16Array // points per footprint
     heights: Uint16Array // HEIGHT_QUANTUM units
     ringBand: Uint8Array
-    colorType: Uint8Array // scripts/lib/buildingColor.ts's BuildingColorType
+    colorIndex: Uint8Array // scripts/lib/buildingColor.ts: BuildingColorType*3 + buildingVariant, 0-8
     coords: Int16Array
   }
   streets: {
@@ -62,7 +62,7 @@ const SECTIONS = [
   ['buildings.counts', Uint16Array],
   ['buildings.heights', Uint16Array],
   ['buildings.ringBand', Uint8Array],
-  ['buildings.colorType', Uint8Array],
+  ['buildings.colorIndex', Uint8Array],
   ['buildings.coords', Int16Array],
   ['streets.counts', Uint16Array],
   ['streets.classes', Uint8Array],
@@ -134,7 +134,7 @@ export function decodeCity(buffer: ArrayBuffer): CityData {
       counts: get('buildings.counts', Uint16Array),
       heights: get('buildings.heights', Uint16Array),
       ringBand: get('buildings.ringBand', Uint8Array),
-      colorType: get('buildings.colorType', Uint8Array),
+      colorIndex: get('buildings.colorIndex', Uint8Array),
       coords: get('buildings.coords', Int16Array),
     },
     streets: {

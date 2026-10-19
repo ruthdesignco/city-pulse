@@ -16,7 +16,7 @@ const bytes = encodeCity({
     counts: new Uint16Array(),
     heights: new Uint16Array(),
     ringBand: new Uint8Array(),
-    colorType: new Uint8Array(),
+    colorIndex: new Uint8Array(),
     coords: new Int16Array(),
   },
   streets: { counts: new Uint16Array(), classes: new Uint8Array(), coords: new Int16Array() },

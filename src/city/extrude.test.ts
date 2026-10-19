@@ -8,7 +8,7 @@ const buildings = {
   counts: new Uint16Array([4, 3]),
   heights: new Uint16Array([200, 50]),
   ringBand: new Uint8Array([0, 75]),
-  colorType: new Uint8Array([1, 2]),
+  colorIndex: new Uint8Array([4, 8]),
   coords: new Int16Array([0, 0, 100, 0, 100, 100, 0, 100, 500, 500, 600, 500, 500, 600]),
 }
 
@@ -60,8 +60,8 @@ describe('extrudeBuildings', () => {
     expect(g.ring[g.ring.length - 1]).toBeCloseTo((75 * 4) / 600, 5)
   })
 
-  it("carries each building's colorType per vertex", () => {
-    expect(g.colorType[0]).toBe(1) // first building (4 counts -> 4*2+4=12 verts)
-    expect(g.colorType[g.colorType.length - 1]).toBe(2) // second building
+  it("carries each building's colorIndex per vertex", () => {
+    expect(g.colorIndex[0]).toBe(4) // first building (4 counts -> 4*2+4=12 verts)
+    expect(g.colorIndex[g.colorIndex.length - 1]).toBe(8) // second building
   })
 })

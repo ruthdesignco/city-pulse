@@ -42,7 +42,7 @@ import {
   fetchOverpass,
   fetchTiled,
 } from './lib/overpass.ts'
-import { buildingColorType } from './lib/buildingColor.ts'
+import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -171,7 +171,7 @@ interface BakedBuilding {
   ring: Pt[]
   height: number
   ringBand: number
-  colorType: number
+  colorIndex: number
   name?: string
   center: Pt
 }
@@ -234,7 +234,8 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
     }
     stats.heightFrom[source!]++
 
-    baked.push({ ring, height: meters, ringBand, colorType: buildingColorType(f.tags.building, meters), name: f.tags.name, center })
+    const colorIndex = buildingColorType(f.tags.building, meters) * 3 + buildingVariant(f.osm)
+    baked.push({ ring, height: meters, ringBand, colorIndex, name: f.tags.name, center })
   }
   return baked
 }
@@ -332,6 +333,16 @@ async function main() {
   const buildings = bakeBuildings(elements, boundary)
   const streets = bakeStreets(elements, boundary)
 
+  // A near-empty OSM source (e.g. --cached-only with nothing cached yet, or
+  // a bad --pbf path) must never silently overwrite a good city.bin with a
+  // near-empty one -- happened twice in one session before this guard existed.
+  if (buildings.length === 0) {
+    throw new Error(
+      `bake: 0 buildings kept from ${elements.length} OSM elements -- refusing to write public/city.bin. ` +
+        'Check the Overpass cache (bake without --cached-only first) or the --pbf path.',
+    )
+  }
+
   const tallest = [...buildings].sort((a, b) => b.height - a.height).slice(0, 10)
   const landmarks: Landmark[] = tallest
     .filter((b) => b.name)
@@ -354,7 +365,7 @@ async function main() {
       counts: b.counts,
       heights: Uint16Array.from(buildings, (x) => Math.round(x.height / HEIGHT_QUANTUM)),
       ringBand: Uint8Array.from(buildings, (x) => Math.min(255, x.ringBand)),
-      colorType: Uint8Array.from(buildings, (x) => x.colorType),
+      colorIndex: Uint8Array.from(buildings, (x) => x.colorIndex),
       coords: b.coords,
     },
     streets: { counts: s.counts, classes: Uint8Array.from(streets, (x) => x.cls), coords: s.coords },
