@@ -8,8 +8,10 @@ export const palette = {
   ground: '#20233a',
   neighborhood: '#272b45', // the three neighborhoods, lifted slightly off the ground
 
-  building: '#9b9cb6', // cool neutral grey; roofs take the sky's blue, west walls the sun's orange
-  buildingBase: '#4a4762', // street-level tone; walls brighten toward the roof
+  // A notch below mid grey so the buses, not the buildings, are the brightest
+  // thing in the scene.
+  building: '#8a8ba5', // cool neutral grey; roofs take the sky's blue, west walls the sun's orange
+  buildingBase: '#423f58', // street-level tone; walls brighten toward the roof
 
   streetMajor: '#7a83b8',
   streetMinor: '#545c8c',
