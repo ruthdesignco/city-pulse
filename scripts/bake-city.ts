@@ -70,6 +70,10 @@ const SKIP_BUILDING_VALUES = new Set(['no', 'roof', 'construction', 'demolished'
 // Bridge towers tagged as buildings (the Bay Bridge's W2 is building=tower,
 // 160 m): without the deck and cables they read as a lone pillar in the Bay.
 const isBridgeSupport = (tags: Record<string, string>) => !!tags['bridge:support']
+// Underground structures (Powell Street Station's concourse is a 300 m
+// building=train_station, location=underground, right under Market): with
+// no height they extruded to the 8 m default and stood across the street.
+const isUnderground = (tags: Record<string, string>) => tags.location === 'underground'
 
 const project = (p: OsmGeomPoint): Pt => {
   const s = toScene(p.lat, p.lon)
@@ -114,6 +118,7 @@ const stats = {
   holesIgnored: 0,
   skippedByValue: 0,
   bridgeSupports: 0,
+  underground: 0,
   tooSmall: 0,
   outsideRing: 0,
   waterfront: 0,
@@ -201,6 +206,10 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
       }
       if (isBridgeSupport(tags)) {
         stats.bridgeSupports++
+        continue
+      }
+      if (isUnderground(tags)) {
+        stats.underground++
         continue
       }
       for (const f of footprintsOf(el, tags)) outlines.push(f)
@@ -421,7 +430,7 @@ async function main() {
   const core = buildings.filter((x) => x.ringBand === 0).length
   console.log(`\nbuildings: ${buildings.length} kept (${core} in the three neighborhoods, ${buildings.length - core} in the ring, ${stats.waterfront} of them in the waterfront extension)`)
   console.log(`  outlines seen ${stats.outlines}, parts with heights ${stats.parts}`)
-  console.log(`  dropped: ${stats.outsideRing} beyond ring, ${stats.pastInt16} past the Int16 limit, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value, ${stats.bridgeSupports} bridge supports`)
+  console.log(`  dropped: ${stats.outsideRing} beyond ring, ${stats.pastInt16} past the Int16 limit, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value, ${stats.bridgeSupports} bridge supports, ${stats.underground} underground`)
   console.log(`  multipolygon: ${stats.relationRingsUnclosed} outer rings could not be closed, ${stats.holesIgnored} inner rings (courtyards) ignored, ${stats.relationsWithoutGeometry} relations had no geometry`)
   const hf = stats.heightFrom
   const pct = (v: number) => `${((100 * v) / buildings.length).toFixed(1)}%`

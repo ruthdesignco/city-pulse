@@ -98,6 +98,20 @@ const UP_MARKET = -0.79
 // skyline, which stands against the sky.
 const CINEMATIC: Pose = { position: [-124, 115, -1217], target: [372, 0, -1711] }
 
+// Street level, for storefronts, trees and vehicles up close: 30 m up over
+// Market between 6th and 7th, the stretch with the most storefront walls
+// in view and fewer street trees than 5th-6th, on the F's track as
+// CINEMATIC, moved 8 m northwest to the middle of the street,
+// looking northeast along it at the street 300 m ahead, so both rows of
+// shopfronts converge on the downtown skyline. Polar ~1.47 rad, just
+// inside the orbit's ceiling.
+const MARKET_DIR: [number, number] = [0.7087, -0.7055] // Van Ness to 3rd, unit
+const STREET_AT: Vec3 = [12.4, 30, -1363.6]
+const STREET: Pose = {
+  position: STREET_AT,
+  target: [STREET_AT[0] + 300 * MARKET_DIR[0], 0, STREET_AT[2] + 300 * MARKET_DIR[1]],
+}
+
 // High above the city, clear of every tower and its shadow (Salesforce
 // Tower is ~330 m): where ?calibrate puts its swatches (Calibration.tsx),
 // looked at nearly straight down.
@@ -108,6 +122,7 @@ export const PRESETS: Record<string, Pose> = {
   calibrate: poseAround(CALIBRATION_CENTER, 400, 0.15, -0.47),
   market: poseAround(ON_MARKET_3RD, 380, 0.75, UP_MARKET),
   cinematic: CINEMATIC,
+  street: STREET,
 }
 
 // A preset by name, or the opening view for none or an unknown one.

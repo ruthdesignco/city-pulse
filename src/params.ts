@@ -9,6 +9,7 @@
 //                    so the feed goes stale on screen the way a dead one does
 //   ?view=<name>     start the camera on a preset pose (shots.ts PRESETS),
 //                    e.g. ?view=market for a close look at vehicles
+//                    or ?view=street for storefronts and trees at street level
 //   ?calibrate       palette swatches in full sun (Calibration.tsx), for
 //                    npm run calibrate
 
