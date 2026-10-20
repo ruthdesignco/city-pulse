@@ -326,6 +326,14 @@ function packLines(lines: Pt[][]): { counts: Uint16Array; coords: Int16Array } {
   return { counts, coords }
 }
 
+// The query bbox in scene meters, [minX, minZ, maxX, maxZ] (north is -z).
+function bboxExtent(b: Bbox): [number, number, number, number] {
+  const sw = toScene(b.south, b.west)
+  const ne = toScene(b.north, b.east)
+  const r = (v: number) => Math.round(v * 10) / 10
+  return [r(sw.x), r(ne.z), r(ne.x), r(sw.z)]
+}
+
 // ----------------------------------------------------------------- main
 
 async function loadFromOverpass(): Promise<OsmElement[]> {
@@ -381,6 +389,7 @@ async function main() {
       origin: ORIGIN,
       ringMeters: RING_METERS,
       waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
+      extent: bboxExtent(QUERY_BBOX),
       attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
       osmTimestamp: null,
       bakedAt: new Date().toISOString(),

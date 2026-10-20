@@ -2,28 +2,31 @@
 // be tuned in one place. Values are sRGB hex.
 
 export const palette = {
-  // Fog, the ring/near-camera dim target (Buildings.tsx, Streets.tsx), and
-  // the sky background's horizon color (Atmosphere.tsx, skyBackground.ts)
-  // all share this tone -- the fogged ground and the sky meet with no seam
-  // by construction. Pulled further toward neutral than the first pass
-  // (R/G/B closer together): mostly-neutral haze, warm only at the very
-  // edges, not an overall tan wash.
-  sky: '#c2bdae',
-  skyZenith: '#8fb2d6', // sky background's upper-frame color: a real pale blue, not a tint of the horizon tan
+  // The haze: the sky's own color at the horizon in the opening view's
+  // direction (skyModel.ts horizonColor; skyModel.test.ts keeps them equal).
+  // The fog starts here and then follows the sky as the camera turns
+  // (SkyDome.tsx); the ring's buildings, streets and paving fade toward it.
+  sky: '#bcc2cb',
 
-  // Land beyond the baked city to the south and west (Ground.tsx): a muted
-  // gray-tan, the color of a city and hills seen from afar, a little darker
-  // than the haze so the fog visibly carries it into the sky. The ring's
-  // paving blends into it over paving.ts's EDGE_BLEND_M.
-  ground: '#a9a698',
+  // Land beyond the baked city (Ground.tsx): the rest of San Francisco seen
+  // from afar, a cool urban gray, clearly darker than the haze so the fog
+  // visibly carries it into the sky. The mean of the land's city-block
+  // texture (landTexture.ts); the ring's paving blends into it over
+  // paving.ts's EDGE_BLEND_M.
+  ground: '#8b8e8c',
+  // Light bounced up from the ground onto walls and undersides (the
+  // hemisphere light's ground color, Atmosphere.tsx). Kept at the land's old
+  // warm gray when the land itself went darker and cooler, so no building's
+  // shading moved.
+  bounce: '#a9a698',
 
   // The Bay (bay.ts, BayWater.tsx): the muted gray-green of its water. This
   // is Water.js's body color, which it scales by how directly the water is
   // seen (~0.6 from the opening camera) before adding reflection, so it sits
   // brighter than the color that ends up on screen. The fog carries it into
   // the haze further out. The East Bay hills beyond it are pale, close to
-  // `skyZenith`, so they read as distance.
-  bay: '#82968f',
+  // the haze, so they read as distance.
+  bay: '#90a69b',
   hills: '#9aa7ad',
 
 
@@ -78,8 +81,8 @@ export const palette = {
   cableWoodDark: '#6e4728',
   cableRoof: '#5f5951',
 
-  // The directional light's color and the sky background's sun-glow accent
-  // (Atmosphere.tsx, skyBackground.ts). The sky fill light's color is solved
+  // The directional light's color (Atmosphere.tsx), and the Bay's sun glints
+  // (BayWater.tsx). The sky fill light's color is solved
   // from it (scene/lighting.ts) so sunlit ground comes out neutral, and this
   // warmth only shows on faces the sun actually hits. A pale gold: the more
   // saturated the sun, the bluer the solved sky fill and the bluer every

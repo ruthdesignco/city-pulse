@@ -1,10 +1,12 @@
 import { useEffect, useMemo } from 'react'
-import { BufferAttribute, BufferGeometry } from 'three'
+import { BufferAttribute, BufferGeometry, DoubleSide } from 'three'
 import { TARGET } from '../scene/view.ts'
 import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
 import { BayWater } from './BayWater.tsx'
-import { buildPaving } from './paving.ts'
+import { LAND_TILE_M, createLandTexture } from './landTexture.ts'
+import { bareLand, buildPaving } from './paving.ts'
+import { buildShoreFeather } from './shore.ts'
 import { useCity } from './useCity.ts'
 
 // Concrete paving over the whole bake area (paving.ts), between the ground
@@ -24,6 +26,27 @@ function buildPavingGeometry(city: CityData): BufferGeometry {
   g.computeBoundingSphere()
   return g
 }
+
+// The soft shoreline over unbaked land (shore.ts): over the water, under
+// the sidewalks.
+const SHORE_Y = 0.17
+
+function buildShoreGeometry(city: CityData): BufferGeometry {
+  const { position, color, index } = buildShoreFeather(bareLand(city), SHORE_Y)
+  const normal = new Float32Array(position.length)
+  for (let i = 1; i < normal.length; i += 3) normal[i] = 1
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(position, 3))
+  g.setAttribute('normal', new BufferAttribute(normal, 3))
+  g.setAttribute('color', new BufferAttribute(color, 4))
+  g.setIndex(new BufferAttribute(index, 1))
+  g.computeBoundingSphere()
+  return g
+}
+
+// The land plane, in meters: far larger than the fog's reach, so its edge is
+// never seen.
+const LAND_M = 24000
 
 // Shapes are built in (x, -z) and rotated -90° about X, which maps shape
 // (u, v) to scene (u, 0, -v); so v = -z lands the outline at scene z.
@@ -67,22 +90,32 @@ const HILLS: Hill[] = [
 export function Ground() {
   const city = useCity()
   const paving = useMemo(() => buildPavingGeometry(city), [city])
+  const shore = useMemo(() => buildShoreGeometry(city), [city])
+  const land = useMemo(() => {
+    const t = createLandTexture()
+    t.repeat.set(LAND_M / LAND_TILE_M, LAND_M / LAND_TILE_M)
+    return t
+  }, [])
   useEffect(() => () => paving.dispose(), [paving])
+  useEffect(() => () => shore.dispose(), [shore])
+  useEffect(() => () => land.dispose(), [land])
 
   return (
     <>
       <group rotation-x={-Math.PI / 2}>
         {/* Land beyond the baked city -- San Francisco and the peninsula
-            carry on to the south and west -- in a muted land tone that the
-            fog (Atmosphere.tsx) fades into the sky's haze with distance.
-            Centered on TARGET and far larger than the fog's reach, so its
-            edge is never seen. */}
+            carry on to the south and west -- textured as distant city blocks
+            (landTexture.ts) that the fog (Atmosphere.tsx) fades into the
+            sky's haze with distance. Centered on TARGET. */}
         <mesh position={[TARGET[0], -TARGET[2], -0.2]} receiveShadow userData={{ noReflect: true }}>
-          <planeGeometry args={[24000, 24000]} />
-          <meshStandardMaterial color={palette.ground} />
+          <planeGeometry args={[LAND_M, LAND_M]} />
+          <meshStandardMaterial map={land} />
         </mesh>
         <BayWater y={WATER_Y} />
       </group>
+      <mesh geometry={shore} receiveShadow userData={{ noReflect: true }}>
+        <meshStandardMaterial vertexColors transparent depthWrite={false} side={DoubleSide} roughness={0.95} polygonOffset polygonOffsetFactor={-0.9} polygonOffsetUnits={-3.5} />
+      </mesh>
       <mesh geometry={paving} receiveShadow userData={{ noReflect: true }}>
         <meshStandardMaterial vertexColors roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} polygonOffsetUnits={-2} />
       </mesh>

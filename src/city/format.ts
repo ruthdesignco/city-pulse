@@ -33,6 +33,9 @@ export interface CityHeader {
   ringMeters: number
   // Extra ring area out to the Bay (waterfront.ts), outline in scene meters.
   waterfront?: [number, number][]
+  // The area OSM data was baked from, scene meters [minX, minZ, maxX, maxZ]:
+  // the ring is cut off where it runs past this (the north edge).
+  extent?: [number, number, number, number]
   attribution: string
   osmTimestamp: string | null
   bakedAt: string

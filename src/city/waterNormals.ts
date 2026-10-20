@@ -3,8 +3,10 @@
 //
 // The height field is a sum of sine waves with whole-number wave counts
 // across the tile, so it wraps seamlessly; normals come from its exact
-// gradient. Waves mostly run one way (a breeze off the Pacific), with a
-// spread of directions and lengths so the tiling doesn't read as a grid.
+// gradient. Waves run every which way, short and choppy: BayWater.tsx
+// layers this tile at several scales and rotations for broken bay chop, so
+// the tile itself must have no dominant direction (when it did, every layer
+// shared it and the Bay read as long parallel streaks).
 // Encoded like any tangent-space normal map: R = x, G = z (across the
 // surface), B = up, each mapped from [-1, 1] to [0, 255]. three's Water
 // shader reads it as noise.xzy.
@@ -14,7 +16,7 @@ import { DataTexture, LinearMipmapLinearFilter, NoColorSpace, RepeatWrapping, RG
 export const WATER_NORMALS_SIZE = 256
 const WAVES = 48
 // How steep the ripples are: higher is choppier.
-const SLOPE = 0.3
+const SLOPE = 0.5
 const SEED = 7
 
 interface Wave {
@@ -40,9 +42,9 @@ function waves(): Wave[] {
   const rand = random(SEED)
   const out: Wave[] = []
   while (out.length < WAVES) {
-    // Wave counts 2..24 across the tile, mostly along one heading (+-50 deg).
-    const count = 2 + rand() * 22
-    const heading = 0.6 + (rand() - 0.5) * 1.75
+    // Wave counts 3..32 across the tile, any heading.
+    const count = 3 + rand() * 29
+    const heading = rand() * Math.PI * 2
     const kx = Math.round(count * Math.cos(heading))
     const ky = Math.round(count * Math.sin(heading))
     if (kx === 0 && ky === 0) continue

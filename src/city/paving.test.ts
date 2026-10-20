@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
 import { CELL_M, EDGE_BLEND_M, buildPaving } from './paving.ts'
-import { ringDim } from './ring.ts'
 
 // One 400 m square neighborhood (coords in 0.1 m units), a 200 m ring.
 const city = {
@@ -44,10 +43,12 @@ describe('buildPaving', () => {
     expect(near(colorAt(200, 200), palette.sidewalk)).toBe(true)
   })
 
-  it('fades toward the sky in the ring, like the sidewalks there', () => {
+  it('fades in the ring toward the land beyond, not the pale haze', () => {
     const ring = colorAt(-100, 200)
     expect(near(ring, palette.sidewalk)).toBe(false)
     expect(near(ring, palette.ground)).toBe(false)
+    const dist = (a: number[], hex: string) => Math.hypot(...a.map((v, i) => v - new Color(hex).toArray()[i]))
+    expect(dist(ring, palette.ground)).toBeLessThan(dist(ring, palette.sky))
   })
 
   it('becomes bare ground past the ring, so it meets the ground plane seamlessly', () => {
@@ -65,8 +66,23 @@ describe('buildPaving', () => {
         if (Math.hypot(w.position[i * 3] - x, w.position[i * 3 + 2] - z) < Math.hypot(w.position[best * 3] - x, w.position[best * 3 + 2] - z)) best = i
       return Array.from(w.color.slice(best * 3, best * 3 + 3))
     }
-    const edge = new Color(palette.sidewalk).lerp(new Color(palette.sky), ringDim(1))
-    at(1800, 200).forEach((v, i) => expect(v).toBeCloseTo(edge.toArray()[i], 4))
+    // Deep in the extension it's paved like the ring's own outer edge.
+    const edge = colorAt(-200, 200)
+    at(1800, 200).forEach((v, i) => expect(v).toBeCloseTo(edge[i], 4))
     expect(near(at(2000 + EDGE_BLEND_M + 10, 200), palette.ground)).toBe(true)
+  })
+
+  it("is bare land past the baked data's extent, even inside the ring", () => {
+    // An 800 m ring, but data stops at z = -100: the ring's band north of it
+    // was never baked, so it must not be paved.
+    const at = (header: object, x: number, z: number) => {
+      const g = buildPaving({ ...city, header } as unknown as CityData, 0.15)
+      let best = 0
+      for (let i = 1; i < g.position.length / 3; i++)
+        if (Math.hypot(g.position[i * 3] - x, g.position[i * 3 + 2] - z) < Math.hypot(g.position[best * 3] - x, g.position[best * 3 + 2] - z)) best = i
+      return Array.from(g.color.slice(best * 3, best * 3 + 3))
+    }
+    expect(near(at({ ringMeters: 800 }, 200, -700), palette.ground)).toBe(false)
+    expect(near(at({ ringMeters: 800, extent: [-2000, -100, 2000, 2000] }, 200, -700), palette.ground)).toBe(true)
   })
 })

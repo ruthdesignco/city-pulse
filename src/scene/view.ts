@@ -32,5 +32,8 @@ export const ORBIT_LIMITS = {
   minDistance: 150,
   maxDistance: 6500,
   minPolar: 0.15, // near top-down
-  maxPolar: 1.25, // ~72° from vertical: a user drag ceiling, steeper than the opening view's tilt
+  // ~86° from vertical: down to nearly level, for low views with the sky in
+  // frame (shots.ts 'cinematic'). It was 1.25 while the horizon was a seam;
+  // the sky and fog now meet without one (SkyDome.tsx).
+  maxPolar: 1.5,
 } as const
