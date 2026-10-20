@@ -154,7 +154,7 @@ export default function App() {
           Loading the city…
         </div>
       )}
-      {!overlayHidden && <Freshness feed={feed} />}
+      {!overlayHidden && <Freshness feed={feed} recorded={feed.replay !== null} />}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
       <Credits />
     </WebGLGate>

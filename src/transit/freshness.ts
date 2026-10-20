@@ -14,7 +14,9 @@ export function staleDim(ageMs: number): number {
   return x * x * (3 - 2 * x)
 }
 
-export type FreshnessLevel = 'live' | 'stale' | 'waiting' | 'offline' | 'clock-error'
+// 'recorded' replaces 'live' while a recording plays (?replay=): a replay
+// is never described as live, however recent its data.
+export type FreshnessLevel = 'live' | 'recorded' | 'stale' | 'waiting' | 'offline' | 'clock-error'
 
 // Beyond this far ahead of the server clock, a feed timestamp isn't "live ·
 // 0 s ago" anymore, it's broken: either the feed froze on a header that's
@@ -35,7 +37,7 @@ export function formatAge(ms: number): string {
   return `${Math.floor(m / 60)} h ago`
 }
 
-export function describeFreshness(feed: FeedStatus, nowMs: number): FreshnessView {
+export function describeFreshness(feed: FeedStatus, nowMs: number, recorded = false): FreshnessView {
   const { state, error } = feed
   if (!state) {
     if (error) return { level: 'offline', text: 'Muni · offline', note: error }
@@ -49,6 +51,10 @@ export function describeFreshness(feed: FeedStatus, nowMs: number): FreshnessVie
   const pollFailing = state.muni.lastPollOk === false ? 'feed errors' : null
   const note = [unreachable, pollFailing].filter(Boolean).join(' · ') || null
   if (age < -CLOCK_ERROR_MS) return { level: 'clock-error', text: 'Muni · clock error', note }
+  if (recorded) {
+    if (age <= STALE_MS) return { level: 'recorded', text: `Muni · recorded · updated ${formatAge(age)}`, note }
+    return { level: 'stale', text: `Muni · recorded · stale · last update ${formatAge(age)}`, note }
+  }
   if (age <= STALE_MS) return { level: 'live', text: `Muni · live · updated ${formatAge(age)}`, note }
   return { level: 'stale', text: `Muni · stale · last update ${formatAge(age)}`, note }
 }

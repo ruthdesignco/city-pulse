@@ -40,6 +40,15 @@ describe('describeFreshness', () => {
     expect(describeFreshness(feed(state()), NOW)).toEqual({ level: 'live', text: 'Muni · live · updated 42 s ago', note: null })
   })
 
+  it('says recorded, never live, while a recording plays', () => {
+    expect(describeFreshness(feed(state()), NOW, true)).toEqual({ level: 'recorded', text: 'Muni · recorded · updated 42 s ago', note: null })
+    const stale = describeFreshness(feed(state({ newestFeedAt: NOW - STALE_MS - 60_000 })), NOW, true)
+    expect(stale.level).toBe('stale')
+    expect(stale.text).toBe('Muni · recorded · stale · last update 4 min ago')
+    for (const ageMs of [0, 30_000, STALE_MS, STALE_MS + 1, 3_600_000])
+      expect(describeFreshness(feed(state({ newestFeedAt: NOW - ageMs })), NOW, true).text).not.toMatch(/live/)
+  })
+
   it('measures age on the database clock, not the viewer clock', () => {
     // The viewer's clock runs 5 min fast: offset -5 min brings it back.
     expect(describeFreshness(feed(state({}, -300_000)), NOW + 300_000).text).toBe('Muni · live · updated 42 s ago')

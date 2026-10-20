@@ -44,6 +44,11 @@ body,
   box-shadow: 0 0 8px #ffcf7a;
 }
 
+/* A replay (RecordedBadge): plain, no live glow. */
+.freshness--recorded .freshness__dot {
+  background: #c9cde8;
+}
+
 .freshness--stale {
   color: #9a9fc0;
 }
