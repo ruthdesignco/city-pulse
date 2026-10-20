@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -27,5 +28,16 @@ describe('the shipped trees.bin', () => {
       if (x < minX || x > maxX || z < minZ || z > maxZ) throw new Error(`tree ${i} at ${x}, ${z} is outside the extent`)
       if (trees.kind[i] >= TREE_KINDS || trees.tone[i] >= palette.treeGreens.length) throw new Error(`tree ${i} has a bad code`)
     }
+  })
+
+  it('records its provenance: the inventory hash and the exact city.bin it was placed against', () => {
+    const cityBytes = readFileSync(join(import.meta.dirname, '../../public/city.bin'))
+    expect(trees.header.inputSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(trees.header.city).toEqual({ bakedAt: city.header.bakedAt, sha256: createHash('sha256').update(cityBytes).digest('hex') })
+  })
+
+  it("city.bin records the OSM data's date and an input hash", () => {
+    expect(Date.parse(city.header.osmTimestamp ?? '')).toBeGreaterThan(Date.parse('2026-01-01'))
+    expect(city.header.osmElementsSha256).toMatch(/^[0-9a-f]{64}$/)
   })
 })

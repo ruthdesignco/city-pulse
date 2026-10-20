@@ -40,7 +40,11 @@ export interface CityHeader {
   // building index, facade.ts PinnedMaterial code, and the OSM name.
   pinnedMaterials?: { building: number; material: number; name: string }[]
   attribution: string
+  // Provenance: the date the OSM data is current to (the extract's header,
+  // or Overpass's timestamp_osm_base), and a sha256 of the OSM elements the
+  // bake read, so a rebake from the same input can be recognized.
   osmTimestamp: string | null
+  osmElementsSha256?: string
   bakedAt: string
   landmarks: Landmark[]
   sections?: Record<SectionName, { offset: number; length: number }>

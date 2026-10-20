@@ -59,13 +59,19 @@ function decodeBlob(bytes: Uint8Array): Uint8Array {
   throw new Error(`osmpbf: unsupported blob compression (field ${blob.other ?? 'none'})`)
 }
 
-function checkHeader(bytes: Uint8Array) {
+// The OSMHeader block: checks the features we must support, and returns the
+// extract's replication timestamp (field 32, seconds), the date its OSM data
+// is current to, when the file has one.
+function readHeader(bytes: Uint8Array): { replicationTimestamp: number | null } {
   const required: string[] = []
+  let replicationTimestamp: number | null = null
   new PbfReader(bytes).readFields((tag, _r, pbf) => {
     if (tag === 4) required.push(pbf.readString())
+    else if (tag === 32) replicationTimestamp = pbf.readVarint()
   }, null)
   const unsupported = required.filter((f) => !SUPPORTED_FEATURES.has(f))
   if (unsupported.length) throw new Error(`osmpbf: unsupported required features: ${unsupported.join(', ')}`)
+  return { replicationTimestamp }
 }
 
 function tagsOf(keys: number[], vals: number[], strings: string[]): Record<string, string> {
@@ -175,7 +181,9 @@ function decodePrimitiveBlock(bytes: Uint8Array, h: PbfHandlers) {
 }
 
 // Streams the file blob by blob; memory stays at one decompressed block.
-export function readOsmPbf(path: string, h: PbfHandlers) {
+// Returns the header's replication timestamp (seconds), or null.
+export function readOsmPbf(path: string, h: PbfHandlers): { replicationTimestamp: number | null } {
+  let replicationTimestamp: number | null = null
   const fd = openSync(path, 'r')
   try {
     let pos = 0
@@ -196,7 +204,7 @@ export function readOsmPbf(path: string, h: PbfHandlers) {
       const data = decodeBlob(readExactly(fd, header.size, pos))
       pos += header.size
       if (header.type === 'OSMHeader') {
-        checkHeader(data)
+        replicationTimestamp = readHeader(data).replicationTimestamp
         sawHeader = true
       } else if (header.type === 'OSMData') {
         if (!sawHeader) throw new Error('osmpbf: OSMData before OSMHeader')
@@ -206,4 +214,5 @@ export function readOsmPbf(path: string, h: PbfHandlers) {
   } finally {
     closeSync(fd)
   }
+  return { replicationTimestamp }
 }

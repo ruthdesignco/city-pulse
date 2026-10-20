@@ -26,6 +26,10 @@ export interface TreesHeader {
   source: string // dataset URL
   dataAsOf: string | null // the inventory's data_as_of, newest row
   bakedAt: string
+  // Provenance: a sha256 of the inventory rows read, and the city.bin these
+  // trees were placed against (footprints, roadway, bake area).
+  inputSha256?: string
+  city?: { bakedAt: string; sha256: string }
 }
 
 export interface TreesData {

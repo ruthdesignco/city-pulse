@@ -74,6 +74,14 @@ export function buildingRelationsQuery(b: Bbox): string {
 out geom;`
 }
 
+// Each response's OSM data date (osm3s.timestamp_osm_base), cached or
+// fresh, in the order read: the bake records the oldest (bake-city.ts).
+export const overpassDataTimestamps: string[] = []
+
+function noteTimestamp(json: { osm3s?: { timestamp_osm_base?: string } }) {
+  if (json.osm3s?.timestamp_osm_base) overpassDataTimestamps.push(json.osm3s.timestamp_osm_base)
+}
+
 export async function fetchOverpass(
   query: string,
   maxAttempts = MAX_ATTEMPTS,
@@ -83,13 +91,16 @@ export async function fetchOverpass(
   const file = join(CACHE_DIR, `overpass-${key}.json`)
   if (existsSync(file)) {
     console.log(`overpass: using cache ${file}`)
-    return JSON.parse(readFileSync(file, 'utf8')).elements
+    const cached = JSON.parse(readFileSync(file, 'utf8'))
+    noteTimestamp(cached)
+    return cached.elements
   }
   if (opts.cachedOnly) throw new NotCachedError(`not cached: overpass-${key}`)
 
   const started = Date.now()
   const text = await postWithBackoff(query, maxAttempts)
   const json = JSON.parse(text)
+  noteTimestamp(json)
   if (json.remark) console.warn(`overpass remark: ${json.remark}`)
   mkdirSync(CACHE_DIR, { recursive: true })
   writeFileSync(file, text)

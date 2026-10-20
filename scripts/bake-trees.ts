@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { COORD_QUANTUM, decodeCity } from '../src/city/format.ts'
 import { ringPosition } from '../src/city/ring.ts'
-import { encodeTrees } from '../src/city/treeFormat.ts'
+import { decodeTrees, encodeTrees } from '../src/city/treeFormat.ts'
 import { TREE_KINDS, classifySpecies, isNotATree, parseDbh } from '../src/city/treeSpecies.ts'
 import { distToOutline } from '../src/city/waterfront.ts'
 import { toLatLng, toScene } from '../src/geo/projection.ts'
@@ -80,6 +80,7 @@ async function main() {
   const started = Date.now()
   const cityBytes = readFileSync(join(ROOT, 'public/city.bin'))
   const city = decodeCity(cityBytes.buffer.slice(cityBytes.byteOffset, cityBytes.byteOffset + cityBytes.byteLength))
+  const citySha256 = createHash('sha256').update(cityBytes).digest('hex')
   const { extent, waterfront = [], ringMeters, origin } = city.header
   if (!extent) throw new Error('trees: city.bin has no data extent; rebake the city first')
   const [minX, minZ, maxX, maxZ] = extent
@@ -88,6 +89,7 @@ async function main() {
   const ne = toLatLng(maxX, minZ)
   const where = `latitude between ${sw.lat.toFixed(5)} and ${ne.lat.toFixed(5)} and longitude between ${sw.lng.toFixed(5)} and ${ne.lng.toFixed(5)}`
   const rows = await fetchRows(where, process.argv.includes('--cached-only'))
+  const inputSha256 = createHash('sha256').update(JSON.stringify(rows)).digest('hex')
 
   const footprints = new FootprintIndex(city.buildings)
   const roads = new RoadwayIndex(city.streets)
@@ -166,6 +168,8 @@ async function main() {
       source: SOURCE_URL,
       dataAsOf,
       bakedAt: new Date().toISOString(),
+      inputSha256,
+      city: { bakedAt: city.header.bakedAt, sha256: citySha256 },
     },
     coords,
     kind: Uint8Array.from(kept, (t) => t.kind),
@@ -173,7 +177,13 @@ async function main() {
     dbh: Uint8Array.from(kept, (t) => t.dbh),
     ring: Uint8Array.from(kept, (t) => t.ring),
   })
-  writeFileSync(join(ROOT, 'public/trees.bin'), bytes)
+  const out = join(ROOT, 'public/trees.bin')
+  if (existsSync(out)) {
+    const prev = readFileSync(out)
+    const old = decodeTrees(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength))
+    console.log(`change vs the committed trees.bin: trees ${old.header.count} -> ${n} (${n - old.header.count >= 0 ? '+' : ''}${n - old.header.count})`)
+  }
+  writeFileSync(out, bytes)
 
   const core = kept.filter((t) => t.ring === 0).length
   const inArea = rows.length - drop.notATree - drop.noLocation - drop.outsideArea

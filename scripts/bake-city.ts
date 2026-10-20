@@ -10,7 +10,8 @@
 //          OpenStreetMap via Overpass, cached in scripts/.cache/
 // Output:  public/city.bin (see src/city/format.ts)
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   COORD_QUANTUM,
@@ -19,6 +20,7 @@ import {
   StreetClass,
   type CityData,
   type Landmark,
+  decodeCity,
   encodeCity,
 } from '../src/city/format.ts'
 import { distToOutline, waterfrontOutline } from '../src/city/waterfront.ts'
@@ -43,7 +45,9 @@ import {
   cityQuery,
   fetchOverpass,
   fetchTiled,
+  overpassDataTimestamps,
 } from './lib/overpass.ts'
+import { compareCities, describeCityChange } from './lib/bakeSummary.ts'
 import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
@@ -369,8 +373,18 @@ async function main() {
   console.log(`boundary: ${boundary.length} rings, ${boundary.reduce((n, r) => n + r.length, 0)} points`)
 
   const pbfIdx = process.argv.indexOf('--pbf')
-  const elements = pbfIdx !== -1 ? loadFromPbf(process.argv[pbfIdx + 1] ?? '', QUERY_BBOX) : await loadFromOverpass()
-  console.log(`osm: ${elements.length} elements`)
+  let elements: OsmElement[]
+  let osmTimestamp: string | null
+  if (pbfIdx !== -1) {
+    ;({ elements, osmTimestamp } = loadFromPbf(process.argv[pbfIdx + 1] ?? '', QUERY_BBOX))
+  } else {
+    elements = await loadFromOverpass()
+    // The oldest response: the whole bake is at least that current.
+    osmTimestamp = [...overpassDataTimestamps].sort()[0] ?? null
+  }
+  if (!osmTimestamp) console.warn('bake: the OSM source has no data timestamp; osmTimestamp stays null')
+  const osmElementsSha256 = createHash('sha256').update(JSON.stringify(elements)).digest('hex')
+  console.log(`osm: ${elements.length} elements, data as of ${osmTimestamp ?? 'unknown'}`)
 
   const buildings = bakeBuildings(elements, boundary)
   const streets = bakeStreets(elements, boundary)
@@ -409,7 +423,8 @@ async function main() {
       extent: bboxExtent(QUERY_BBOX),
       pinnedMaterials,
       attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
-      osmTimestamp: null,
+      osmTimestamp,
+      osmElementsSha256,
       bakedAt: new Date().toISOString(),
       landmarks,
     },
@@ -424,7 +439,12 @@ async function main() {
     boundary: n,
   }
   const bytes = encodeCity(data)
-  writeFileSync(join(ROOT, 'public/city.bin'), bytes)
+  const out = join(ROOT, 'public/city.bin')
+  if (existsSync(out)) {
+    const prev = readFileSync(out)
+    console.log(`\nchange vs the committed city.bin: ${describeCityChange(compareCities(decodeCity(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength)), data))}`)
+  }
+  writeFileSync(out, bytes)
 
   // ------------------------------------------------------------- report
   const core = buildings.filter((x) => x.ringBand === 0).length

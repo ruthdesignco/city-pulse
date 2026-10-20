@@ -19,7 +19,9 @@ const NODE_MARGIN_DEG = 0.003
 const isBuilding = (t: Record<string, string>) => !!t.building || !!t['building:part']
 const isMultipolygonBuilding = (t: Record<string, string>) => t.type === 'multipolygon' && isBuilding(t)
 
-export function loadFromPbf(pbfPath: string, b: Bbox): OsmElement[] {
+// Also returns the extract's OSM data date (its header's replication
+// timestamp), as an ISO string, or null if the file has none.
+export function loadFromPbf(pbfPath: string, b: Bbox): { elements: OsmElement[]; osmTimestamp: string | null } {
   const started = Date.now()
   const s = b.south - NODE_MARGIN_DEG
   const n = b.north + NODE_MARGIN_DEG
@@ -31,7 +33,7 @@ export function loadFromPbf(pbfPath: string, b: Bbox): OsmElement[] {
   const relations: RawRelation[] = []
   let nodesSeen = 0
 
-  readOsmPbf(pbfPath, {
+  const { replicationTimestamp } = readOsmPbf(pbfPath, {
     node(id, lat, lon) {
       if (++nodesSeen % 20_000_000 === 0) console.log(`pbf: ${nodesSeen / 1e6}M nodes read...`)
       if (lat >= s && lat <= n && lon >= w && lon <= e) coords.set(id, { lat, lon })
@@ -102,5 +104,5 @@ export function loadFromPbf(pbfPath: string, b: Bbox): OsmElement[] {
       `pbf: ${incompleteBuildings} building ways and ${incompleteMembers} relation member ways had nodes outside the captured area (dropped)`,
     )
   }
-  return out
+  return { elements: out, osmTimestamp: replicationTimestamp === null ? null : new Date(replicationTimestamp * 1000).toISOString() }
 }

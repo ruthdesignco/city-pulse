@@ -39,9 +39,10 @@ function blob(type: string, payload: Uint8Array, compress = true): Buffer {
 const deltas = (xs: number[]) => xs.map((x, i) => (i === 0 ? x : x - xs[i - 1]))
 const fixed = (deg: number) => Math.round((deg * 1e9) / GRANULARITY)
 
-function samplePbf(features = ['OsmSchema-V0.6', 'DenseNodes']): string {
+function samplePbf(features = ['OsmSchema-V0.6', 'DenseNodes'], replicationTimestamp?: number): string {
   const header = new PbfWriter()
   for (const f of features) header.writeStringField(4, f)
+  if (replicationTimestamp !== undefined) header.writeVarintField(32, replicationTimestamp)
 
   const block = new PbfWriter()
   block.writeMessage(1, (_: unknown, p: PbfWriter) => STRINGS.forEach((s) => p.writeBytesField(1, new TextEncoder().encode(s))), null)
@@ -122,6 +123,11 @@ describe('readOsmPbf', () => {
     expect(rels).toEqual([
       { id: 9, tags: { type: 'multipolygon', building: 'yes' }, members: [{ type: 'way', ref: 7000, role: 'outer' }] },
     ])
+  })
+
+  it("returns the extract's replication timestamp, or null when it has none", () => {
+    expect(readOsmPbf(samplePbf(undefined, 1792195200), {})).toEqual({ replicationTimestamp: 1792195200 })
+    expect(readOsmPbf(samplePbf(), {})).toEqual({ replicationTimestamp: null })
   })
 
   it('refuses files that require features it cannot read', () => {
