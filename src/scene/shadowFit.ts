@@ -9,6 +9,7 @@
 // moving frustum makes shadow edges shimmer); it only changes on a zoom or
 // a pan large enough to matter.
 
+// Full quality; slower GPUs drop to 2048 (quality.ts).
 export const SHADOW_MAP_SIZE = 4096
 // Half-size per meter of camera distance: the opening view (1.8 km out,
 // tilted) sees ground about 1.5x its distance beyond the target.
@@ -23,10 +24,10 @@ export interface ShadowFit {
   texel: number // meters per shadow map texel
 }
 
-export function fitShadow(target: readonly [number, number, number], cameraDistance: number): ShadowFit {
+export function fitShadow(target: readonly [number, number, number], cameraDistance: number, mapSize = SHADOW_MAP_SIZE): ShadowFit {
   const want = Math.min(MAX_EXTENT_M, Math.max(MIN_EXTENT_M, cameraDistance * FIT))
   const extent = Math.min(MAX_EXTENT_M, MIN_EXTENT_M * STEP ** Math.ceil(Math.log(want / MIN_EXTENT_M) / Math.log(STEP) - 1e-9))
-  const texel = (2 * extent) / SHADOW_MAP_SIZE
+  const texel = (2 * extent) / mapSize
   // Snap to a grid a tenth of the frustum wide: small pans don't move it.
   const grid = extent / 5
   const snap = (v: number) => Math.round(v / grid) * grid

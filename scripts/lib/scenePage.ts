@@ -22,7 +22,9 @@ export const HEIGHT = 1080
 const SETTLE_MS = 4000
 
 // `query` is added to ?demo, which hides the dev-only FPS/Stats overlay
-// (App.tsx), so the page matches what a viewer, not a developer, would see.
+// (App.tsx), so the page matches what a viewer, not a developer, would see,
+// and to ?quality=high, so the frame-rate monitor never steps a shot or a
+// calibration down (quality.ts) and every run renders the same way.
 export async function withScenePage(label: string, query: Record<string, string>, withPage: (page: Page) => Promise<void>) {
   const server = await createServer({ root: ROOT, server: { port: 0 }, logLevel: 'warn' })
   await server.listen()
@@ -45,7 +47,7 @@ export async function withScenePage(label: string, query: Record<string, string>
     page.on('response', (res) => {
       if (!res.ok()) console.error(`${label}: [http ${res.status()}] ${res.url()}`)
     })
-    await page.goto(`${url}?${new URLSearchParams({ demo: '', ...query })}`, { waitUntil: 'networkidle' })
+    await page.goto(`${url}?${new URLSearchParams({ demo: '', quality: 'high', ...query })}`, { waitUntil: 'networkidle' })
     await page.waitForSelector('canvas', { timeout: 15_000 })
     await page.waitForTimeout(SETTLE_MS)
     await withPage(page)

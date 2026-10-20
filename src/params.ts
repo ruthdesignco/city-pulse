@@ -12,6 +12,9 @@
 //                    or ?view=street for storefronts and trees at street level
 //   ?calibrate       palette swatches in full sun (Calibration.tsx), for
 //                    npm run calibrate
+//   ?quality=low     start at the render's floor; =high pins full quality and
+//                    never steps down (quality.ts)
+//   ?fps             show the frame-rate counter (also outside dev)
 
 const params = new URLSearchParams(window.location.search)
 
@@ -33,3 +36,7 @@ export const REPLAY_HOLD_S = seconds('hold')
 const view = params.get('view')
 export const VIEW = view && /^[a-z0-9-]{1,32}$/.test(view) ? view : null
 export const CALIBRATE = params.has('calibrate')
+
+const quality = params.get('quality')
+export const QUALITY: 'low' | 'high' | null = quality === 'low' || quality === 'high' ? quality : null
+export const SHOW_FPS = params.has('fps')

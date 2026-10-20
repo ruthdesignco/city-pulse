@@ -11,7 +11,7 @@ export function WebGLGate({ children }: { children: ReactNode }) {
   if (ok) return children
   return (
     <div className="webgl-fallback">
-      <p>This demo needs WebGL, which this browser or device isn't offering right now.</p>
+      <p>This demo needs hardware-accelerated WebGL, which this browser or device isn't offering right now.</p>
       <p>Try a recent Chrome, Firefox, or Edge, with hardware acceleration turned on.</p>
     </div>
   )

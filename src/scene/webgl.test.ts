@@ -14,6 +14,15 @@ describe('hasWebGL', () => {
     expect(hasWebGL(() => null)).toBe(false)
   })
 
+  it('asks for a context without a major performance caveat (no software rendering)', () => {
+    const asked: unknown[] = []
+    hasWebGL((_, options) => {
+      asked.push(options)
+      return {}
+    })
+    expect(asked[0]).toEqual({ failIfMajorPerformanceCaveat: true })
+  })
+
   it('is false when getContext throws (blocked or disabled WebGL)', () => {
     expect(
       hasWebGL(() => {

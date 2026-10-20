@@ -21,7 +21,9 @@ const SHADOW_NORMAL_BIAS_TEXELS = 0.75
 const FOG_NEAR_M = 4500
 const FOG_FAR_M = 10000
 
-export function Atmosphere() {
+// `shadowMapSize` comes from the quality step (quality.ts); a change
+// reallocates the shadow map.
+export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?: number }) {
   const lightRef = useRef<DirectionalLight>(null)
   const lightTargetRef = useRef<Object3D>(null)
   // The shadow camera's ortho frustum (sized each frame below, shadowFit.ts)
@@ -37,6 +39,16 @@ export function Atmosphere() {
   }, [])
   // Last applied shadow fit, so the light only changes when the fit does.
   const fitKey = useRef('')
+  // three only allocates the shadow map once, at its first size: a new size
+  // needs the old map dropped. The fit (and its texel-scaled bias) is redone.
+  useEffect(() => {
+    const light = lightRef.current
+    if (!light || light.shadow.mapSize.x === shadowMapSize) return
+    light.shadow.mapSize.set(shadowMapSize, shadowMapSize)
+    light.shadow.map?.dispose()
+    light.shadow.map = null
+    fitKey.current = ''
+  }, [shadowMapSize])
   useFrame((state) => {
     const light = lightRef.current
     const lightTarget = lightTargetRef.current
@@ -44,7 +56,7 @@ export function Atmosphere() {
     // OrbitControls (CameraRig, makeDefault) carry the point being looked at.
     const orbit = (state.controls as unknown as { target?: Vector3 } | null)?.target
     const look: [number, number, number] = orbit ? [orbit.x, orbit.y, orbit.z] : TARGET
-    const fit = fitShadow(look, state.camera.position.distanceTo({ x: look[0], y: look[1], z: look[2] } as Vector3))
+    const fit = fitShadow(look, state.camera.position.distanceTo({ x: look[0], y: look[1], z: look[2] } as Vector3), shadowMapSize)
     const key = `${fit.center.join()},${fit.extent}`
     if (key === fitKey.current) return
     fitKey.current = key
@@ -82,7 +94,7 @@ export function Atmosphere() {
         position={sunLightPosition(TARGET)}
         intensity={SUN_INTENSITY}
         castShadow
-        shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
+        shadow-mapSize={[shadowMapSize, shadowMapSize]}
         shadow-camera-near={10}
         shadow-bias={-0.0002}
         shadow-radius={1.5}
