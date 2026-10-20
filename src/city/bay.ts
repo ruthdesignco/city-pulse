@@ -24,8 +24,13 @@ export const SHORELINE: LatLngPt[] = [
   [37.8035, -122.4005], // Pier 27
   [37.8, -122.3975], // Pier 15
   [37.7968, -122.395], // Pier 7
-  [37.7957, -122.3934], // Ferry Building
+  // ~15 m off the Ferry Building's and Agriculture Building's east faces
+  // (OSM footprints), so both stand on land at the foot of Market.
+  [37.79647, -122.39375], // Ferry Building, north end
+  [37.795, -122.3924], // Ferry Building, south end
+  [37.79412, -122.39161], // Agriculture Building
   [37.792, -122.3897], // Pier 14
+  [37.7895, -122.3877], // Embarcadero at Howard
   [37.788, -122.3875], // Rincon Point
   [37.784, -122.387], // Pier 28
   [37.78, -122.3868], // Pier 30-32

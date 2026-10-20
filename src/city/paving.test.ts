@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
 import { CELL_M, EDGE_BLEND_M, buildPaving } from './paving.ts'
+import { ringDim } from './ring.ts'
 
 // One 400 m square neighborhood (coords in 0.1 m units), a 200 m ring.
 const city = {
@@ -51,5 +52,21 @@ describe('buildPaving', () => {
 
   it('becomes bare ground past the ring, so it meets the ground plane seamlessly', () => {
     expect(near(colorAt(-(200 + EDGE_BLEND_M + 10), 200), palette.ground)).toBe(true)
+  })
+
+  it('reaches out over a waterfront extension as ring paving, then blends into ground past it', () => {
+    // A 400 m wide strip running 1.5 km east of the ring's edge.
+    const wide = { ...city, header: { ringMeters: 200, waterfront: [[400, 0], [2000, 0], [2000, 400], [400, 400]] } } as unknown as CityData
+    const w = buildPaving(wide, 0.15)
+    const m = w.position.length / 3
+    const at = (x: number, z: number) => {
+      let best = 0
+      for (let i = 1; i < m; i++)
+        if (Math.hypot(w.position[i * 3] - x, w.position[i * 3 + 2] - z) < Math.hypot(w.position[best * 3] - x, w.position[best * 3 + 2] - z)) best = i
+      return Array.from(w.color.slice(best * 3, best * 3 + 3))
+    }
+    const edge = new Color(palette.sidewalk).lerp(new Color(palette.sky), ringDim(1))
+    at(1800, 200).forEach((v, i) => expect(v).toBeCloseTo(edge.toArray()[i], 4))
+    expect(near(at(2000 + EDGE_BLEND_M + 10, 200), palette.ground)).toBe(true)
   })
 })

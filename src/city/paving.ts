@@ -10,6 +10,7 @@ import { Color } from 'three'
 import { COORD_QUANTUM, type CityData } from './format.ts'
 import { palette } from './palette.ts'
 import { ringDim, ringPosition } from './ring.ts'
+import { distToOutline } from './waterfront.ts'
 
 export const CELL_M = 25
 // Past the ring's edge, paving blends into bare ground over this distance.
@@ -24,23 +25,24 @@ export interface PavingGrid {
 export function buildPaving(city: CityData, y: number): PavingGrid {
   const { boundary } = city
   const ringMeters = city.header.ringMeters
+  const waterfront = city.header.waterfront ?? []
   const reach = ringMeters + EDGE_BLEND_M
+  // Bounds: the boundary padded by `reach`, the extension by the edge blend.
   let minX = Infinity
   let minZ = Infinity
   let maxX = -Infinity
   let maxZ = -Infinity
-  for (let i = 0; i < boundary.coords.length; i += 2) {
-    const x = boundary.coords[i] * COORD_QUANTUM
-    const z = boundary.coords[i + 1] * COORD_QUANTUM
-    minX = Math.min(minX, x)
-    maxX = Math.max(maxX, x)
-    minZ = Math.min(minZ, z)
-    maxZ = Math.max(maxZ, z)
+  const include = (x: number, z: number, pad: number) => {
+    minX = Math.min(minX, x - pad)
+    maxX = Math.max(maxX, x + pad)
+    minZ = Math.min(minZ, z - pad)
+    maxZ = Math.max(maxZ, z + pad)
   }
-  minX -= reach
-  minZ -= reach
-  const nx = Math.ceil((maxX + reach - minX) / CELL_M) + 1
-  const nz = Math.ceil((maxZ + reach - minZ) / CELL_M) + 1
+  for (let i = 0; i < boundary.coords.length; i += 2)
+    include(boundary.coords[i] * COORD_QUANTUM, boundary.coords[i + 1] * COORD_QUANTUM, reach)
+  for (const [x, z] of waterfront) include(x, z, EDGE_BLEND_M)
+  const nx = Math.ceil((maxX - minX) / CELL_M) + 1
+  const nz = Math.ceil((maxZ - minZ) / CELL_M) + 1
 
   const sidewalk = new Color(palette.sidewalk)
   const sky = new Color(palette.sky)
@@ -54,8 +56,9 @@ export function buildPaving(city: CityData, y: number): PavingGrid {
       const z = minZ + j * CELL_M
       const k = (j * nx + i) * 3
       position.set([x, y, z], k)
-      // Distance past the boundary, measured out to `reach` (ringPosition caps at 1).
-      const d = ringPosition(boundary, reach, x, z) * reach
+      // Distance past the boundary, measured out to `reach` (ringPosition caps
+      // at 1); inside the waterfront extension, no further than the ring's edge.
+      const d = Math.min(ringPosition(boundary, reach, x, z) * reach, ringMeters + distToOutline(x, z, waterfront))
       const ring = Math.min(1, d / ringMeters)
       const beyond = Math.min(1, Math.max(0, (d - ringMeters) / EDGE_BLEND_M))
       c.copy(sidewalk).lerp(sky, ringDim(ring)).lerp(ground, beyond * beyond * (3 - 2 * beyond))

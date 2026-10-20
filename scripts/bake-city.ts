@@ -1,5 +1,6 @@
 // Bake OSM buildings and streets for SoMa, the Mission and the Tenderloin
-// (plus a dimmer context ring) into public/city.bin.
+// (plus a dimmer context ring, extended out to the Bay along the waterfront:
+// src/city/waterfront.ts) into public/city.bin.
 //
 //   npm run bake                    fetch what's missing, then bake
 //   npm run bake -- --cached-only   bake from cache only (partial preview)
@@ -20,6 +21,7 @@ import {
   type Landmark,
   encodeCity,
 } from '../src/city/format.ts'
+import { distToOutline, waterfrontOutline } from '../src/city/waterfront.ts'
 import { ORIGIN, toScene } from '../src/geo/projection.ts'
 import {
   type Pt,
@@ -50,9 +52,12 @@ const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
 // 800 m (not 600) so the whole Transbay cluster is in: Salesforce Tower sits
 // ~600 m out, Millennium and 181 Fremont ~700 m.
 const RING_METERS = 800
-// Cluster bbox padded ~850 m; corners stay inside the Int16 range at 0.1 m.
-// Part of the Overpass cache key: changing it refetches every tile.
-const QUERY_BBOX: Bbox = { south: 37.74, west: -122.4367, north: 37.7961, east: -122.3829 }
+// Cluster bbox padded ~850 m, north to the waterfront extension's edge;
+// corners stay inside the Int16 range at 0.1 m. Part of the Overpass cache
+// key: changing it refetches every tile.
+const QUERY_BBOX: Bbox = { south: 37.74, west: -122.4367, north: 37.7975, east: -122.3825 }
+const WATERFRONT = waterfrontOutline()
+const INT16_LIMIT_M = 32767 * COORD_QUANTUM
 const TILES = 3
 
 const SIMPLIFY_BUILDING_M = 0.75
@@ -61,6 +66,9 @@ const MIN_FOOTPRINT_M2 = 15
 const METERS_PER_LEVEL = 3.2
 const DEFAULT_HEIGHT_M = 8
 const SKIP_BUILDING_VALUES = new Set(['no', 'roof', 'construction', 'demolished', 'collapsed', 'ruins'])
+// Bridge towers tagged as buildings (the Bay Bridge's W2 is building=tower,
+// 160 m): without the deck and cables they read as a lone pillar in the Bay.
+const isBridgeSupport = (tags: Record<string, string>) => !!tags['bridge:support']
 
 const project = (p: OsmGeomPoint): Pt => {
   const s = toScene(p.lat, p.lon)
@@ -104,8 +112,11 @@ const stats = {
   relationsWithoutGeometry: 0,
   holesIgnored: 0,
   skippedByValue: 0,
+  bridgeSupports: 0,
   tooSmall: 0,
   outsideRing: 0,
+  waterfront: 0,
+  pastInt16: 0,
   heightFrom: { height: 0, levels: 0, parts: 0, default: 0 },
   badHeightValues: new Map<string, number>(),
 }
@@ -187,6 +198,10 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
         stats.skippedByValue++
         continue
       }
+      if (isBridgeSupport(tags)) {
+        stats.bridgeSupports++
+        continue
+      }
       for (const f of footprintsOf(el, tags)) outlines.push(f)
     } else if (tags['building:part'] && tags['building:part'] !== 'no') {
       for (const f of footprintsOf(el, tags)) {
@@ -206,10 +221,17 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
     if (!boundary.some((b) => pointInRing(center, b))) {
       const d = Math.min(...boundary.map((b) => distToRing(center, b)))
       if (d > RING_METERS) {
-        stats.outsideRing++
-        continue
+        if (distToOutline(center[0], center[1], WATERFRONT) > 0) {
+          stats.outsideRing++
+          continue
+        }
+        stats.waterfront++
       }
       ringBand = Math.max(1, Math.ceil(d / RING_BAND_METERS))
+    }
+    if (f.ring.some(([x, z]) => Math.abs(x) > INT16_LIMIT_M || Math.abs(z) > INT16_LIMIT_M)) {
+      stats.pastInt16++
+      continue
     }
 
     let ring = simplifyRing(f.ring, SIMPLIFY_BUILDING_M)
@@ -259,7 +281,9 @@ const STREET_CLASS: Record<string, number> = {
 // end where the buildings do instead of trailing off into empty ground.
 function bakeStreets(elements: OsmElement[], boundary: Pt[][]): { line: Pt[]; cls: number }[] {
   const within = (p: Pt) =>
-    boundary.some((b) => pointInRing(p, b)) || Math.min(...boundary.map((b) => distToRing(p, b))) <= RING_METERS
+    boundary.some((b) => pointInRing(p, b)) ||
+    Math.min(...boundary.map((b) => distToRing(p, b))) <= RING_METERS ||
+    distToOutline(p[0], p[1], WATERFRONT) === 0
   const out: { line: Pt[]; cls: number }[] = []
   for (const el of elements) {
     if (el.type !== 'way' || !el.tags?.highway || !el.geometry) continue
@@ -356,6 +380,7 @@ async function main() {
       version: 1,
       origin: ORIGIN,
       ringMeters: RING_METERS,
+      waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
       attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
       osmTimestamp: null,
       bakedAt: new Date().toISOString(),
@@ -376,9 +401,9 @@ async function main() {
 
   // ------------------------------------------------------------- report
   const core = buildings.filter((x) => x.ringBand === 0).length
-  console.log(`\nbuildings: ${buildings.length} kept (${core} in the three neighborhoods, ${buildings.length - core} in the ring)`)
+  console.log(`\nbuildings: ${buildings.length} kept (${core} in the three neighborhoods, ${buildings.length - core} in the ring, ${stats.waterfront} of them in the waterfront extension)`)
   console.log(`  outlines seen ${stats.outlines}, parts with heights ${stats.parts}`)
-  console.log(`  dropped: ${stats.outsideRing} beyond ring, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value`)
+  console.log(`  dropped: ${stats.outsideRing} beyond ring, ${stats.pastInt16} past the Int16 limit, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value, ${stats.bridgeSupports} bridge supports`)
   console.log(`  multipolygon: ${stats.relationRingsUnclosed} outer rings could not be closed, ${stats.holesIgnored} inner rings (courtyards) ignored, ${stats.relationsWithoutGeometry} relations had no geometry`)
   const hf = stats.heightFrom
   const pct = (v: number) => `${((100 * v) / buildings.length).toFixed(1)}%`

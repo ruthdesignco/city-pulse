@@ -14,6 +14,13 @@ describe('the Bay', () => {
     expect(at(37.812, -122.41)).toBe(true)
   })
 
+  it('puts the Ferry Building, tower included, on land at the foot of Market', () => {
+    expect(at(37.79547, -122.39356)).toBe(false) // footprint center
+    expect(at(37.79614, -122.39432)).toBe(false) // north corner
+    expect(at(37.79639, -122.39389)).toBe(false) // northeast corner
+    expect(at(37.79493, -122.39254)).toBe(false) // southeast corner
+  })
+
   it('is land in SoMa, the Mission, the Tenderloin and downtown', () => {
     expect(at(37.778, -122.405)).toBe(false) // SoMa
     expect(at(37.76, -122.415)).toBe(false) // Mission

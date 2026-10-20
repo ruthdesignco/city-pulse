@@ -31,6 +31,8 @@ export interface CityHeader {
   version: 1
   origin: LatLng
   ringMeters: number
+  // Extra ring area out to the Bay (waterfront.ts), outline in scene meters.
+  waterfront?: [number, number][]
   attribution: string
   osmTimestamp: string | null
   bakedAt: string
