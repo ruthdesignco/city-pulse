@@ -89,4 +89,24 @@ describe('extrudeBuildings', () => {
     for (let v = first; v < pinned.material.length; v++) expect(pinned.material[v]).toBe(3)
     expect(g.material.every((m) => m === 0)).toBe(true)
   })
+
+  it('marks storefronts only on walls that front a street, never on roofs', () => {
+    // A street along x at z = -12 m (1 m past the square's south wall's
+    // sidewalk), so only that wall (z = 0, facing -z) fronts it. Major,
+    // where 90% of buildings get one: try seeds until one does.
+    const streets = { counts: Uint16Array.from([2]), classes: Uint8Array.from([0]), coords: Int16Array.from([-1000, -120, 1000, -120]) }
+    let marked: number[] = []
+    for (let dx = 0; dx < 50 && marked.length === 0; dx++) {
+      const moved = { ...buildings, coords: buildings.coords.map((c, i) => (i < 8 && i % 2 === 0 ? c + dx * 10 : c)) }
+      const m = extrudeBuildings(moved, 600, [], streets)
+      marked = []
+      for (let v = 0; v < m.storefront.length; v++) if (m.storefront[v]) marked.push(v)
+      for (const v of marked) {
+        expect(m.normals[3 * v + 1]).toBe(0)
+        expect(m.normals[3 * v + 2]).toBeCloseTo(-1, 6)
+      }
+    }
+    expect(marked).toHaveLength(4)
+  })
 })
+

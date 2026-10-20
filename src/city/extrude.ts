@@ -3,6 +3,7 @@
 
 import { ShapeUtils, Vector2 } from 'three'
 import { type CityData, COORD_QUANTUM, HEIGHT_QUANTUM, RING_BAND_METERS } from './format.ts'
+import { StreetFrontage, hasStorefront } from './frontage.ts'
 
 export interface CityMesh {
   positions: Float32Array
@@ -16,6 +17,8 @@ export interface CityMesh {
   facade: Float32Array
   // facade.ts PinnedMaterial per vertex: 0 (the random choice) unless pinned.
   material: Float32Array
+  // 1 on walls with a ground-floor storefront (frontage.ts), else 0.
+  storefront: Float32Array
   index: Uint32Array
 }
 
@@ -28,7 +31,14 @@ function seedOf(x: number, z: number): number {
   return (h >>> 0) / 4294967296
 }
 
-export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pinned: { building: number; material: number }[] = []): CityMesh {
+// With `streets`, walls that front one may get a storefront (frontage.ts).
+export function extrudeBuildings(
+  b: CityData['buildings'],
+  ringMeters = 600,
+  pinned: { building: number; material: number }[] = [],
+  streets?: CityData['streets'],
+): CityMesh {
+  const frontage = streets ? new StreetFrontage(streets) : null
   let verts = 0
   let tris = 0
   for (const n of b.counts) {
@@ -41,6 +51,7 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pin
   const colorIndex = new Float32Array(verts)
   const facade = new Float32Array(verts * 4)
   const material = new Float32Array(verts)
+  const storefront = new Float32Array(verts)
   const pinnedBy = new Map(pinned.map((p) => [p.building, p.material]))
   const index = new Uint32Array(tris * 3)
 
@@ -52,6 +63,7 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pin
   let seed = 0
   let wallLen = 0
   let mat = 0
+  let shop = 0
   const put = (x: number, y: number, z: number, nx: number, ny: number, nz: number, r: number, ci: number, wallU = 0) => {
     positions.set([x, y, z], v * 3)
     normals.set([nx, ny, nz], v * 3)
@@ -59,6 +71,7 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pin
     colorIndex[v] = ci
     facade.set([wallU, ny > 0.5 ? 0 : wallLen, height, seed], v * 4)
     material[v] = mat
+    storefront[v] = ny > 0.5 ? 0 : shop
     return v++
   }
 
@@ -82,6 +95,7 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pin
       const nx = (z1 - z0) / len
       const nz = -(x1 - x0) / len
       wallLen = len
+      shop = frontage && hasStorefront(frontage.classOf(x0, z0, x1, z1, nx, nz), Math.floor(ci / 3), seed, h, len) ? 1 : 0
       const a = put(x0, 0, z0, nx, 0, nz, r, ci, 0)
       const bb = put(x1, 0, z1, nx, 0, nz, r, ci, len)
       const cc = put(x1, h, z1, nx, 0, nz, r, ci, len)
@@ -110,5 +124,5 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pin
   }
 
   // Degenerate rings can make earcut return fewer triangles than n - 2.
-  return { positions, normals, ring, colorIndex, facade, material, index: t === index.length ? index : index.slice(0, t) }
+  return { positions, normals, ring, colorIndex, facade, material, storefront, index: t === index.length ? index : index.slice(0, t) }
 }

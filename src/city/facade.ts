@@ -16,6 +16,12 @@
 //                (palette.stoneTowerColors) with punched windows, so the
 //                skyline isn't uniformly blue-gray glass
 //
+// Storefronts: walls that front a street (frontage.ts) get a taller ground
+// floor, ~4.5 m, of wide shop glass between narrow piers over a low
+// bulkhead, with a fascia band or a colored awning line above it; the
+// upper floors' grid starts above that. Bay width, floor height and the
+// band vary per building.
+//
 // Window columns are centered on each wall, so no window is cut at a
 // corner; the top floor stops below a parapet. Where window columns or
 // floors get narrower than a few pixels (far away, or edge-on), that
@@ -136,6 +142,24 @@ export const DETAIL_GONE_PX = 2.5
 // A center mullion's width, as a share of the window column.
 const MULLION = 0.03
 
+// Storefront ground floor, in meters. The glass runs from the bulkhead up
+// to SHOP_GLASS_GAP_M below the floor's top; the band sits in that gap.
+export const SHOP_FLOOR_M = 4.5
+export const SHOP_FLOOR_VARY = 0.08
+export const SHOP_BAY_M = 5.5
+export const SHOP_BAY_VARY = 0.3
+export const SHOP_PIER_M = 0.45
+export const SHOP_BULKHEAD_M = 0.45
+export const SHOP_GLASS_GAP_M = 1.15
+export const SHOP_BAND: [number, number] = [0.4, 1.0] // band from/to, meters below the floor's top
+export const SHOP_GLASS = '#3a454e'
+export const SHOP_REFLECT = 0.6
+export const SHOP_GLINT = 0.3
+// The share of storefronts with a colored awning line (palette.awnings);
+// the rest get a fascia, the wall's own color darkened.
+export const AWNING_SHARE = 0.55
+export const FASCIA_SHADE = 0.6
+
 // The share of a window cell that is glass: what a wall averages to once
 // the pattern has faded with distance. Mirrors `coverage` in FACADE_COLOR.
 export function glassShare(width: number, height: number, mullion: boolean): number {
@@ -156,8 +180,10 @@ uniform vec3 uSkyReflection;
 uniform vec3 uStoneColors[3];
 uniform vec3 uPaleStone;
 uniform vec3 uGranite;
+uniform vec3 uAwnings[5];
 varying vec4 vFacade;
 varying float vMaterial;
+varying float vStorefront;
 float facadeBox( float x, float lo, float hi, float aa ) {
   return smoothstep( lo - aa, lo + aa, x ) * ( 1.0 - smoothstep( hi - aa, hi + aa, x ) );
 }
@@ -188,12 +214,16 @@ float fcWidth = ${pick((f) => v(f.width))} * ( 1.0 + ( fcS2 - 0.5 ) * 2.0 * ${pi
 float fcHeight = ${pick((f) => v(f.height))};
 float fcSill = ${pick((f) => v(f.sill))};
 float fcMullion = step( fcS3, ${pick((f) => v(f.mullion))} );
+// Storefront walls: the upper floors' grid starts above the shop floor.
+float fcShop = step( 0.5, vStorefront );
+float fcGroundM = ${v(SHOP_FLOOR_M)} * ( 1.0 + ( fract( fcSeed * 41.3 + 0.17 ) - 0.5 ) * 2.0 * ${v(SHOP_FLOOR_VARY)} );
+float fcBase = fcShop * fcGroundM;
 
 float fcWallLen = vFacade.y;
 float fcColumns = floor( max( 0.0, fcWallLen - 2.0 * ${v(WALL_MARGIN_M)} ) / fcSpacing );
-float fcRows = floor( max( 0.0, vFacade.z - ${v(PARAPET_M)} ) / fcFloorM );
+float fcRows = floor( max( 0.0, vFacade.z - ${v(PARAPET_M)} - fcBase ) / fcFloorM );
 float fcCu = ( vFacade.x - 0.5 * ( fcWallLen - fcColumns * fcSpacing ) ) / fcSpacing;
-float fcCv = vY / fcFloorM;
+float fcCv = ( vY - fcBase ) / fcFloorM;
 float fcDu = fwidth( fcCu );
 float fcDv = fwidth( fcCv );
 
@@ -213,10 +243,46 @@ float fcInside = mix( 1.0, facadeBox( fcCu, 0.0, fcColumns, fcDu ), fcDetailAcro
 fcInside *= mix( 1.0, facadeBox( fcCv, 0.0, fcRows, fcDv ), fcDetailUp ) * step( 1.0, fcRows );
 float fcEnabled = vWall * step( ${v(MIN_HEIGHT_M)}, vFacade.z ) * step( ${v(MIN_WALL_M)}, fcWallLen );
 
-float windowGlass = fcEnabled * fcInside * fcAcross * fcUp;
-diffuseColor.rgb = mix( diffuseColor.rgb, ${pick((f) => vec3(f.glass))}, windowGlass );
-float windowReflect = windowGlass * ${pick((f) => v(f.reflect))};
-float windowGlint = ${pick((f) => v(f.glint))};
+// The shop floor: 1 in it, antialiased at its top edge.
+float fcBv = vY / fcGroundM;
+float fcBdv = fwidth( fcBv );
+float fcGround = fcShop * ( 1.0 - smoothstep( 1.0 - fcBdv, 1.0 + fcBdv, fcBv ) );
+
+// Upper floors, kept out of the shop floor (their faded average would
+// otherwise spill down into it).
+float fcUpperGlass = fcEnabled * fcInside * fcAcross * fcUp * ( 1.0 - fcGround );
+diffuseColor.rgb = mix( diffuseColor.rgb, ${pick((f) => vec3(f.glass))}, fcUpperGlass );
+
+// Shopfront bays: whole bays stretched to fill the wall between its
+// margins, glass between piers, a bulkhead below and a band above; each
+// direction fades to its average with distance, like the windows.
+float fcSpan = max( 0.01, fcWallLen - ${v(2 * WALL_MARGIN_M)} );
+float fcBayM = ${v(SHOP_BAY_M)} * ( 1.0 + ( fract( fcSeed * 53.7 + 0.41 ) - 0.5 ) * 2.0 * ${v(SHOP_BAY_VARY)} );
+float fcBays = max( 1.0, floor( fcSpan / fcBayM + 0.5 ) );
+float fcBu = ( vFacade.x - ${v(WALL_MARGIN_M)} ) / fcSpan * fcBays;
+float fcBdu = fwidth( fcBu );
+float fcPier = ${v(SHOP_PIER_M)} * fcBays / fcSpan;
+float fcShopAcrossDetail = 1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fcBdu );
+float fcShopUpDetail = 1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fcBdv );
+float fcShopSpan = mix( 1.0, facadeBox( fcBu, 0.0, fcBays, fcBdu ), fcShopAcrossDetail );
+float fcShopAcross = mix( 1.0 - fcPier, facadeBox( fract( fcBu ), 0.5 * fcPier, 1.0 - 0.5 * fcPier, fcBdu ), fcShopAcrossDetail );
+float fcGlassLo = ${v(SHOP_BULKHEAD_M)} / fcGroundM;
+float fcGlassHi = 1.0 - ${v(SHOP_GLASS_GAP_M)} / fcGroundM;
+float fcBandLo = 1.0 - ${v(SHOP_BAND[1])} / fcGroundM;
+float fcBandHi = 1.0 - ${v(SHOP_BAND[0])} / fcGroundM;
+float fcShopUp = mix( fcGlassHi - fcGlassLo, facadeBox( fcBv, fcGlassLo, fcGlassHi, fcBdv ), fcShopUpDetail );
+float fcBandUp = mix( fcBandHi - fcBandLo, facadeBox( fcBv, fcBandLo, fcBandHi, fcBdv ), fcShopUpDetail );
+float fcShopOn = fcEnabled * fcGround * fcShopSpan;
+float fcShopGlass = fcShopOn * fcShopAcross * fcShopUp;
+float fcBand = fcShopOn * fcBandUp;
+float fcAwning = step( fract( fcSeed * 71.9 + 0.23 ), ${v(AWNING_SHARE)} );
+vec3 fcBandColor = mix( diffuseColor.rgb * ${v(FASCIA_SHADE)}, uAwnings[ int( fract( fcSeed * 23.3 + 0.61 ) * 4.999 ) ], fcAwning );
+diffuseColor.rgb = mix( diffuseColor.rgb, fcBandColor, fcBand );
+diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SHOP_GLASS)}, fcShopGlass );
+
+float windowGlass = fcUpperGlass + fcShopGlass;
+float windowReflect = fcUpperGlass * ${pick((f) => v(f.reflect))} + fcShopGlass * ${v(SHOP_REFLECT)};
+float windowGlint = mix( ${pick((f) => v(f.glint))}, ${v(SHOP_GLINT)}, fcGround );
 `
 
 // After roughnessmap_fragment: panes are smoother than the wall.

@@ -59,6 +59,9 @@ export const palette = {
   // Street's dark red-brown carnelian granite.
   landmarkPaleStone: '#e6e1d6',
   landmarkGranite: '#5c4743',
+  // Storefront awning lines (facade.ts): muted canvas, the colors real
+  // awnings fade to -- forest, oxblood, navy, khaki, black.
+  awnings: ['#4f5d4a', '#6e3a33', '#3d4a5c', '#8c7a5e', '#2f3133'],
   buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
   // Roads (Streets.tsx, roads.ts) and paving (paving.ts): mid-gray asphalt,

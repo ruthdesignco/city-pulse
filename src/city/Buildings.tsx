@@ -20,7 +20,7 @@ const ROOF_SHADE = 0.8
 
 function buildGeometry(city: CityData): BufferGeometry {
   const started = performance.now()
-  const mesh = extrudeBuildings(city.buildings, city.header.ringMeters, city.header.pinnedMaterials)
+  const mesh = extrudeBuildings(city.buildings, city.header.ringMeters, city.header.pinnedMaterials, city.streets)
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(mesh.positions, 3))
   g.setAttribute('normal', new BufferAttribute(mesh.normals, 3))
@@ -28,6 +28,7 @@ function buildGeometry(city: CityData): BufferGeometry {
   g.setAttribute('colorIndex', new BufferAttribute(mesh.colorIndex, 1))
   g.setAttribute('facade', new BufferAttribute(mesh.facade, 4))
   g.setAttribute('material', new BufferAttribute(mesh.material, 1))
+  g.setAttribute('storefront', new BufferAttribute(mesh.storefront, 1))
   g.setIndex(new BufferAttribute(mesh.index, 1))
   g.computeBoundingSphere()
   console.info(
@@ -47,14 +48,15 @@ function buildMaterial(): MeshStandardMaterial {
     shader.uniforms.uStoneColors = { value: palette.stoneTowerColors.map((c) => new Color(c)) }
     shader.uniforms.uPaleStone = { value: new Color(palette.landmarkPaleStone) }
     shader.uniforms.uGranite = { value: new Color(palette.landmarkGranite) }
+    shader.uniforms.uAwnings = { value: palette.awnings.map((c) => new Color(c)) }
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float ring;\nattribute float colorIndex;\nattribute vec4 facade;\nattribute float material;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\nvarying vec4 vFacade;\nvarying float vMaterial;',
+        '#include <common>\nattribute float ring;\nattribute float colorIndex;\nattribute vec4 facade;\nattribute float material;\nattribute float storefront;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\nvarying vec4 vFacade;\nvarying float vMaterial;\nvarying float vStorefront;',
       )
       .replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\nvRing = ring;\nvY = position.y;\nvWall = 1.0 - step(0.5, normal.y);\nvColorIndex = colorIndex;\nvFacade = facade;\nvMaterial = material;',
+        '#include <begin_vertex>\nvRing = ring;\nvY = position.y;\nvWall = 1.0 - step(0.5, normal.y);\nvColorIndex = colorIndex;\nvFacade = facade;\nvMaterial = material;\nvStorefront = storefront;',
       )
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -74,7 +76,7 @@ function buildMaterial(): MeshStandardMaterial {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v11'
+  material.customProgramCacheKey = () => 'city-buildings-v12'
   return material
 }
 
