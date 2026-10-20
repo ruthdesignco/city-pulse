@@ -11,17 +11,17 @@ export const palette = {
   sky: '#c2bdae',
   skyZenith: '#8fb2d6', // sky background's upper-frame color: a real pale blue, not a tint of the horizon tan
 
-  // The ground beyond the baked city: San Francisco carries on past the
-  // context ring, so this is the hazy urban tone the ring's paving fades to
-  // (paving.ts: sidewalk mixed ~85% toward sky), not bare earth -- no seam
-  // or halo where the ring ends, and it melts into the fog and sky.
-  ground: '#c0bbac',
+  // Land beyond the baked city to the south and west (Ground.tsx): a muted
+  // gray-tan, the color of a city and hills seen from afar, a little darker
+  // than the haze so the fog visibly carries it into the sky. The ring's
+  // paving blends into it over paving.ts's EDGE_BLEND_M.
+  ground: '#a9a698',
 
-  // The Bay (Ground.tsx) and the East Bay hills beyond it: pale, closer to
-  // `skyZenith` than `ground`, so both read as "distance" even before fog
-  // finishes fading them -- water and far land already look closer to sky
-  // color than solid ground does, even up close.
-  bay: '#93aebe',
+  // The Bay (bay.ts, Ground.tsx): the muted gray-blue-green of its water
+  // seen from above in daylight, right at the piers; the fog carries it
+  // into the haze further out. The East Bay hills beyond it are pale, close
+  // to `skyZenith`, so they read as distance.
+  bay: '#5f7a86',
   hills: '#9aa7ad',
 
 

@@ -13,7 +13,7 @@ import { ringDim, ringPosition } from './ring.ts'
 
 export const CELL_M = 25
 // Past the ring's edge, paving blends into bare ground over this distance.
-export const EDGE_BLEND_M = 150
+export const EDGE_BLEND_M = 300
 
 export interface PavingGrid {
   position: Float32Array

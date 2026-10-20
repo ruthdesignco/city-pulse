@@ -46,20 +46,21 @@ export default function App() {
   const overlayHidden = useOverlayToggle()
   return (
     <WebGLGate>
-      {/* The bloom composer renders the whole scene again into a 4x
+      {/* The effect composer renders the whole scene again into a 4x
           multisampled half-float buffer, so pixel count is the frame cost:
           cap the pixel ratio at 1.5 (44% fewer pixels than 2 on Retina) and
           skip the canvas's own antialiasing, which the composer replaces. */}
       <Canvas
         dpr={[1, 1.5]}
         gl={{ antialias: false }}
-        // "soft" (PCFSoft) was removed in this three.js version -- it falls
-        // back to hard PCF with a console warning. VSM is the remaining
-        // soft-shadow type (Atmosphere.tsx's shadow-radius controls blur).
-        shadows="variance"
+        // PCF: hardware depth comparisons over a small disk (shadow-radius,
+        // Atmosphere.tsx), crisp edges without stair-steps. VSM's blur read
+        // as soft blobs on walls and roofs; "soft" (PCFSoft) was removed in
+        // this three.js version.
+        shadows="percentage"
         camera={{ position: START_POSE.position, fov: 40, near: 10, far: 20000 }}
       >
-        {/* Each independently-loading resource (HDRI, city.bin, routes.json)
+        {/* Each independently-loading resource (city.bin, routes.json)
             gets its own Suspense boundary. Sharing one boundary across
             siblings suspending on different promises that resolve at
             different real times makes React discard and remount the WHOLE

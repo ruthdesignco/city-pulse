@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import type { DirectionalLight, Group, Object3D } from 'three'
+import type { DirectionalLight, Group, Object3D, Vector3 } from 'three'
 import { palette } from '../city/palette.ts'
 import { createCloudTexture } from './cloudTexture.ts'
 import { SKY_INTENSITY, SKY_LIGHT_COLOR, SUN_INTENSITY } from './lighting.ts'
 import { createSkyBackgroundTexture } from './skyBackground.ts'
-import { SUN_POSITION, sunLightPosition } from './sun.ts'
+import { SHADOW_MAP_SIZE, fitShadow } from './shadowFit.ts'
+import { SUN_DISTANCE, sunLightPosition } from './sun.ts'
 import { TARGET } from './view.ts'
 
 // Fraction from the top of frame where the sun's glow reads, for the
@@ -22,8 +23,10 @@ const SUN_SCREEN_Y = 0.18
 // range, and a pulled-back, warm-but-neutral color grade throughout.
 //
 // The directional light is the scene's main light; the hemisphere light
-// fills shadows with the same warm-above/dark-below split.
-const SHADOW_EXTENT_M = 3600
+// fills shadows. Its shadow frustum follows the camera (shadowFit.ts).
+// Shadow-map texels per meter vary with the fit, so the biases scale with
+// the texel: enough to stop acne, not so much that shadows detach from walls.
+const SHADOW_NORMAL_BIAS_TEXELS = 0.75
 
 // Clouds drift by slowly rotating the whole layer about the vertical axis --
 // simpler than translating individual puffs and wrapping them at the edges,
@@ -85,8 +88,8 @@ export function Atmosphere() {
       scene.background = null
     }
   }, [scene, skyTexture])
-  // The shadow camera's ortho frustum (shadow-camera-left/right/top/bottom
-  // below) is centered on the light's target, which three.js defaults to
+  // The shadow camera's ortho frustum (sized each frame below, shadowFit.ts)
+  // is centered on the light's target, which three.js defaults to
   // world (0,0,0) if never set -- not TARGET, ~1800 m away, where the city
   // and camera actually are. Ground and buildings beyond the mismatched
   // frustum's edge fell outside shadow coverage and sampled as spuriously
@@ -96,8 +99,30 @@ export function Atmosphere() {
   useEffect(() => {
     if (lightRef.current && lightTargetRef.current) lightRef.current.target = lightTargetRef.current
   }, [])
-  useFrame((_state, delta) => {
+  // Last applied shadow fit, so the light only changes when the fit does.
+  const fitKey = useRef('')
+  useFrame((state, delta) => {
     if (cloudsRef.current) cloudsRef.current.rotation.y += CLOUD_DRIFT_RAD_PER_S * delta
+    const light = lightRef.current
+    const lightTarget = lightTargetRef.current
+    if (!light || !lightTarget) return
+    // OrbitControls (CameraRig, makeDefault) carry the point being looked at.
+    const orbit = (state.controls as unknown as { target?: Vector3 } | null)?.target
+    const look: [number, number, number] = orbit ? [orbit.x, orbit.y, orbit.z] : TARGET
+    const fit = fitShadow(look, state.camera.position.distanceTo({ x: look[0], y: look[1], z: look[2] } as Vector3))
+    const key = `${fit.center.join()},${fit.extent}`
+    if (key === fitKey.current) return
+    fitKey.current = key
+    lightTarget.position.set(...fit.center)
+    light.position.set(...sunLightPosition(fit.center))
+    const cam = light.shadow.camera
+    cam.left = -fit.extent
+    cam.right = fit.extent
+    cam.top = fit.extent
+    cam.bottom = -fit.extent
+    cam.far = SUN_DISTANCE + 2 * fit.extent
+    cam.updateProjectionMatrix()
+    light.shadow.normalBias = SHADOW_NORMAL_BIAS_TEXELS * fit.texel
   })
 
   return (
@@ -121,16 +146,10 @@ export function Atmosphere() {
         position={sunLightPosition(TARGET)}
         intensity={SUN_INTENSITY}
         castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-SHADOW_EXTENT_M}
-        shadow-camera-right={SHADOW_EXTENT_M}
-        shadow-camera-top={SHADOW_EXTENT_M}
-        shadow-camera-bottom={-SHADOW_EXTENT_M}
+        shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
         shadow-camera-near={10}
-        shadow-camera-far={SUN_POSITION[1] + SHADOW_EXTENT_M * 4}
-        shadow-bias={-0.0003}
-        shadow-normalBias={0.4}
-        shadow-radius={3}
+        shadow-bias={-0.0002}
+        shadow-radius={1.5}
       />
       <group ref={cloudsRef} position={[TARGET[0], CLOUD_HEIGHT_M, TARGET[2]]}>
         {CLOUD_PUFFS.map((p, i) => (

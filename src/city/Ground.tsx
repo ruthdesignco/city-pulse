@@ -3,6 +3,7 @@ import { BufferAttribute, BufferGeometry, Shape, ShapeGeometry, Vector2 } from '
 import { TARGET } from '../scene/view.ts'
 import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
+import { bayOutline } from './bay.ts'
 import { buildPaving } from './paving.ts'
 import { useCity } from './useCity.ts'
 
@@ -27,41 +28,21 @@ function buildPavingGeometry(city: CityData): BufferGeometry {
 // Shapes are built in (x, -z) and rotated -90° about X, which maps shape
 // (u, v) to scene (u, 0, -v); so v = -z lands the outline at scene z.
 
-// Downtown sits roughly north-northeast of TARGET (view.ts), and so does the
-// real SF Bay from this part of the city -- the Embarcadero waterfront is
-// just past the Financial District, and the East Bay hills sit across the
-// water beyond that. Bay/Hills below are placed along that same heading by
-// bearing+distance from TARGET rather than literal lat/lon, same
-// "art-directed, not simulated" tradeoff as sun.ts's fixed sun position.
-// Bearing convention matches Atmosphere.tsx's cloud placement: 0=south,
-// 90=east, 180=north (atan2(x,z) of a unit direction).
+// Hills are placed by bearing and distance from TARGET: 0 = south,
+// 90 = east, 180 = north (atan2(x, z) of a unit direction).
 function bearingPoint(bearingDeg: number, distanceM: number): [number, number] {
   const rad = (bearingDeg * Math.PI) / 180
   return [TARGET[0] + distanceM * Math.sin(rad), TARGET[2] + distanceM * Math.cos(rad)]
 }
 
-// A hand-authored coastline, not a rectangle -- a few irregular points near
-// downtown (where the shoreline actually is) closed by a wide arc far out
-// past the fog's far distance, so the bay's own far edge is never visible,
-// only the near shoreline against the city.
-const BAY_NEAR: Array<[number, number]> = [
-  [90, 2850],
-  [112, 3200],
-  [134, 2750],
-  [156, 3450],
-  [178, 3000],
-  [200, 3700],
-]
-const BAY_FAR_DISTANCE = 7200
-
+// The Bay (bay.ts): real waterfront, drawn over the ground and the paving
+// (the context ring reaches into the water at Mission Bay) but under the
+// sidewalks and roads, so the piers' streets and the Bay Bridge approach
+// stay on top.
 function buildBay(): ShapeGeometry {
-  const points = [
-    ...BAY_NEAR.map(([bearing, distance]) => bearingPoint(bearing, distance)),
-    ...[...BAY_NEAR].reverse().map(([bearing]) => bearingPoint(bearing, BAY_FAR_DISTANCE)),
-  ]
-  const shape = new Shape(points.map(([x, z]) => new Vector2(x, -z)))
-  return new ShapeGeometry(shape)
+  return new ShapeGeometry(new Shape(bayOutline().map(([x, z]) => new Vector2(x, -z))))
 }
+const WATER_Y = 0.15
 
 // Low, soft hill silhouettes along the same heading, further out than the
 // bay -- flattened spheres, not real terrain: the ground plane's z-buffer
@@ -96,34 +77,17 @@ export function Ground() {
   return (
     <>
       <group rotation-x={-Math.PI / 2}>
-        {/* A single plane again (an earlier pass here briefly added a
-            second, flat-colored backdrop plane to hide a dark horizon band
-            -- fixed, it just traded that bug for a flat tan plateau filling
-            the same area, since every pixel out there was the exact same
-            unlit hex). Centered on TARGET, not world origin: it was
-            centered at (0,0,0) before, ~1800 m off from where the camera
-            actually orbits, so the plane's edge sat at very different
-            distances in different view directions -- fully hidden by fog
-            in some, showing as a visible slanted line in others. Large
-            enough that its edge sits well past the fog's far distance in
-            every direction now, so it fades smoothly all the way out to
-            the same color the sky background uses at its own horizon. */}
+        {/* Land beyond the baked city -- San Francisco and the peninsula
+            carry on to the south and west -- in a muted land tone that the
+            fog (Atmosphere.tsx) fades into the sky's haze with distance.
+            Centered on TARGET and far larger than the fog's reach, so its
+            edge is never seen. */}
         <mesh position={[TARGET[0], -TARGET[2], -0.2]} receiveShadow>
           <planeGeometry args={[24000, 24000]} />
           <meshStandardMaterial color={palette.ground} />
         </mesh>
-        {/* Pale water, lifted just above the ground plane so it draws on
-            top within its own outline. */}
-        {/* Pale water, lifted just above the ground plane so it draws on
-            top within its own outline. At this camera's low, close
-            vantage, 2.8-7.5 km out compresses into a thin band near the
-            horizon regardless of what's there -- the base ground plane and
-            the hills below both do the same -- so this reads as a band of
-            water along the horizon line, not a large lake filling the
-            frame, which is the physically correct result, confirmed by a
-            debug pass that force-colored it solid magenta. */}
-        <mesh geometry={bay} position-z={-0.1} receiveShadow>
-          <meshStandardMaterial color={palette.bay} />
+        <mesh geometry={bay} position-z={WATER_Y} receiveShadow>
+          <meshStandardMaterial color={palette.bay} roughness={0.35} metalness={0} polygonOffset polygonOffsetFactor={-0.75} polygonOffsetUnits={-3} />
         </mesh>
       </group>
       <mesh geometry={paving} receiveShadow>
