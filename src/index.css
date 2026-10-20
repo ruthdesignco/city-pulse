@@ -101,6 +101,49 @@ body,
   color: #8e93b8;
 }
 
+/* Data credits (src/Credits.tsx): the freshness pill's look, bottom right,
+   quieter. Links are the only part of the overlay that takes the pointer. */
+.credits {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(27 30 48 / 0.72);
+  backdrop-filter: blur(6px);
+  color: #8e93b8;
+  font: 500 11px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.credits a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.credits a:hover {
+  color: #c9cde8;
+  text-decoration: underline;
+}
+
+.credits a + a::before {
+  content: '·';
+  display: inline-block;
+  padding: 0 6px;
+  color: #6c7199;
+}
+
+/* Narrow screens: above the freshness pill, not over it. */
+@media (max-width: 720px) {
+  .credits {
+    bottom: 52px;
+    border-radius: 12px;
+  }
+}
+
 /* Full-page fallbacks: a failed loader (src/ErrorBoundary.tsx) or no WebGL
    (src/scene/WebGLGate.tsx). Same dark backing as the canvas, so there's no
    flash of white while nothing has rendered yet. */

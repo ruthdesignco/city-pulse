@@ -31,6 +31,8 @@ const SWATCHES: [string, string][] = [
   ['bus body', palette.liveryBody],
   ['rail body', palette.liveryRail],
   ['cable wood', palette.cableWood],
+  ['tree bright', palette.treeGreens[0]],
+  ['tree deep', palette.treeGreens[1]],
 ]
 
 const SIZE_M = 40

@@ -4,9 +4,11 @@ import { Stats } from '@react-three/drei'
 import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
+import { Credits } from './Credits.tsx'
 import { CALIBRATE, DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, VIEW } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Streets } from './city/Streets.tsx'
+import { Trees } from './city/Trees.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
 import { Calibration } from './scene/Calibration.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
@@ -60,7 +62,7 @@ export default function App() {
         shadows="percentage"
         camera={{ position: START_POSE.position, fov: 40, near: 10, far: 20000 }}
       >
-        {/* Each independently-loading resource (city.bin, routes.json)
+        {/* Each independently-loading resource (city.bin, trees.bin, routes.json)
             gets its own Suspense boundary. Sharing one boundary across
             siblings suspending on different promises that resolve at
             different real times makes React discard and remount the WHOLE
@@ -75,6 +77,9 @@ export default function App() {
           <Ground />
           <Streets />
           <Buildings />
+        </Suspense>
+        <Suspense fallback={null}>
+          <Trees />
         </Suspense>
         <Suspense fallback={null}>
           {/* A looping recording restarts its clock: start the buses fresh. */}
@@ -96,6 +101,7 @@ export default function App() {
       </Canvas>
       {!overlayHidden && <Freshness feed={feed} />}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
+      <Credits />
     </WebGLGate>
   )
 }

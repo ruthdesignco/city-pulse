@@ -69,6 +69,15 @@ export const palette = {
   sidewalk: '#b4b0a7',
   laneMarking: '#d6d3ca',
 
+  // Street trees (Trees.tsx), by treeSpecies.ts TreeTone: natural, muted
+  // greens, as foliage really is in sun (leaves reflect only ~10-15%), each
+  // tree shifted slightly from its family's value. Bright for plane trees,
+  // elms, ginkgo and most deciduous trees; deep for glossy evergreens (fig,
+  // magnolia, Brisbane box); gray-green for eucalypts, olives and tea trees;
+  // palms a touch yellower. Trunks one warm gray-brown.
+  treeGreens: ['#65774b', '#4d6440', '#6e7a66', '#6f7849'],
+  treeTrunk: '#5e5246',
+
   // Vehicle models (vehicleModels.ts): lit by the sun like the buildings, in
   // their real body colors at every distance. Generic liveries, no operator
   // branding: off-white buses and silver light rail with a muted stripe,
