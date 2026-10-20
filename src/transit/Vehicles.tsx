@@ -161,7 +161,8 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
     }
   })
 
-  // Instances span the whole city; the model geometry's own bounds would cull them.
+  // Instances span the whole city; the model geometry's own bounds would cull
+  // them. Too small to matter in the Bay's reflection (BayWater.tsx).
   return (
     <>
       {KINDS.map((kind) => (
@@ -175,6 +176,7 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
           frustumCulled={false}
           castShadow
           receiveShadow
+          userData={{ noReflect: true }}
         />
       ))}
     </>

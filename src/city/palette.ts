@@ -17,11 +17,13 @@ export const palette = {
   // paving blends into it over paving.ts's EDGE_BLEND_M.
   ground: '#a9a698',
 
-  // The Bay (bay.ts, Ground.tsx): the muted gray-blue-green of its water
-  // seen from above in daylight, right at the piers; the fog carries it
-  // into the haze further out. The East Bay hills beyond it are pale, close
-  // to `skyZenith`, so they read as distance.
-  bay: '#5f7a86',
+  // The Bay (bay.ts, BayWater.tsx): the muted gray-green of its water. This
+  // is Water.js's body color, which it scales by how directly the water is
+  // seen (~0.6 from the opening camera) before adding reflection, so it sits
+  // brighter than the color that ends up on screen. The fog carries it into
+  // the haze further out. The East Bay hills beyond it are pale, close to
+  // `skyZenith`, so they read as distance.
+  bay: '#82968f',
   hills: '#9aa7ad',
 
 

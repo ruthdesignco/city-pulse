@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from 'react'
-import { BufferAttribute, BufferGeometry, Shape, ShapeGeometry, Vector2 } from 'three'
+import { BufferAttribute, BufferGeometry } from 'three'
 import { TARGET } from '../scene/view.ts'
 import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
-import { bayOutline } from './bay.ts'
+import { BayWater } from './BayWater.tsx'
 import { buildPaving } from './paving.ts'
 import { useCity } from './useCity.ts'
 
@@ -35,13 +35,10 @@ function bearingPoint(bearingDeg: number, distanceM: number): [number, number] {
   return [TARGET[0] + distanceM * Math.sin(rad), TARGET[2] + distanceM * Math.cos(rad)]
 }
 
-// The Bay (bay.ts): real waterfront, drawn over the ground and the paving
-// (the context ring reaches into the water at Mission Bay) but under the
-// sidewalks and roads, so the piers' streets and the Bay Bridge approach
-// stay on top.
-function buildBay(): ShapeGeometry {
-  return new ShapeGeometry(new Shape(bayOutline().map(([x, z]) => new Vector2(x, -z))))
-}
+// The Bay (bay.ts, BayWater.tsx): real waterfront, drawn over the ground and
+// the paving (the context ring reaches into the water at Mission Bay) but
+// under the sidewalks and roads, so the piers' streets and the Bay Bridge
+// approach stay on top.
 const WATER_Y = 0.15
 
 // Low, soft hill silhouettes along the same heading, further out than the
@@ -70,9 +67,7 @@ const HILLS: Hill[] = [
 export function Ground() {
   const city = useCity()
   const paving = useMemo(() => buildPavingGeometry(city), [city])
-  const bay = useMemo(() => buildBay(), [])
   useEffect(() => () => paving.dispose(), [paving])
-  useEffect(() => () => bay.dispose(), [bay])
 
   return (
     <>
@@ -82,15 +77,13 @@ export function Ground() {
             fog (Atmosphere.tsx) fades into the sky's haze with distance.
             Centered on TARGET and far larger than the fog's reach, so its
             edge is never seen. */}
-        <mesh position={[TARGET[0], -TARGET[2], -0.2]} receiveShadow>
+        <mesh position={[TARGET[0], -TARGET[2], -0.2]} receiveShadow userData={{ noReflect: true }}>
           <planeGeometry args={[24000, 24000]} />
           <meshStandardMaterial color={palette.ground} />
         </mesh>
-        <mesh geometry={bay} position-z={WATER_Y} receiveShadow>
-          <meshStandardMaterial color={palette.bay} roughness={0.35} metalness={0} polygonOffset polygonOffsetFactor={-0.75} polygonOffsetUnits={-3} />
-        </mesh>
+        <BayWater y={WATER_Y} />
       </group>
-      <mesh geometry={paving} receiveShadow>
+      <mesh geometry={paving} receiveShadow userData={{ noReflect: true }}>
         <meshStandardMaterial vertexColors roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} polygonOffsetUnits={-2} />
       </mesh>
       {HILLS.map((hill, i) => {

@@ -98,11 +98,12 @@ export function Streets() {
   useEffect(() => () => Object.values(layers).forEach((g) => g.dispose()), [layers])
   useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials])
 
+  // Flat at street level: nothing the Bay's reflection could show (BayWater.tsx).
   return (
     <>
-      <mesh geometry={layers.sidewalk} material={materials.sidewalk} receiveShadow />
-      <mesh geometry={layers.asphalt} material={materials.asphalt} receiveShadow />
-      <mesh geometry={layers.markings} material={materials.markings} receiveShadow />
+      <mesh geometry={layers.sidewalk} material={materials.sidewalk} receiveShadow userData={{ noReflect: true }} />
+      <mesh geometry={layers.asphalt} material={materials.asphalt} receiveShadow userData={{ noReflect: true }} />
+      <mesh geometry={layers.markings} material={materials.markings} receiveShadow userData={{ noReflect: true }} />
     </>
   )
 }
