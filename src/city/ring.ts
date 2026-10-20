@@ -1,20 +1,24 @@
 // The context ring: everything baked outside the three neighborhoods (up to
-// ringMeters out). It fades toward the sky so the neighborhoods read as the
-// subject: a clear step at the boundary, then deeper with distance.
+// ringMeters out). It fades gently toward the haze with distance, so the
+// neighborhoods stay the subject without the ring looking washed out: no
+// step at the boundary (a jump straight to 50% read as a pale band across
+// the city), easing in to RING_DIM_MAX at the ring's edge. The Financial
+// District's towers sit 0.6-1.3 km out, so this keeps the skyline crisp.
 //
 // Buildings carry their ring position from the bake (extrude.ts, `ring`);
 // streets don't, so ringPosition() works it out from the boundary polygons.
 
 import { COORD_QUANTUM, type CityData } from './format.ts'
 
-// How far toward the sky color a ring feature is mixed: RING_DIM_MIN just
-// outside the boundary, up to RING_DIM_MIN + RING_DIM_RANGE at the ring's edge.
-export const RING_DIM_MIN = 0.5
-export const RING_DIM_RANGE = 0.35
+// How far toward the haze a ring feature is mixed at the ring's outer edge.
+export const RING_DIM_MAX = 0.3
 
-// `ring` is 0 inside the neighborhoods, rising to 1 at the ring's outer edge.
+// `ring` is 0 inside the neighborhoods, rising to 1 at the ring's outer
+// edge: 0 there, eased (smoothstep) up to RING_DIM_MAX. Buildings.tsx
+// computes the same curve in GLSL.
 export function ringDim(ring: number): number {
-  return ring > 0 ? RING_DIM_MIN + RING_DIM_RANGE * Math.min(1, ring) : 0
+  const t = Math.min(1, Math.max(0, ring))
+  return RING_DIM_MAX * t * t * (3 - 2 * t)
 }
 
 // 0 inside any boundary polygon, else distance to the nearest boundary edge

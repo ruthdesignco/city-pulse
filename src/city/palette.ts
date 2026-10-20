@@ -24,11 +24,8 @@ export const palette = {
   // is Water.js's body color, which it scales by how directly the water is
   // seen (~0.6 from the opening camera) before adding reflection, so it sits
   // brighter than the color that ends up on screen. The fog carries it into
-  // the haze further out. The East Bay hills beyond it are pale, close to
-  // the haze, so they read as distance.
+  // the haze further out.
   bay: '#90a69b',
-  hills: '#9aa7ad',
-
 
   // Three color families by OSM building type/height, each with 3
   // deterministic per-building shade variants (scripts/lib/buildingColor.ts:

@@ -8,7 +8,7 @@
 // to at the bake area's edge (paving.ts): the textured land and the paving
 // meet without a seam once mipmapping averages the tile out.
 
-import { Color, DataTexture, LinearMipmapLinearFilter, RepeatWrapping, RGBAFormat, SRGBColorSpace } from 'three'
+import { Color, DataTexture, LinearMipmapLinearFilter, MeshStandardMaterial, RepeatWrapping, RGBAFormat, SRGBColorSpace } from 'three'
 import { palette } from './palette.ts'
 
 export const LAND_TILE_SIZE = 256
@@ -20,8 +20,8 @@ const BLOCKS = 16
 const STREET = 0.14
 // Brightness of streets, and the spread of block tones, relative to the
 // mean: kept low, so from afar it reads as mottled city, not a grid.
-const STREET_TONE = 0.92
-const BLOCK_SPREAD = 0.12
+const STREET_TONE = 0.94
+const BLOCK_SPREAD = 0.1
 const GRAIN = 0.06
 // Broad, soft patches across the tile (neighborhoods, parks, hills in
 // shadow) that break up the block grid's regularity: a few sine waves with
@@ -89,4 +89,44 @@ export function createLandTexture(): DataTexture {
   t.anisotropy = 8
   t.needsUpdate = true
   return t
+}
+
+// The land's material: the tile sampled twice, at different scales and
+// rotated against each other, and averaged, so neither copy's repeat lines
+// up into a visible grid; then shaded by broad value noise in world meters
+// (BROAD_M and BROAD_M / 3, +-BROAD_AMOUNT), patches far larger than any
+// tile. Both keep the mean at palette.ground.
+const SECOND_SCALE = 0.61
+const SECOND_ANGLE = 0.64 // radians, ~37 deg
+const BROAD_M = 2600
+const BROAD_AMOUNT = 0.12
+
+export function createLandMaterial(map: DataTexture): MeshStandardMaterial {
+  const material = new MeshStandardMaterial({ map, roughness: 0.95 })
+  const c = Math.cos(SECOND_ANGLE).toFixed(4)
+  const sn = Math.sin(SECOND_ANGLE).toFixed(4)
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+float landHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+float landNoise( vec2 p ) {
+  vec2 i = floor( p );
+  vec2 f = fract( p );
+  vec2 u = f * f * ( 3.0 - 2.0 * f );
+  return mix( mix( landHash( i ), landHash( i + vec2( 1.0, 0.0 ) ), u.x ), mix( landHash( i + vec2( 0.0, 1.0 ) ), landHash( i + vec2( 1.0, 1.0 ) ), u.x ), u.y );
+}`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `vec4 tileA = texture2D( map, vMapUv );
+vec4 tileB = texture2D( map, mat2( ${c}, ${sn}, -${sn}, ${c} ) * vMapUv * ${SECOND_SCALE.toFixed(4)} + vec2( 0.37, 0.71 ) );
+vec2 meters = vMapUv * ${LAND_TILE_M.toFixed(1)};
+float broad = 0.65 * landNoise( meters / ${BROAD_M.toFixed(1)} ) + 0.35 * landNoise( meters / ${(BROAD_M / 3).toFixed(1)} + 17.0 );
+diffuseColor.rgb *= 0.5 * ( tileA.rgb + tileB.rgb ) * ( 1.0 + ${(2 * BROAD_AMOUNT).toFixed(3)} * ( broad - 0.5 ) );`,
+      )
+  }
+  material.customProgramCacheKey = () => 'land-v1'
+  return material
 }

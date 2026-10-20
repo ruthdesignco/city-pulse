@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { COORD_QUANTUM } from './format.ts'
-import { RING_DIM_MIN, RING_DIM_RANGE, ringDim, ringPosition } from './ring.ts'
+import { RING_DIM_MAX, ringDim, ringPosition } from './ring.ts'
 
 // Two 1 km squares, as baked: Int16 coordinates in COORD_QUANTUM units.
 const q = (v: number) => Math.round(v / COORD_QUANTUM)
@@ -23,11 +23,13 @@ describe('ringPosition', () => {
 })
 
 describe('ringDim', () => {
-  it('leaves the neighborhoods alone, steps down at the boundary, and deepens outward', () => {
+  it('leaves the neighborhoods alone and eases in from the boundary, with no step', () => {
     expect(ringDim(0)).toBe(0)
-    expect(ringDim(0.001)).toBeCloseTo(RING_DIM_MIN, 2)
-    expect(ringDim(1)).toBeCloseTo(RING_DIM_MIN + RING_DIM_RANGE)
-    expect(ringDim(5)).toBeCloseTo(RING_DIM_MIN + RING_DIM_RANGE)
+    expect(ringDim(0.01)).toBeLessThan(0.001)
+    expect(ringDim(1)).toBeCloseTo(RING_DIM_MAX)
+    expect(ringDim(5)).toBeCloseTo(RING_DIM_MAX)
     expect(ringDim(0.5)).toBeGreaterThan(ringDim(0.1))
+    // Smooth: no jump anywhere along the ring.
+    for (let r = 0; r < 1; r += 0.01) expect(ringDim(r + 0.01) - ringDim(r)).toBeLessThan(0.006)
   })
 })

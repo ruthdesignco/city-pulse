@@ -3,7 +3,7 @@ import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'th
 import type { CityData } from './format.ts'
 import { extrudeBuildings } from './extrude.ts'
 import { palette } from './palette.ts'
-import { RING_DIM_MIN, RING_DIM_RANGE } from './ring.ts'
+import { RING_DIM_MAX } from './ring.ts'
 import { useCity } from './useCity.ts'
 
 // Walls (not roofs) reach full color by this height; below it they blend
@@ -58,11 +58,11 @@ function buildMaterial(): MeshStandardMaterial {
         diffuseColor.rgb = uBuildingColors[int(vColorIndex + 0.5)];
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
-        diffuseColor.rgb = mix(diffuseColor.rgb, uDim, vRing > 0.0 ? ${RING_DIM_MIN.toFixed(2)} + ${RING_DIM_RANGE.toFixed(2)} * vRing : 0.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, vRing));
         diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);`,
       )
   }
-  material.customProgramCacheKey = () => 'city-buildings-v7'
+  material.customProgramCacheKey = () => 'city-buildings-v8'
   return material
 }
 

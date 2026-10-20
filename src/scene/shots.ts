@@ -91,12 +91,12 @@ export const SHOTS: Shot[] = [
 const ON_MARKET_3RD: Vec3 = [741, 0, -2078]
 const UP_MARKET = -0.79
 
-// Low and cinematic: ~140 m up over the SoMa-Mission edge, looking
-// north-northeast across SoMa at a point on the ground ~1.2 km ahead, so the
-// horizon sits a third of the way down the frame and the downtown skyline
-// stands up against the sky (Salesforce Tower's top ~18% of the frame above
-// the horizon), the Bay off to its right.
-const ACROSS_SOMA: Vec3 = [703, 0, -757]
+// Low and cinematic, down Market Street: 115 m up over Market's centerline
+// near 9th (the F line's track: straight from Van Ness (-549, -794) to 3rd
+// (741, -2078)), looking northeast along it at a point on the street 700 m
+// ahead, so Market's traffic leads the eye up the frame to the downtown
+// skyline, which stands against the sky.
+const CINEMATIC: Pose = { position: [-124, 115, -1217], target: [372, 0, -1711] }
 
 // High above the city, clear of every tower and its shadow (Salesforce
 // Tower is ~330 m): where ?calibrate puts its swatches (Calibration.tsx),
@@ -107,7 +107,7 @@ export const PRESETS: Record<string, Pose> = {
   opening: OPENING,
   calibrate: poseAround(CALIBRATION_CENTER, 400, 0.15, -0.47),
   market: poseAround(ON_MARKET_3RD, 380, 0.75, UP_MARKET),
-  cinematic: poseAround(ACROSS_SOMA, 1158, 1.45, -0.405),
+  cinematic: CINEMATIC,
 }
 
 // A preset by name, or the opening view for none or an unknown one.

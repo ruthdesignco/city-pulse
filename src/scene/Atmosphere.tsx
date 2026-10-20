@@ -18,6 +18,9 @@ import { TARGET } from './view.ts'
 // the texel: enough to stop acne, not so much that shadows detach from walls.
 const SHADOW_NORMAL_BIAS_TEXELS = 0.75
 
+const FOG_NEAR_M = 4500
+const FOG_FAR_M = 10000
+
 export function Atmosphere() {
   const lightRef = useRef<DirectionalLight>(null)
   const lightTargetRef = useRef<Object3D>(null)
@@ -64,14 +67,14 @@ export function Atmosphere() {
           palette color, neutral -- the sun's warmth shows only on faces it
           hits, the sky's cool only in shadow. */}
       <hemisphereLight args={[SKY_LIGHT_COLOR, palette.bounce, SKY_INTENSITY]} />
-      {/* City buildings mostly sit within ~2-3 km of TARGET (SPEC.md): near
-          keeps most of downtown crisp. far is gentle enough, now that
-          Ground.tsx's plane is a mid-gray instead of near-black, to read as
-          a continuous haze gradient out to its edge rather than either a
-          dark band (too-short far, old dark ground) or a flat plateau
-          (full convergence too early). Its color follows the sky's horizon
-          as the camera turns (SkyDome.tsx); palette.sky is where it starts. */}
-      <fog attach="fog" args={[palette.sky, 2000, 8000]} />
+      {/* Haze for the far distance only: the city and its skyline sit
+          within ~3 km of the camera in the opening view and stay crisp
+          (starting at 2 km washed the Financial District blue-gray); past
+          FOG_NEAR_M the land and water fade into the sky, fully by
+          FOG_FAR_M, well inside the land plane's edge (Ground.tsx). Its
+          color follows the sky's horizon as the camera turns (SkyDome.tsx);
+          palette.sky is where it starts. */}
+      <fog attach="fog" args={[palette.sky, FOG_NEAR_M, FOG_FAR_M]} />
       <object3D ref={lightTargetRef} position={TARGET} />
       <directionalLight
         ref={lightRef}
