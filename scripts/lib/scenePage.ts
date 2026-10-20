@@ -68,7 +68,9 @@ export async function withScenePage(label: string, query: Record<string, string>
       if (!res.ok()) console.error(`${label}: [http ${res.status()}] ${res.url()}`)
     })
     await page.goto(`${url}?${new URLSearchParams({ demo: '', quality: 'high', ...query })}`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('canvas', { timeout: 15_000 })
+    // SwiftShader can hold the main thread for many seconds compiling the
+    // city's shaders on a slow CI runner; give the page longer to answer there.
+    await page.waitForSelector('canvas', { timeout: SOFTWARE_GL ? 60_000 : 15_000 })
     await page.waitForTimeout(SETTLE_MS)
     await withPage(page, report)
   } finally {
