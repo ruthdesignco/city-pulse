@@ -83,6 +83,25 @@ DataSF moved from data.sfgov.org to data.sf.gov in 2026; the old host answers wi
 - **Interpolation hides dead feeds.** That's why freshness dimming ships in Weekend 1.
 - **The OSM bake will take longer than expected.** Timebox it.
 
+## Operations
+- **Recovery: everything in Supabase is derived data, so there are no backups.** It holds the last two observations per vehicle, the run log and the poll budget. If the project is lost:
+  1. Re-apply `supabase/migrations/`.
+  2. Re-create the two Vault secrets: `poller_secret` generated in SQL (see the rotation comment in `20261019040000_poller_secret_from_vault.sql`), and `healthcheck_url` pasted in Studio.
+  3. Redeploy the poller (Tyler, with `--project-ref`). It refills `current_state` within about 2 minutes.
+  4. The baked files are in git; the site is Vercel's.
+- **Poller secret rotation:** rotated 2026-10-19 02:52:37 UTC, after the leak (Vault `updated_at`, checked by Tyler in Studio on 2026-10-20). To rotate again, run `vault.update_secret` with `gen_random_bytes` in Studio's SQL editor, as that migration's header shows. The value is never displayed.
+- **Standing rule: every Supabase CLI command passes `--project-ref jegmwhfbdhohvysbmjdw`.** Incident 1 (2026-10-18): `secrets set` ran without it, and the CLI's project picker defaulted to the first project in the account. The other project was checked that night: no custom secrets, nothing overwritten, the stray secret unset. No worktree was ever linked to it.
+- **Healthchecks pings only when an `ok` run advanced the feed** (`20261020090000`), so a dead poller and a frozen-but-200 feed both alert. Uptime checks on `/` and `/city.bin` are to cover the site (Tyler to set up, any free monitor).
+- **When an alert fires (the 2 a.m. runbook):**
+  1. Open the live site. The pill says how old the newest Muni data is.
+  2. In Studio, look at the newest `ingest_runs` rows (errors are redacted).
+     - `ok` but the pill is going stale: 511 is serving a frozen snapshot. Nothing to fix on our side; if it lasts, email developerresources@511.org.
+     - `error` with `http_status` 401 or 403: the 511 key. 429: the hourly budget. 5xx: a 511 outage, so wait.
+     - `running` rows that never finish: the function is dying mid-poll. Check Edge Functions logs.
+     - No rows for more than 2 minutes: cron, the function, or the project (paused or spend-capped). Check Database, Cron jobs, then the project's billing.
+  3. Site down (uptime check): Vercel, Deployments, roll back to the last good one.
+  4. For a demo while the feed is down: `?replay=morning` (or `dusk`), always badged "Recorded".
+
 ## Decision log
 - Rooftop detail; matte punched windows (2026-10-20): flat roofs carry procedural HVAC units, stair and elevator penthouses, a tower's mechanical penthouse and the occasional wooden water tank (`rooftops.ts`, `Rooftops.tsx`), worked out at load from city.bin by the building's facade seed (deterministic), sized by footprint and family: commercial roofs get more and bigger HVAC, residential fewer; penthouses on mid-rises (in the building's own color) and a footprint-sized one on towers; tanks on ~12% of 15-50 m non-towers. Items sit inside the roof edge, aligned with the longest wall, never overlapping; pinned landmarks get none. 47,258 items on 23,496 roofs (43,303 HVAC, 3,769 penthouses, 186 tanks), ~70 ms. Each item sinks into its roof as it shrinks from 6 to 3 px on screen, its shadow from 12 to 6 px (measured from the viewing camera in the shadow pass too), so big penthouses outlast HVAC and nothing pops; only items still on screen are written to the instance buffers, reassigned after the camera moves 3% of its height. Without that culling all 47k went through every pass and cost up to 24 fps; with it 87/87/90 fps (opening/cinematic/market) vs 89/95/92 before. Punched windows and shopfronts read as pale gray blanks on sunlit walls seen at a grazing angle: they now get no sky reflection and no specular at all (`FACADE_SPECULAR`), only glass towers reflect; a sunlit window renders ~#3d4545 against its cream wall. Calibrate unchanged
 - Street-level preset; underground stations no longer extruded (2026-10-20): `?view=street` is 30 m up over the middle of Market between 6th and 7th, looking 300 m along it to the skyline: the stretch with the most storefront walls in view (scored along Market against street trees); 5th-6th's plane trees hid the shop floors. Trying 4th exposed a bake bug: Powell Street Station's concourse (`building=train_station`, `location=underground`, 300 m long) had been extruded to the 8 m default height across Market, also visible in `?view=market`. The bake now skips `location=underground` buildings (6, including Market's subway stations). Rebaked from `norcal-261017.osm.pbf`: 27,463 buildings (was 27,469), city.bin 1,025 KB; trees rebaked from the cached inventory: 33,298 (was 33,214; trees under the station slabs were being dropped as inside a footprint), trees.bin 260 KB
@@ -106,7 +125,7 @@ DataSF moved from data.sfgov.org to data.sf.gov in 2026; the old host answers wi
 - Append only incident log kept for V2 replay
 - Supabase free during build, Pro at public launch
 - Vercel for hosting
-- Build in an isolated Claude Code profile
+- Build in an isolated Claude Code profile: **planned, not yet in place** (2026-10-20 review). The realism sessions ran in auto mode with mail, workspace and browser skills installed, and read untrusted web content with the sandbox off for network calls. What did hold: the Supabase MCP is project-scoped and read-only, and the agent's Supabase CLI is logged out
 - Live Muni (2026-10-18):
   - pg_cron ticks the poller every 20 s and every tick is logged to `ingest_runs`; a 511 call needs 75 s since the last one and calls left in a fixed hourly window of 60, claimed by compare-and-swap on `poll_budget`. In practice one call every ~80 s, ~45/hour
   - The poller only answers an `x-poller-secret` header and fails closed without one; deployed with `--no-verify-jwt`. The secret lives only in Vault: generated in SQL, never displayed, sent by pg_cron and checked by the function through the service-role-only `poller_secret()` RPC (cached per isolate, reloaded on mismatch at most every 30 s). Tyler runs every deploy and secret command himself, always with `--project-ref`; the agent never does. Every error is redacted of the 511 key before it is stored or logged
