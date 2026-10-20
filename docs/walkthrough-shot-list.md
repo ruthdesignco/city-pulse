@@ -15,12 +15,23 @@ Record at golden hour SF time, so the real light matches the scene's; keep recor
 | 8 | 1:40–2:00 | How it was built | Cut to SPEC.md, board scorecard, commit log | Decision log scrolling; caption: "Board members are AI personas modeled on public writing, not the real people." | "Spec first, reviewed by a board of AI advisors, built with Claude Code, every decision logged." |
 
 ## Facts behind the voiceover
-- Buildings: the bake has 27,115, of which 10,524 are inside the three neighborhoods (`public/city.bin`).
+- Buildings: the bake has 27,463, of which 10,521 are inside the three neighborhoods (`public/city.bin`, rebaked 2026-10-20).
+- Street trees: 33,298 from DataSF's street tree inventory (`public/trees.bin`).
+- Illustrative, not data: building materials, windows, storefronts, rooftop equipment, vehicle scale (up to 3x at distance) and the fixed golden-hour light. Don't call those "real" in the voiceover.
 - Update cadence: the poller calls 511 about every 75–80 s (SPEC.md decision log).
 - Shot 5 is staged: the replay stops delivering snapshots on purpose, and the badge says so on screen.
 
 ## Recording setup
-- Demo mode: open with `?demo`. The FPS counter is hidden, `h` toggles the freshness pill (shot 1), and keys 1–7 play each shot's camera move the same way every take. Esc or a drag stops a move.
-- Backup recording: at golden hour, `npm run record -- --name dusk --minutes 15`, then commit `public/recordings/dusk.json` (the name is just a label). Play it with `?replay=dusk`; it is always badged "Recorded".
-- Shot 5: `?demo&replay=dusk&start=100&hold=0`, press 5 and roll. Vehicles fade and the pill turns stale within about a minute.
+- Open with `?demo&quality=high`. `quality=high` pins full render quality: without it, the screen recorder's own load can make the frame-rate monitor step the scene down mid-take (src/scene/quality.ts). The credits line stays on screen in every shot; it's required.
+- Demo mode: `?demo`. The FPS counter is hidden, `h` toggles the freshness pill (shot 1), and keys 1–7 play each shot's camera move the same way every take. Esc or a drag stops a move.
+- Backup recordings: `public/recordings/morning.json` (recorded 2026-10-20, about 9:45 a.m.) is committed. For one that matches the light, at golden hour run `npm run record -- --name dusk --minutes 15` and commit `public/recordings/dusk.json` (the name is just a label). Play either with `?replay=<name>`; it's always badged "Recorded".
+- Shot 5: `?demo&quality=high&replay=dusk&start=100&hold=0` (or `replay=morning`), press 5 and roll. Vehicles fade and the pill turns stale within about a minute.
+
+## Recording-day checklist
+1. Healthchecks shows the poller check green.
+2. In Supabase, the newest `ingest_runs` row is `ok` and under 2 minutes old.
+3. The live site's pill reads "Muni · live".
+4. With the screen recorder running, `?fps` holds 60 at 1080p. Only then say "at full frame rate" in shot 7.
+5. If 511 or Supabase is down: record the whole walkthrough from a replay (it's served by Vercel, not Supabase), badged "Recorded", and change the voiceover from "live" to "recorded live".
+6. If Vercel is down: `npm run build && npm run preview` locally, with the replay.
 - Screen recording at 60 fps, 1080p minimum.
