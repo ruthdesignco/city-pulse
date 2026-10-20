@@ -64,4 +64,21 @@ describe('extrudeBuildings', () => {
     expect(g.colorIndex[0]).toBe(4) // first building (4 counts -> 4*2+4=12 verts)
     expect(g.colorIndex[g.colorIndex.length - 1]).toBe(8) // second building
   })
+
+  it('carries wall position, wall length, height and a seed per vertex for the windows', () => {
+    const f = (v: number) => Array.from(g.facade.slice(v * 4, v * 4 + 4))
+    // First wall of the 10 x 10 m, 20 m building: from (0,0) to (10,0).
+    const [u0, len0, h0, seed] = f(0)
+    expect([u0, len0, h0]).toEqual([0, 10, 20])
+    expect(f(1).slice(0, 3)).toEqual([10, 10, 20]) // bottom right
+    expect(f(2).slice(0, 3)).toEqual([10, 10, 20]) // top right
+    expect(f(3).slice(0, 3)).toEqual([0, 10, 20]) // top left
+    expect(seed).toBeGreaterThanOrEqual(0)
+    expect(seed).toBeLessThan(1)
+    // Every vertex of a building shares its seed; roofs have no wall length.
+    for (let v = 0; v < 20; v++) expect(f(v)[3]).toBe(seed)
+    expect(f(16)[1]).toBe(0)
+    // The other building gets its own seed.
+    expect(f(g.facade.length / 4 - 1)[3]).not.toBe(seed)
+  })
 })

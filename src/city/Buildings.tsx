@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import type { CityData } from './format.ts'
 import { extrudeBuildings } from './extrude.ts'
+import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS } from './facade.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
 import { useCity } from './useCity.ts'
@@ -12,6 +13,7 @@ import { useCity } from './useCity.ts'
 const BASE_FADE_M = 12
 const BASE_FLOOR = 0.55 // darkest a wall gets at street level, as a mix toward full color
 // Context-ring buildings blend toward the sky color as ring.ts's ringDim().
+// Walls get procedural windows (facade.ts).
 // Roofs face the whole sky fill and read brightest from above; most real
 // flat roofs (tar, gravel, membrane) are darker than the walls anyway.
 const ROOF_SHADE = 0.8
@@ -24,6 +26,7 @@ function buildGeometry(city: CityData): BufferGeometry {
   g.setAttribute('normal', new BufferAttribute(mesh.normals, 3))
   g.setAttribute('ring', new BufferAttribute(mesh.ring, 1))
   g.setAttribute('colorIndex', new BufferAttribute(mesh.colorIndex, 1))
+  g.setAttribute('facade', new BufferAttribute(mesh.facade, 4))
   g.setIndex(new BufferAttribute(mesh.index, 1))
   g.computeBoundingSphere()
   console.info(
@@ -38,31 +41,36 @@ function buildMaterial(): MeshStandardMaterial {
     shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
     shader.uniforms.uDim = { value: new Color(palette.sky) }
     shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
+    // What the windows reflect (facade.ts): the haze at the horizon.
+    shader.uniforms.uSkyReflection = { value: new Color(palette.sky) }
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float ring;\nattribute float colorIndex;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;',
+        '#include <common>\nattribute float ring;\nattribute float colorIndex;\nattribute vec4 facade;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\nvarying vec4 vFacade;',
       )
       .replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\nvRing = ring;\nvY = position.y;\nvWall = 1.0 - step(0.5, normal.y);\nvColorIndex = colorIndex;',
+        '#include <begin_vertex>\nvRing = ring;\nvY = position.y;\nvWall = 1.0 - step(0.5, normal.y);\nvColorIndex = colorIndex;\nvFacade = facade;',
       )
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;`,
+        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\n${FACADE_PARS}`,
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         diffuseColor.rgb = uBuildingColors[int(vColorIndex + 0.5)];
+        ${FACADE_COLOR}
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, vRing));
         diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);`,
       )
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v8'
+  material.customProgramCacheKey = () => 'city-buildings-v9'
   return material
 }
 

@@ -1,0 +1,182 @@
+// Procedural windows for the building walls (Buildings.tsx), drawn in the
+// shader from each wall's position and size (extrude.ts `facade`): no
+// textures. One parameter set per building family (scripts/lib/
+// buildingColor.ts BuildingColorType), varied per building by its seed so
+// blocks don't look stamped:
+//
+//   Neutral      commercial and light industrial: tall ~4 m floors, wide
+//                windows spaced out, often split by a mullion
+//   Residential  San Francisco stucco: ~3.1 m floors, punched windows, dark
+//                panes set into the wall
+//   Tower        curtain wall: ~3.5 m floors, near-continuous glass between
+//                narrow mullions and spandrel bands, cool and darker, with a
+//                Fresnel sky reflection and a sun glint
+//
+// Window columns are centered on each wall, so no window is cut at a
+// corner; the top floor stops below a parapet. Where window columns or
+// floors get narrower than a few pixels (far away, or edge-on), that
+// direction of the pattern fades to its average -- each separately, so a
+// distant tower keeps its floor lines after its columns have blended out --
+// so distance never shimmers and never changes a wall's brightness.
+
+import { Color } from 'three'
+
+export interface Facade {
+  floorM: number // floor-to-floor height
+  spacingM: number // window column spacing
+  width: number // window width, as a share of its column
+  height: number // window height, as a share of its floor
+  sill: number // window bottom, as a share of its floor
+  // Per-building variation, as +- shares of the value above.
+  varyFloor: number
+  varySpacing: number
+  varyWidth: number
+  mullion: number // share of buildings whose windows a center mullion splits
+  glass: string // pane color, as lit albedo
+  reflect: number // strength of the sky reflection on the panes
+  glint: number // pane roughness (lower = sharper sun glints)
+}
+
+// Indexed by BuildingColorType: Neutral, Residential, Tower.
+export const FACADES: [Facade, Facade, Facade] = [
+  {
+    floorM: 4.0,
+    spacingM: 3.6,
+    width: 0.52,
+    height: 0.5,
+    sill: 0.3,
+    varyFloor: 0.12,
+    varySpacing: 0.35,
+    varyWidth: 0.35,
+    mullion: 0.5,
+    glass: '#3b4247',
+    reflect: 0.35,
+    glint: 0.5,
+  },
+  {
+    floorM: 3.1,
+    spacingM: 3.0,
+    width: 0.4,
+    height: 0.52,
+    sill: 0.3,
+    varyFloor: 0.06,
+    varySpacing: 0.3,
+    varyWidth: 0.3,
+    mullion: 0.6,
+    glass: '#2d3135',
+    reflect: 0.2,
+    glint: 0.6,
+  },
+  {
+    floorM: 3.5,
+    spacingM: 1.6,
+    width: 0.88,
+    height: 0.72,
+    sill: 0.14,
+    varyFloor: 0.05,
+    varySpacing: 0.25,
+    varyWidth: 0.06,
+    mullion: 0,
+    glass: '#34414e',
+    reflect: 1,
+    glint: 0.25,
+  },
+]
+
+// No windows on buildings lower than this (sheds, kiosks, garages) or on
+// walls shorter than this.
+export const MIN_HEIGHT_M = 6
+export const MIN_WALL_M = 3
+// Blank wall kept at each end of a wall and at the top (parapet).
+export const WALL_MARGIN_M = 0.6
+export const PARAPET_M = 1.0
+// Each direction of the pattern fades out as its cells shrink from this
+// many pixels to this many.
+export const DETAIL_FULL_PX = 7
+export const DETAIL_GONE_PX = 2.5
+// A center mullion's width, as a share of the window column.
+const MULLION = 0.03
+
+// The share of a window cell that is glass: what a wall averages to once
+// the pattern has faded with distance. Mirrors `coverage` in FACADE_COLOR.
+export function glassShare(width: number, height: number, mullion: boolean): number {
+  return height * (width - (mullion ? 2 * MULLION : 0))
+}
+
+const v = (n: number) => n.toFixed(4)
+const vec3 = (hex: string) => {
+  const c = new Color(hex)
+  return `vec3( ${v(c.r)}, ${v(c.g)}, ${v(c.b)} )`
+}
+const pick = (key: (f: Facade) => string) => `( fcType == 0 ? ${key(FACADES[0])} : fcType == 1 ? ${key(FACADES[1])} : ${key(FACADES[2])} )`
+
+// Declarations for the fragment shader (after #include <common>).
+export const FACADE_PARS = /* glsl */ `
+uniform vec3 uSkyReflection;
+varying vec4 vFacade;
+float facadeBox( float x, float lo, float hi, float aa ) {
+  return smoothstep( lo - aa, lo + aa, x ) * ( 1.0 - smoothstep( hi - aa, hi + aa, x ) );
+}
+`
+
+// Run after the wall's base color is in diffuseColor.rgb (color_fragment).
+// Declares windowGlass, windowReflect and windowGlint for the later chunks.
+// Derivatives are taken unconditionally, as GLSL requires.
+export const FACADE_COLOR = /* glsl */ `
+int fcType = int( floor( ( vColorIndex + 0.5 ) / 3.0 ) );
+float fcSeed = vFacade.w;
+float fcS1 = fract( fcSeed * 7.31 + 0.13 );
+float fcS2 = fract( fcSeed * 13.17 + 0.71 );
+float fcS3 = fract( fcSeed * 29.93 + 0.37 );
+float fcFloorM = ${pick((f) => v(f.floorM))} * ( 1.0 + ( fcSeed - 0.5 ) * 2.0 * ${pick((f) => v(f.varyFloor))} );
+float fcSpacing = ${pick((f) => v(f.spacingM))} * ( 1.0 + ( fcS1 - 0.5 ) * 2.0 * ${pick((f) => v(f.varySpacing))} );
+float fcWidth = ${pick((f) => v(f.width))} * ( 1.0 + ( fcS2 - 0.5 ) * 2.0 * ${pick((f) => v(f.varyWidth))} );
+float fcHeight = ${pick((f) => v(f.height))};
+float fcSill = ${pick((f) => v(f.sill))};
+float fcMullion = step( fcS3, ${pick((f) => v(f.mullion))} );
+
+float fcWallLen = vFacade.y;
+float fcColumns = floor( max( 0.0, fcWallLen - 2.0 * ${v(WALL_MARGIN_M)} ) / fcSpacing );
+float fcRows = floor( max( 0.0, vFacade.z - ${v(PARAPET_M)} ) / fcFloorM );
+float fcCu = ( vFacade.x - 0.5 * ( fcWallLen - fcColumns * fcSpacing ) ) / fcSpacing;
+float fcCv = vY / fcFloorM;
+float fcDu = fwidth( fcCu );
+float fcDv = fwidth( fcCv );
+
+// Across and up are faded separately: a tower's narrow columns blend out
+// long before its floors do, and the floor lines are what reads from afar.
+float fcAcross = facadeBox( fract( fcCu ), 0.5 - 0.5 * fcWidth, 0.5 + 0.5 * fcWidth, fcDu );
+fcAcross *= 1.0 - fcMullion * facadeBox( fract( fcCu ), ${v(0.5 - MULLION)}, ${v(0.5 + MULLION)}, fcDu );
+float fcUp = facadeBox( fract( fcCv ), fcSill, fcSill + fcHeight, fcDv );
+float fcDetailAcross = 1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fcDu );
+float fcDetailUp = 1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fcDv );
+fcAcross = mix( fcWidth - fcMullion * ${v(2 * MULLION)}, fcAcross, fcDetailAcross );
+fcUp = mix( fcHeight, fcUp, fcDetailUp );
+// The windowed area, antialiased like the panes, and faded with them: once
+// a direction's detail is gone, its blank margins go too, or they linger as
+// pale one-pixel lines down distant towers' corners.
+float fcInside = mix( 1.0, facadeBox( fcCu, 0.0, fcColumns, fcDu ), fcDetailAcross ) * step( 1.0, fcColumns );
+fcInside *= mix( 1.0, facadeBox( fcCv, 0.0, fcRows, fcDv ), fcDetailUp ) * step( 1.0, fcRows );
+float fcEnabled = vWall * step( ${v(MIN_HEIGHT_M)}, vFacade.z ) * step( ${v(MIN_WALL_M)}, fcWallLen );
+
+float windowGlass = fcEnabled * fcInside * fcAcross * fcUp;
+diffuseColor.rgb = mix( diffuseColor.rgb, ${pick((f) => vec3(f.glass))}, windowGlass );
+float windowReflect = windowGlass * ${pick((f) => v(f.reflect))};
+float windowGlint = ${pick((f) => v(f.glint))};
+`
+
+// After roughnessmap_fragment: panes are smoother than the wall.
+export const FACADE_ROUGHNESS = /* glsl */ `
+roughnessFactor = mix( roughnessFactor, windowGlint, windowGlass );
+`
+
+// After emissivemap_fragment (normal and vViewPosition are in view space):
+// the sky reflected in the panes, weak looking straight on, strong at
+// grazing angles (Schlick Fresnel), not lit by the sun.
+export const FACADE_REFLECTION = /* glsl */ `
+{
+  float facing = clamp( dot( normal, normalize( vViewPosition ) ), 0.0, 1.0 );
+  float fresnel = 0.04 + 0.96 * pow( 1.0 - facing, 5.0 );
+  totalEmissiveRadiance += uSkyReflection * fresnel * windowReflect;
+}
+`
