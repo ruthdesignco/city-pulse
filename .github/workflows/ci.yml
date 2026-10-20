@@ -39,17 +39,9 @@ jobs:
       PGURL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
-      # anon/authenticated/service_role aren't real roles on plain Postgres;
-      # only the migrations that define schema (not cron or vault, which need
-      # the Supabase platform's own extensions) run here. See the comment at
-      # the top of the fixture test for how to run this by hand.
+      # anon/authenticated/service_role aren't real roles on plain Postgres.
+      # Every migration runs except the platform-only ones, then every test
+      # (scripts/sql-fixture-files.sh); see the comment at the top of the
+      # fixture test for how to run this by hand.
       - run: psql "$PGURL" -v ON_ERROR_STOP=1 -c "create role anon; create role authenticated; create role service_role;"
-      - run: |
-          psql "$PGURL" -v ON_ERROR_STOP=1 \
-            -f supabase/migrations/20261018200000_ingest_schema.sql \
-            -f supabase/migrations/20261019030000_current_state_filters.sql \
-            -f supabase/migrations/20261019050000_prune_relative_to_newest.sql \
-            -f supabase/migrations/20261019070000_healthcheck_ping.sql \
-            -f supabase/migrations/20261019080000_log_healthcheck_ping_failures.sql \
-            -f supabase/tests/current_state.test.sql \
-            -f supabase/tests/healthcheck_ping.test.sql
+      - run: psql "$PGURL" -v ON_ERROR_STOP=1 $(scripts/sql-fixture-files.sh)

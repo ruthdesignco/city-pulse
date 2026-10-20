@@ -6,13 +6,11 @@
 -- wire up Supabase-platform scheduling and secret storage, which this test
 -- doesn't touch.
 --
--- Run by hand against a local scratch Postgres:
+-- Run by hand against a local scratch Postgres, as CI does (every
+-- migration but the platform-only ones, then every test):
 --   createdb city_pulse_test
---   psql city_pulse_test -v ON_ERROR_STOP=1 \
---     -f supabase/migrations/20261018200000_ingest_schema.sql \
---     -f supabase/migrations/20261019030000_current_state_filters.sql \
---     -f supabase/migrations/20261019050000_prune_relative_to_newest.sql \
---     -f supabase/tests/current_state.test.sql
+--   psql city_pulse_test -c "create role anon; create role authenticated; create role service_role;"
+--   psql city_pulse_test -v ON_ERROR_STOP=1 $(scripts/sql-fixture-files.sh)
 --   dropdb city_pulse_test
 --
 -- Every feed_timestamp here is in 2020, far from the wall clock: that's what
