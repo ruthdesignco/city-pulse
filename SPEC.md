@@ -85,11 +85,12 @@ DataSF moved from data.sfgov.org to data.sf.gov in 2026; the old host answers wi
 
 ## Operations
 - **Recovery: everything in Supabase is derived data, so there are no backups.** It holds the last two observations per vehicle, the run log and the poll budget. If the project is lost:
-  1. Re-apply `supabase/migrations/`.
+  1. Re-apply `supabase/migrations/` in order, by hand in the SQL Editor (house rule below).
   2. Re-create the two Vault secrets: `poller_secret` generated in SQL (see the rotation comment in `20261019040000_poller_secret_from_vault.sql`), and `healthcheck_url` pasted in Studio.
   3. Redeploy the poller (Tyler, with `--project-ref`). It refills `current_state` within about 2 minutes.
   4. The baked files are in git; the site is Vercel's.
 - **Poller secret rotation:** rotated 2026-10-19 02:52:37 UTC, after the leak (Vault `updated_at`, checked by Tyler in Studio on 2026-10-20). To rotate again, run `vault.update_secret` with `gen_random_bytes` in Studio's SQL editor, as that migration's header shows. The value is never displayed.
+- **House rule: migrations are applied by hand in the Supabase SQL Editor, never with `supabase db push`.** Tyler pastes each new file from `supabase/migrations/` and runs it once, in filename order. The CLI's migration history is therefore not kept up to date, and no one runs `db push` or `migration repair` against this project. CI's SQL fixture still runs every migration file, so a new one is tested before it's applied.
 - **Standing rule: every Supabase CLI command passes `--project-ref jegmwhfbdhohvysbmjdw`.** Incident 1 (2026-10-18): `secrets set` ran without it, and the CLI's project picker defaulted to the first project in the account. The other project was checked that night: no custom secrets, nothing overwritten, the stray secret unset. No worktree was ever linked to it.
 - **Healthchecks pings only when an `ok` run advanced the feed** (`20261020090000`), so a dead poller and a frozen-but-200 feed both alert. An uptime check on `/` is to cover the site (Tyler to set up, any free monitor). The data files have content-hashed URLs that change with every bake, so check the page, not them.
 - **When an alert fires (the 2 a.m. runbook):**
