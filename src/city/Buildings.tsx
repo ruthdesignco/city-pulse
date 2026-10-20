@@ -19,6 +19,8 @@ const BASE_FLOOR = 0.55 // darkest a wall gets at street level, as a mix toward 
 // Roofs face the whole sky fill and read brightest from above; most real
 // flat roofs (tar, gravel, membrane) are darker than the walls anyway.
 const ROOF_SHADE = 0.8
+// How far roofs go to gray at night.
+const ROOF_NIGHT_GRAY = 0.75
 
 function buildGeometry(city: CityData): BufferGeometry {
   const started = performance.now()
@@ -77,13 +79,17 @@ function buildMaterial(): MeshStandardMaterial {
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, vRing));
-        diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);`,
+        diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);
+        // At night roofs lose most of their color (glass-tower roofs read
+        // saturated blue against the dark otherwise): moonlight shows little.
+        float roofGray = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(roofGray), ${ROOF_NIGHT_GRAY.toFixed(2)} * uWindowsOn * (1.0 - vWall));`,
       )
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v19'
+  material.customProgramCacheKey = () => 'city-buildings-v23'
   return material
 }
 

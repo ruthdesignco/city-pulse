@@ -18,7 +18,7 @@ import { sfHour } from './sfTime.ts'
 import { SKY_EXPOSURE, type SkyLook, SUN_DIRECTION, hazeColor, rawHorizonLuminance } from './skyModel.ts'
 import { bearingToScene } from './sun.ts'
 
-export const NIGHT_EXPOSURE = 0.11
+export const NIGHT_EXPOSURE = 0.09
 // Exposure is 1 with the sun this high or higher, NIGHT_EXPOSURE from this
 // low; it falls fastest just after sunset (blue hour is already dim).
 const EXPOSURE_FULL_DEG = 6

@@ -181,16 +181,22 @@ export const WINDOW_FOOT = 0.7
 // From afar, between single windows and the full average: blocks this many
 // windows wide and floors tall light (or not) together, at the same lit
 // share, so a city seen from the air keeps a sparkle of lit patches (a
-// tower's floors are only ~2-3 px from the opening view; blocks stay ~7+).
-export const WINDOW_BLOCK_COLUMNS = 4
-export const WINDOW_BLOCK_FLOORS = 3
-// Sub-pixel lights read brighter than their arithmetic average: the faded
-// glow (blocks and the full average) is lifted this much.
-export const FAR_GLOW = 1.8
+// tower's floors are only ~2-3 px from the opening view; 2x2 blocks ~5+).
+export const WINDOW_BLOCK_COLUMNS = 2
+export const WINDOW_BLOCK_FLOORS = 2
+// Sub-pixel lights read brighter than their arithmetic average: lit blocks
+// are lifted this much. The even average past them (where even blocks are
+// sub-pixel) is lifted only FAR_AVERAGE, or whole walls glow.
+export const FAR_GLOW = 2.2
+export const FAR_AVERAGE = 0.65
+// Blocks keep their detail down to smaller sizes than single windows (a lit
+// block is a soft glow, not an edge), so distant towers keep a sparkle.
+export const BLOCK_FULL_PX = 4
+export const BLOCK_GONE_PX = 1.2
 // How much of the faded glow varies block to block at full night (the rest
 // is the even average; less through dusk): blocks are a variation in the
 // glow, not hard on/off squares.
-export const BLOCK_CONTRAST = 0.55
+export const BLOCK_CONTRAST = 0.8
 
 // The share of a window cell that is glass: what a wall averages to once
 // the pattern has faded with distance. Mirrors `coverage` in FACADE_COLOR.
@@ -342,16 +348,16 @@ float fcDetail = min( fcDetailAcross, fcDetailUp );
 float fcBlockU = fcCu / ${v(WINDOW_BLOCK_COLUMNS)};
 float fcBlockV = fcCv / ${v(WINDOW_BLOCK_FLOORS)};
 float fcBlockDetail = min(
-  1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fwidth( fcBlockU ) ),
-  1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fwidth( fcBlockV ) )
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockU ) ),
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockV ) )
 );
 float fcInPane = clamp( ( fract( fcCv ) - fcSill ) / max( fcHeight, 0.01 ), 0.0, 1.0 );
 float fcCeiling = mix( ${v((1 + WINDOW_FOOT) / 2)}, mix( ${v(WINDOW_FOOT)}, 1.0, fcInPane ), fcDetail );
 float fcLevel = ( 0.6 + 0.4 * fcHash( fcCell + 53.0 ) ) * fcCeiling * mix( 1.0, ${v(COOL_BOOST)}, fcCool );
 vec3 fcAverage = mix( mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, 0.5 ), ${vec3(palette.windowCool)}, fcUse == 0 ? ${v(COOL_OFFICE_SHARE)} : 0.0 ) * 0.8;
 float fcBlockLit = step( fcHash( vec3( fcSeed * 59.0, floor( fcBlockU ), floor( fcBlockV ) ) ), fcShare );
-vec3 fcFarColor = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, 0.4 ) * 0.8;
-vec3 fcFar = mix( fcFarColor * fcShare, fcFarColor * mix( fcShare, fcBlockLit, ${v(BLOCK_CONTRAST)} * uWindowsOn ), fcBlockDetail ) * ${v(FAR_GLOW)};
+vec3 fcFarColor = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, 0.15 ) * 0.8;
+vec3 fcFar = mix( fcFarColor * fcShare * ${v(FAR_AVERAGE)}, fcFarColor * mix( fcShare, fcBlockLit, ${v(BLOCK_CONTRAST)} * uWindowsOn ) * ${v(FAR_GLOW)}, fcBlockDetail );
 vec3 fcUpperLight = mix( fcFar, fcColor * fcLevel * fcLit, fcDetail );
 
 float fcShopShare = litShare( 2, uHour );

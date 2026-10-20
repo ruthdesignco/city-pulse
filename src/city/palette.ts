@@ -26,6 +26,9 @@ export const palette = {
   // brighter than the color that ends up on screen. The fog carries it into
   // the haze further out.
   bay: '#90a69b',
+  // The Bay at night: dark blue-black (its daytime gray-green, dimmed, reads
+  // muddy olive), lit only by the faint city glow (BayWater.tsx).
+  bayNight: '#0a1424',
 
   // Three color families by OSM building type/height, each with 3
   // deterministic per-building shade variants (scripts/lib/buildingColor.ts:
@@ -123,10 +126,10 @@ export const palette = {
   // night. At night the ground bounce turns faintly warm, standing in for
   // the city's own streetlight glow (no streetlights are modeled).
   twilightFill: '#a6afc4',
-  nightFill: '#7584a3',
+  nightFill: '#878e9c',
   nightBounce: '#878a92',
   // Moonlight: cool, dim (its level comes from skyState.ts's night exposure).
-  moonlight: '#aec2e2',
+  moonlight: '#b6c1d2',
   // The night sky the dome blends to (SkyDome.tsx): deep blue overhead, a
   // faint warm-violet city glow at the horizon, which the fog and the ring's
   // haze then follow.

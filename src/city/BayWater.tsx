@@ -55,7 +55,7 @@ const CALM_FAR_SLOPE = 0.35
 // the waterfront, gone by CITY_GLOW_FAR_M from the city's center (TARGET).
 // (The water's mirror reflection is too coarse to carry single lit windows.
 // Water.js's shader has a local named `distance`, so length() is used.)
-const CITY_GLOW = 0.012
+const CITY_GLOW = 0.005
 const CITY_GLOW_NEAR_M = 1300
 const CITY_GLOW_FAR_M = 3800
 // The moon's glints, as a share of the sun's.
@@ -126,7 +126,7 @@ function createBayWater() {
   )
   frag = 'uniform float uWindowsOn;\nuniform vec3 uCityGlow;\nuniform vec2 uCity;\n' + frag
   material.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
-  material.uniforms.uCityGlow = { value: new Color(palette.windowWarm) }
+  material.uniforms.uCityGlow = { value: new Color(palette.windowSoft) }
   material.uniforms.uCity = { value: new Vector2(TARGET[0], TARGET[2]) }
   material.fragmentShader = frag
   // Over the ground and the paving (the ring reaches into the water at
@@ -159,7 +159,10 @@ function createBayWater() {
       material.uniforms.sunDirection.value.copy(s.light.direction)
       const glint = s.light.isMoon ? MOON_GLINT * Math.min(1, s.light.intensity) : Math.min(1, s.exposure)
       material.uniforms.sunColor.value.copy(s.light.color).multiplyScalar(glint)
-      material.uniforms.waterColor.value.set(palette.bay).multiplyScalar(s.exposure)
+      material.uniforms.waterColor.value
+        .set(palette.bay)
+        .multiplyScalar(s.exposure)
+        .lerp(new Color(palette.bayNight), s.sky.night)
     },
     // Once per frame, before rendering: drift the ripples, allow a new reflection.
     tick(delta: number) {
