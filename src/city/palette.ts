@@ -70,12 +70,12 @@ export const palette = {
   laneMarking: '#d6d3ca',
 
   // Street trees (Trees.tsx), by treeSpecies.ts TreeTone: natural, muted
-  // greens, as foliage really is in sun (leaves reflect only ~10-15%), each
-  // tree shifted slightly from its family's value. Bright for plane trees,
-  // elms, ginkgo and most deciduous trees; deep for glossy evergreens (fig,
-  // magnolia, Brisbane box); gray-green for eucalypts, olives and tea trees;
-  // palms a touch yellower. Trunks one warm gray-brown.
-  treeGreens: ['#65774b', '#4d6440', '#6e7a66', '#6f7849'],
+  // greens, each tree shifted slightly from its family's value. Bright is
+  // the soft gray-green of a London plane, the commonest street tree here,
+  // and sets the look; deep for glossy evergreens (fig, magnolia, Brisbane
+  // box), only a little darker; gray-green for eucalypts, olives and tea
+  // trees; palms a touch yellower. Trunks one warm gray-brown.
+  treeGreens: ['#7d8a66', '#687a5c', '#848e7b', '#808a5e'],
   treeTrunk: '#5e5246',
 
   // Vehicle models (vehicleModels.ts): lit by the sun like the buildings, in

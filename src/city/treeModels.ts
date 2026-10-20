@@ -1,7 +1,8 @@
 // Low poly street trees, built in code (no model files). One model per
 // TreeKind (treeSpecies.ts), each in two levels of detail (treeLod.ts):
 //
-//   near  ~80-triangle lumpy crown on a 6-sided trunk; palms get fronds
+//   near  a ~160-triangle crown of lumpy blobs (CROWN_VARIANTS layouts per
+//         kind) on a 6-sided trunk; palms get fronds
 //   far   an 8-triangle crown on a 3-sided trunk, same silhouette and shading
 //
 // Broad and columnar trees are unit sized (height 1, crown radius 1) and
@@ -24,13 +25,29 @@ import { TreeKind, treeSize } from './treeSpecies.ts'
 export type TreeLevel = 'near' | 'far'
 
 // How dark the underside of a crown is, as a multiplier.
-export const CROWN_UNDERSIDE = 0.7
+export const CROWN_UNDERSIDE = 0.8
 
-// Deterministic 0..1 from a direction, so shared vertices of the
-// non-indexed crown move together and the surface stays closed.
-function hash3(x: number, y: number, z: number): number {
-  const s = Math.sin(Math.round(x * 1000) * 12.9898 + Math.round(y * 1000) * 78.233 + Math.round(z * 1000) * 37.719) * 43758.5453
+// Shape variants per broad or columnar kind: each tree gets one (Trees.tsx),
+// so neighbors don't share a silhouette.
+export const CROWN_VARIANTS = 4
+export const variantsOf = (kind: TreeKind) => (isUnitSized(kind) ? CROWN_VARIANTS : 1)
+
+// Deterministic 0..1 from a direction and a salt, so shared vertices of a
+// non-indexed blob move together and its surface stays closed.
+function hash3(x: number, y: number, z: number, salt = 0): number {
+  const s = Math.sin(Math.round(x * 1000) * 12.9898 + Math.round(y * 1000) * 78.233 + Math.round(z * 1000) * 37.719 + salt * 17.13) * 43758.5453
   return s - Math.floor(s)
+}
+
+// A small seeded generator for laying out a variant's blobs.
+function rng(seed: number): () => number {
+  let a = (seed * 0x9e3779b9) >>> 0 || 1
+  return () => {
+    a ^= a << 13
+    a ^= a >>> 17
+    a ^= a << 5
+    return (a >>> 0) / 4294967296
+  }
 }
 
 function withAttrs(g: BufferGeometry, crown: number, tone: (y: number) => number): BufferGeometry {
@@ -53,29 +70,67 @@ interface Ellipsoid {
   lumps?: number // radial jitter, 0..1
 }
 
-// A crown from a unit polyhedron mapped onto an ellipsoid, normals out
-// from its center (the ellipsoid's own normals).
-function crown(detail: 'near' | 'far', e: Ellipsoid): BufferGeometry {
-  const g = detail === 'near' ? new IcosahedronGeometry(1, 1) : new OctahedronGeometry(1, 0)
+const ellipsoidNormal = (x: number, y: number, z: number, e: Ellipsoid, cx = 0, cz = 0): [number, number, number] => {
+  const nx = (x - cx) / (e.rx * e.rx)
+  const ny = (y - e.cy) / (e.ry * e.ry)
+  const nz = (z - cz) / (e.rx * e.rx)
+  const l = Math.hypot(nx, ny, nz) || 1
+  return [nx / l, ny / l, nz / l]
+}
+
+// One blob of foliage: a unit polyhedron mapped onto an ellipsoid at (cx,
+// cz), lumpy. Normals lean out from `whole` (the crown it belongs to) as
+// well as from the blob itself, so a crown of several blobs shades as one
+// soft, uneven volume.
+function blob(detail: 0 | 1 | 'far', e: Ellipsoid, cx = 0, cz = 0, salt = 0, whole: Ellipsoid = e): BufferGeometry {
+  const g = detail === 'far' ? new OctahedronGeometry(1, 0) : new IcosahedronGeometry(1, detail)
   const pos = g.getAttribute('position')
   const normal = g.getAttribute('normal')
-  const lumps = detail === 'near' ? (e.lumps ?? 0.12) : 0
+  const lumps = detail === 'far' ? 0 : (e.lumps ?? 0.12)
   for (let i = 0; i < pos.count; i++) {
     const sx = pos.getX(i)
     const sy = pos.getY(i)
     const sz = pos.getZ(i)
-    const k = 1 + lumps * (2 * hash3(sx, sy, sz) - 1)
-    const narrow = 1 - (e.taper ?? 0) * Math.max(0, sy)
-    const ax = e.rx * narrow
-    pos.setXYZ(i, sx * ax * k, e.cy + sy * e.ry * k, sz * ax * k)
-    const nx = sx / ax
-    const ny = sy / e.ry
-    const nz = sz / ax
+    const k = 1 + lumps * (2 * hash3(sx, sy, sz, salt) - 1)
+    const ax = e.rx * (1 - (e.taper ?? 0) * Math.max(0, sy))
+    const x = cx + sx * ax * k
+    const y = e.cy + sy * e.ry * k
+    const z = cz + sz * ax * k
+    pos.setXYZ(i, x, y, z)
+    const own = ellipsoidNormal(sx * ax, e.cy + sy * e.ry, sz * ax, { ...e, rx: ax })
+    const out = ellipsoidNormal(x, y, z, whole)
+    const nx = own[0] + 2 * out[0]
+    const ny = own[1] + 2 * out[1]
+    const nz = own[2] + 2 * out[2]
     const l = Math.hypot(nx, ny, nz)
     normal.setXYZ(i, nx / l, ny / l, nz / l)
   }
-  const bottom = e.cy - e.ry
-  return withAttrs(g, 1, (y) => CROWN_UNDERSIDE + (1 - CROWN_UNDERSIDE) * Math.min(1, Math.max(0, (y - bottom) / (2 * e.ry))))
+  const bottom = whole.cy - whole.ry
+  return withAttrs(g, 1, (y) => CROWN_UNDERSIDE + (1 - CROWN_UNDERSIDE) * Math.min(1, Math.max(0, (y - bottom) / (2 * whole.ry))))
+}
+
+// A crown near up: a lumpy core with four smaller lumpy blobs pushed out
+// around its sides and top, laid out by `variant`, so the silhouette is
+// irregular the way a real canopy's is. ~160 triangles. Far away: one
+// 8-triangle ellipsoid of the same size.
+function crown(detail: TreeLevel, e: Ellipsoid, variant = 0): BufferGeometry {
+  if (detail === 'far') return blob('far', e)
+  const r = rng(variant + 1)
+  const parts = [blob(1, { ...e, rx: e.rx * 0.78, ry: e.ry * 0.8, lumps: 0.16 }, 0, 0, variant, e)]
+  const start = 2 * Math.PI * r()
+  for (let i = 0; i < 4; i++) {
+    const a = start + (2 * Math.PI * i) / 4 + 0.6 * (r() - 0.5)
+    const out = e.rx * (0.4 + 0.2 * r())
+    const sub: Ellipsoid = {
+      cy: e.cy + e.ry * (-0.25 + 0.65 * r()),
+      rx: e.rx * (0.42 + 0.18 * r()),
+      ry: e.ry * (0.5 + 0.15 * r()),
+      taper: e.taper,
+      lumps: 0.18,
+    }
+    parts.push(blob(0, sub, Math.cos(a) * out * (1 - (e.taper ?? 0) * 0.5), Math.sin(a) * out * (1 - (e.taper ?? 0) * 0.5), variant * 7 + i, e))
+  }
+  return merge(parts)
 }
 
 function trunk(detail: TreeLevel, radius: number, top: number, taper = 0.75): BufferGeometry {
@@ -138,7 +193,7 @@ function palm(detail: TreeLevel, kind: TreeKind): BufferGeometry {
       const a = (2 * Math.PI * i) / p.fronds + 0.3 * Math.sin(i * 2.1)
       parts.push(frond(a, top, length * (0.85 + 0.15 * Math.cos(i * 1.7)), p.droop, p.width))
     }
-    parts.push(crown('near', { cy: top, rx: p.head, ry: p.head * 0.8, lumps: 0.1 }))
+    parts.push(blob(1, { cy: top, rx: p.head, ry: p.head * 0.8, lumps: 0.1 }))
   } else {
     // The frond spread as a flattened crown.
     parts.push(crown('far', { cy: top - p.droop * 0.3, rx: length * 0.8, ry: p.droop * 0.6 }))
@@ -154,12 +209,12 @@ function merge(parts: BufferGeometry[]): BufferGeometry {
   return merged
 }
 
-export function treeGeometry(kind: TreeKind, detail: TreeLevel): BufferGeometry {
+export function treeGeometry(kind: TreeKind, detail: TreeLevel, variant = 0): BufferGeometry {
   switch (kind) {
     case TreeKind.Broad:
-      return merge([trunk(detail, 0.09, 0.45), crown(detail, { cy: 0.62, rx: 1, ry: 0.38 })])
+      return merge([trunk(detail, 0.09, 0.45), crown(detail, { cy: 0.6, rx: 0.9, ry: 0.36 }, variant)])
     case TreeKind.Columnar:
-      return merge([trunk(detail, 0.12, 0.3), crown(detail, { cy: 0.58, rx: 1, ry: 0.42, taper: 0.3 })])
+      return merge([trunk(detail, 0.12, 0.3), crown(detail, { cy: 0.57, rx: 0.9, ry: 0.4, taper: 0.3 }, variant)])
     default:
       return palm(detail, kind)
   }

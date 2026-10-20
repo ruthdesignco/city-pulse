@@ -17,19 +17,23 @@ import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
 import type { TreesData } from './treeFormat.ts'
 import { type LodAnchor, isNear, nearDistance, shouldReassign } from './treeLod.ts'
-import { type TreeLevel, isDoubleSided, isUnitSized, treeGeometry } from './treeModels.ts'
+import { type TreeLevel, isDoubleSided, isUnitSized, treeGeometry, variantsOf } from './treeModels.ts'
 import { TREE_KINDS, type TreeKind, treeSize } from './treeSpecies.ts'
 import { useTrees } from './useTrees.ts'
 
 // Street trees from public/trees.bin (scripts/bake-trees.ts): one instanced
-// mesh per kind per level of detail (treeModels.ts, treeLod.ts). Each tree's
+// mesh per kind, crown variant and level of detail (treeModels.ts,
+// treeLod.ts). Each tree's
 // transform and color are worked out once; when the camera has moved far
 // enough, they're copied into the near or far mesh of its kind. Near trees
 // cast shadows; far ones only receive them.
 
 // Per-tree variation, from a hash of the tree's index (stable across
 // reloads, since the bake's order is).
-const SIZE_JITTER = 0.12
+const HEIGHT_JITTER = 0.2
+const CROWN_JITTER = 0.22
+// Crowns a little oval from above, not perfectly round.
+const STRETCH_JITTER = 0.1
 const LIGHTNESS_JITTER = 0.06
 const HUE_JITTER = 0.015
 
@@ -44,6 +48,7 @@ function hash(i: number, salt: number): number {
 }
 
 interface KindSlot {
+  kind: TreeKind
   trees: number[] // indices into TreesData
   matrices: Float32Array // 16 per tree, in `trees` order
   greens: Float32Array // 3 per tree, linear
@@ -54,25 +59,36 @@ interface KindSlot {
 }
 
 function buildSlots(data: TreesData): KindSlot[] {
-  const byKind: number[][] = Array.from({ length: TREE_KINDS }, () => [])
-  for (let i = 0; i < data.header.count; i++) byKind[data.kind[i]].push(i)
+  const groups: { kind: TreeKind; variant: number; trees: number[] }[] = []
+  const groupOf = new Map<number, number[]>()
+  for (let kind = 0 as TreeKind; kind < TREE_KINDS; kind++)
+    for (let variant = 0; variant < variantsOf(kind); variant++) {
+      const trees: number[] = []
+      groups.push({ kind, variant, trees })
+      groupOf.set(kind * 16 + variant, trees)
+    }
+  for (let i = 0; i < data.header.count; i++) {
+    const kind = data.kind[i] as TreeKind
+    groupOf.get(kind * 16 + Math.floor(hash(i, 6) * variantsOf(kind)))!.push(i)
+  }
   const dummy = new Object3D()
   const greens = palette.treeGreens.map((c) => new Color(c))
   const c = new Color()
   const hsl = { h: 0, s: 0, l: 0 }
 
-  return byKind.map((trees, kind) => {
+  return groups.map(({ kind, variant, trees }) => {
     const n = trees.length
     const matrices = new Float32Array(16 * n)
     const greenOf = new Float32Array(3 * n)
     const rings = new Float32Array(n)
     trees.forEach((t, j) => {
-      const { height, crown } = treeSize(kind as TreeKind, data.dbh[t])
-      const s = 1 + SIZE_JITTER * (2 * hash(t, 1) - 1)
-      const w = 1 + SIZE_JITTER * (2 * hash(t, 2) - 1)
+      const { height, crown } = treeSize(kind, data.dbh[t])
+      const s = 1 + HEIGHT_JITTER * (2 * hash(t, 1) - 1)
+      const w = 1 + CROWN_JITTER * (2 * hash(t, 2) - 1)
+      const oval = STRETCH_JITTER * (2 * hash(t, 7) - 1)
       dummy.position.set(data.coords[2 * t] * COORD_QUANTUM, 0, data.coords[2 * t + 1] * COORD_QUANTUM)
       dummy.rotation.set(0, 2 * Math.PI * hash(t, 3), 0)
-      if (isUnitSized(kind as TreeKind)) dummy.scale.set(crown * w, height * s, crown * w)
+      if (isUnitSized(kind)) dummy.scale.set(crown * w * (1 + oval), height * s, crown * w * (1 - oval))
       else dummy.scale.setScalar(s)
       dummy.updateMatrix()
       dummy.matrix.toArray(matrices, 16 * j)
@@ -85,12 +101,12 @@ function buildSlots(data: TreesData): KindSlot[] {
     const green = per(() => new InstancedBufferAttribute(new Float32Array(3 * Math.max(1, n)), 3).setUsage(DynamicDrawUsage))
     const ring = per(() => new InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1).setUsage(DynamicDrawUsage))
     const geometry = per((level) => {
-      const g = treeGeometry(kind as TreeKind, level)
+      const g = treeGeometry(kind, level, variant)
       g.setAttribute('iGreen', green[level])
       g.setAttribute('iRing', ring[level])
       return g
     })
-    return { trees, matrices, greens: greenOf, rings, geometry, green, ring }
+    return { kind, trees, matrices, greens: greenOf, rings, geometry, green, ring }
   })
 }
 
@@ -141,9 +157,9 @@ export function Trees() {
     if (!shouldReassign(anchor.current, now)) return
     anchor.current = now
 
-    slots.forEach((slot, kind) => {
-      const near = meshes.current[`${kind}-near`]
-      const far = meshes.current[`${kind}-far`]
+    slots.forEach((slot, i) => {
+      const near = meshes.current[`${i}-near`]
+      const far = meshes.current[`${i}-far`]
       if (!near || !far) return
       const out = { near, far }
       const counts = { near: 0, far: 0 }
@@ -174,14 +190,14 @@ export function Trees() {
   // Left out of the Bay's reflection (BayWater.tsx), like the vehicles.
   return (
     <>
-      {slots.flatMap((slot, kind) =>
+      {slots.flatMap((slot, i) =>
         LEVELS.map((level) => (
           <instancedMesh
-            key={`${kind}-${level}`}
+            key={`${i}-${level}`}
             ref={(el) => {
-              meshes.current[`${kind}-${level}`] = el
+              meshes.current[`${i}-${level}`] = el
             }}
-            args={[slot.geometry[level], isDoubleSided(kind as TreeKind) ? materials.double : materials.front, Math.max(1, slot.trees.length)]}
+            args={[slot.geometry[level], isDoubleSided(slot.kind) ? materials.double : materials.front, Math.max(1, slot.trees.length)]}
             count={0}
             frustumCulled={false}
             castShadow={level === 'near'}

@@ -30,7 +30,11 @@ export async function withScenePage(label: string, query: Record<string, string>
   if (!url) throw new Error(`${label}: vite did not report a local URL`)
   console.log(`${label}: dev server at ${url}`)
 
-  const browser = await chromium.launch({ headless: true })
+  // On the real GPU: headless Chromium otherwise falls back to software
+  // WebGL, which rendered the scene at ~1 fps and, with the street trees,
+  // too slowly to load within the page timeouts. (ANGLE's Metal backend is
+  // macOS only; elsewhere Chromium ignores the flag and picks its default.)
+  const browser = await chromium.launch({ headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] })
   try {
     const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 })
     // Surface what the page itself saw -- a shot that looks wrong is often a

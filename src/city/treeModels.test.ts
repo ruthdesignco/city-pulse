@@ -1,7 +1,7 @@
 import { Box3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { isUnitSized, treeGeometry } from './treeModels.ts'
-import { TREE_KINDS, type TreeKind, treeSize } from './treeSpecies.ts'
+import { CROWN_VARIANTS, isUnitSized, treeGeometry, variantsOf } from './treeModels.ts'
+import { TREE_KINDS, TreeKind, treeSize } from './treeSpecies.ts'
 
 const kinds = Array.from({ length: TREE_KINDS }, (_, k) => k as TreeKind)
 const triangles = (kind: TreeKind, level: 'near' | 'far') => treeGeometry(kind, level).getAttribute('position').count / 3
@@ -20,7 +20,7 @@ describe('tree models', () => {
 
   it('keeps the far models a fraction of the near ones', () => {
     for (const kind of kinds) {
-      expect(triangles(kind, 'near')).toBeLessThanOrEqual(150)
+      expect(triangles(kind, 'near')).toBeLessThanOrEqual(200)
       expect(triangles(kind, 'far')).toBeLessThanOrEqual(16)
       expect(triangles(kind, 'far')).toBeLessThan(triangles(kind, 'near') / 4)
     }
@@ -35,5 +35,16 @@ describe('tree models', () => {
         expect(box.max.y).toBeGreaterThan(0.85 * height)
         expect(box.max.y).toBeLessThan(1.15 * height)
       }
+  })
+
+  it('gives broad and columnar crowns distinct shape variants, palms one', () => {
+    for (const kind of [TreeKind.Broad, TreeKind.Columnar]) {
+      expect(variantsOf(kind)).toBe(CROWN_VARIANTS)
+      const shapes = new Set(
+        Array.from({ length: CROWN_VARIANTS }, (_, v) => Array.from(treeGeometry(kind, 'near', v).getAttribute('position').array.slice(0, 600)).join()),
+      )
+      expect(shapes.size).toBe(CROWN_VARIANTS)
+    }
+    expect(variantsOf(TreeKind.FanPalm)).toBe(1)
   })
 })
