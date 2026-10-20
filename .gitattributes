@@ -7,4 +7,4 @@
 
 # Baked binary asset (src/city/format.ts): never touched by line-ending
 # conversion, whatever text=auto guesses.
-public/city.bin binary
+src/data/city.bin binary

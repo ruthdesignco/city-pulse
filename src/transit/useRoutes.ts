@@ -1,6 +1,7 @@
 import { use } from 'react'
 import type { RoutesFile } from './routes-format.ts'
 import { type ShapeIndex, buildShapeIndex } from './shapes.ts'
+import routesUrl from '../data/routes.json?url' // hashed by the build, as city.bin (useCity.ts)
 
 export interface Routes {
   file: RoutesFile
@@ -11,7 +12,7 @@ export interface Routes {
 let routesPromise: Promise<Routes> | undefined
 
 export function loadRoutes(): Promise<Routes> {
-  routesPromise ??= fetch('/routes.json')
+  routesPromise ??= fetch(routesUrl)
     .then((res) => {
       if (!res.ok) throw new Error(`routes.json: HTTP ${res.status}. Run \`npm run bake:routes\` first.`)
       return res.json() as Promise<RoutesFile>
@@ -30,7 +31,7 @@ export function loadRoutes(): Promise<Routes> {
   return routesPromise
 }
 
-// Suspends until public/routes.json is fetched and indexed.
+// Suspends until src/data/routes.json is fetched and indexed.
 export function useRoutes(): Routes {
   return use(loadRoutes())
 }

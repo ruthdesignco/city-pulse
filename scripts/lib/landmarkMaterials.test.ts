@@ -38,7 +38,7 @@ describe('landmark materials', () => {
   })
 
   it('is baked into the shipped city.bin: every landmark pinned, by its own name', () => {
-    const buf = readFileSync(join(import.meta.dirname, '../../public/city.bin'))
+    const buf = readFileSync(join(import.meta.dirname, '../../src/data/city.bin'))
     const city = decodeCity(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer)
     const pins = city.header.pinnedMaterials ?? []
     for (const [name, material] of Object.entries(LANDMARK_MATERIALS)) {

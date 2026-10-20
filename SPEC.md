@@ -33,7 +33,7 @@ Primary: a portfolio piece that shows real time, data driven 3D UX at the craft 
 | Police activity | DataSF Law Enforcement Dispatched Calls: Real-Time (`gnap-fj3t`) | Updated every 10 min, delayed an extra 10 | Rolling 48 hour window. Block or intersection level. |
 | Buildings | OpenStreetMap extract for the cluster | Static | Baked once. |
 | Muni routes/stops | 511 static GTFS | Static | Route shapes drive interpolation. |
-| Street trees | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), San Francisco Public Works | Static (data as of 2026-10-16) | PDDL 1.0. Baked once into `public/trees.bin` (`npm run bake:trees`). |
+| Street trees | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), San Francisco Public Works | Static (data as of 2026-10-16) | PDDL 1.0. Baked once into `src/data/trees.bin` (`npm run bake:trees`). |
 
 DataSF moved from data.sfgov.org to data.sf.gov in 2026; the old host answers with a 301. Use data.sf.gov for the police feed too.
 
@@ -91,7 +91,7 @@ DataSF moved from data.sfgov.org to data.sf.gov in 2026; the old host answers wi
   4. The baked files are in git; the site is Vercel's.
 - **Poller secret rotation:** rotated 2026-10-19 02:52:37 UTC, after the leak (Vault `updated_at`, checked by Tyler in Studio on 2026-10-20). To rotate again, run `vault.update_secret` with `gen_random_bytes` in Studio's SQL editor, as that migration's header shows. The value is never displayed.
 - **Standing rule: every Supabase CLI command passes `--project-ref jegmwhfbdhohvysbmjdw`.** Incident 1 (2026-10-18): `secrets set` ran without it, and the CLI's project picker defaulted to the first project in the account. The other project was checked that night: no custom secrets, nothing overwritten, the stray secret unset. No worktree was ever linked to it.
-- **Healthchecks pings only when an `ok` run advanced the feed** (`20261020090000`), so a dead poller and a frozen-but-200 feed both alert. Uptime checks on `/` and `/city.bin` are to cover the site (Tyler to set up, any free monitor).
+- **Healthchecks pings only when an `ok` run advanced the feed** (`20261020090000`), so a dead poller and a frozen-but-200 feed both alert. An uptime check on `/` is to cover the site (Tyler to set up, any free monitor). The data files have content-hashed URLs that change with every bake, so check the page, not them.
 - **When an alert fires (the 2 a.m. runbook):**
   1. Open the live site. The pill says how old the newest Muni data is.
   2. In Studio, look at the newest `ingest_runs` rows (errors are redacted).

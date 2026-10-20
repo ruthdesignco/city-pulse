@@ -101,6 +101,22 @@ body,
   color: #8e93b8;
 }
 
+/* "Loading the city…" until city.bin arrives (App.tsx): the freshness
+   pill's look, centered. */
+.loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgb(27 30 48 / 0.72);
+  backdrop-filter: blur(6px);
+  color: #c9cde8;
+  font: 500 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  pointer-events: none;
+}
+
 /* Data credits (src/Credits.tsx): the freshness pill's look, bottom right,
    quieter. Links are the only part of the overlay that takes the pointer. */
 .credits {

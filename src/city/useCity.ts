@@ -1,10 +1,13 @@
 import { use } from 'react'
 import { type CityData, decodeCity } from './format.ts'
+// Through Vite, so the build gives it a content-hashed URL that can be cached
+// for good (vercel.json).
+import cityUrl from '../data/city.bin?url'
 
 let cityPromise: Promise<CityData> | undefined
 
 export function loadCity(): Promise<CityData> {
-  cityPromise ??= fetch('/city.bin')
+  cityPromise ??= fetch(cityUrl)
     .then((res) => {
       if (!res.ok) throw new Error(`city.bin: HTTP ${res.status}. Run \`npm run bake\` first.`)
       return res.arrayBuffer()
@@ -20,7 +23,7 @@ export function loadCity(): Promise<CityData> {
   return cityPromise
 }
 
-// Suspends until public/city.bin is fetched and decoded.
+// Suspends until src/data/city.bin is fetched and decoded.
 export function useCity(): CityData {
   return use(loadCity())
 }

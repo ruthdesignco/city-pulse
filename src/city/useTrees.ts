@@ -1,10 +1,11 @@
 import { use } from 'react'
 import { type TreesData, decodeTrees } from './treeFormat.ts'
+import treesUrl from '../data/trees.bin?url' // hashed by the build, as city.bin (useCity.ts)
 
 let treesPromise: Promise<TreesData> | undefined
 
 export function loadTrees(): Promise<TreesData> {
-  treesPromise ??= fetch('/trees.bin')
+  treesPromise ??= fetch(treesUrl)
     .then((res) => {
       if (!res.ok) throw new Error(`trees.bin: HTTP ${res.status}. Run \`npm run bake:trees\` first.`)
       return res.arrayBuffer()
@@ -18,7 +19,7 @@ export function loadTrees(): Promise<TreesData> {
   return treesPromise
 }
 
-// Suspends until public/trees.bin is fetched and decoded.
+// Suspends until src/data/trees.bin is fetched and decoded.
 export function useTrees(): TreesData {
   return use(loadTrees())
 }

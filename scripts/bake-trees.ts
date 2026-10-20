@@ -1,12 +1,12 @@
-// Bake DataSF's Street Tree Inventory into public/trees.bin, clipped to the
-// city.bin bake area. Run after `npm run bake` (it reads public/city.bin).
+// Bake DataSF's Street Tree Inventory into src/data/trees.bin, clipped to the
+// city.bin bake area. Run after `npm run bake` (it reads src/data/city.bin).
 //
 //   npm run bake:trees                    fetch if not cached, then bake
 //   npm run bake:trees -- --cached-only   bake from the cache only
 //
 // Input:  DataSF tkzw-k3nq (San Francisco Public Works, PDDL 1.0), the rows
 //         inside city.bin's data extent, cached in scripts/.cache/
-// Output: public/trees.bin (see src/city/treeFormat.ts)
+// Output: src/data/trees.bin (see src/city/treeFormat.ts)
 //
 // Skipped: planting sites and stumps, median trees (our streets have no
 // medians, so they'd stand on the asphalt), trunks inside a building
@@ -78,7 +78,7 @@ async function fetchRows(where: string, cachedOnly: boolean): Promise<TreeRow[]>
 
 async function main() {
   const started = Date.now()
-  const cityBytes = readFileSync(join(ROOT, 'public/city.bin'))
+  const cityBytes = readFileSync(join(ROOT, 'src/data/city.bin'))
   const city = decodeCity(cityBytes.buffer.slice(cityBytes.byteOffset, cityBytes.byteOffset + cityBytes.byteLength))
   const citySha256 = createHash('sha256').update(cityBytes).digest('hex')
   const { extent, waterfront = [], ringMeters, origin } = city.header
@@ -151,7 +151,7 @@ async function main() {
     kept.push({ x, z, kind, tone, dbh, ring: Math.round(ring * 255) })
   }
 
-  if (kept.length === 0) throw new Error(`trees: 0 trees kept from ${rows.length} rows -- refusing to write public/trees.bin`)
+  if (kept.length === 0) throw new Error(`trees: 0 trees kept from ${rows.length} rows -- refusing to write src/data/trees.bin`)
 
   const n = kept.length
   const coords = new Int16Array(2 * n)
@@ -177,7 +177,7 @@ async function main() {
     dbh: Uint8Array.from(kept, (t) => t.dbh),
     ring: Uint8Array.from(kept, (t) => t.ring),
   })
-  const out = join(ROOT, 'public/trees.bin')
+  const out = join(ROOT, 'src/data/trees.bin')
   if (existsSync(out)) {
     const prev = readFileSync(out)
     const old = decodeTrees(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength))
@@ -198,7 +198,7 @@ async function main() {
   console.log(`  moved out to the curb from up to ${CURB_PUSH_MAX_M} m onto our asphalt: ${pushed}`)
   console.log(`  kinds: ${KIND_NAMES.map((k, i) => `${k} ${byKind[i]}`).join(', ')}`)
   console.log(`  DBH known for ${pct(dbhKnown, n)}`)
-  console.log(`\npublic/trees.bin: ${(bytes.length / 1024).toFixed(0)} KB in ${((Date.now() - started) / 1000).toFixed(1)}s`)
+  console.log(`\nsrc/data/trees.bin: ${(bytes.length / 1024).toFixed(0)} KB in ${((Date.now() - started) / 1000).toFixed(1)}s`)
 }
 
 await main()

@@ -1,6 +1,6 @@
 // Bake OSM buildings and streets for SoMa, the Mission and the Tenderloin
 // (plus a dimmer context ring, extended out to the Bay along the waterfront:
-// src/city/waterfront.ts) into public/city.bin.
+// src/city/waterfront.ts) into src/data/city.bin.
 //
 //   npm run bake                    fetch what's missing, then bake
 //   npm run bake -- --cached-only   bake from cache only (partial preview)
@@ -8,7 +8,7 @@
 //
 // Inputs:  scripts/data/analysis-neighborhoods.geojson (DataSF)
 //          OpenStreetMap via Overpass, cached in scripts/.cache/
-// Output:  public/city.bin (see src/city/format.ts)
+// Output:  src/data/city.bin (see src/city/format.ts)
 
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -394,7 +394,7 @@ async function main() {
   // near-empty one -- happened twice in one session before this guard existed.
   if (buildings.length === 0) {
     throw new Error(
-      `bake: 0 buildings kept from ${elements.length} OSM elements -- refusing to write public/city.bin. ` +
+      `bake: 0 buildings kept from ${elements.length} OSM elements -- refusing to write src/data/city.bin. ` +
         'Check the Overpass cache (bake without --cached-only first) or the --pbf path.',
     )
   }
@@ -439,7 +439,7 @@ async function main() {
     boundary: n,
   }
   const bytes = encodeCity(data)
-  const out = join(ROOT, 'public/city.bin')
+  const out = join(ROOT, 'src/data/city.bin')
   if (existsSync(out)) {
     const prev = readFileSync(out)
     console.log(`\nchange vs the committed city.bin: ${describeCityChange(compareCities(decodeCity(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength)), data))}`)
@@ -465,7 +465,7 @@ async function main() {
   for (const t of tallest) {
     console.log(`  ${t.height.toFixed(1).padStart(6)} m  ${t.name ?? '(unnamed)'}  at x=${t.center[0].toFixed(0)}, z=${t.center[1].toFixed(0)}${t.ringBand ? '  [ring]' : ''}`)
   }
-  console.log(`\npublic/city.bin: ${(bytes.length / 1024).toFixed(0)} KB in ${((Date.now() - started) / 1000).toFixed(1)}s`)
+  console.log(`\nsrc/data/city.bin: ${(bytes.length / 1024).toFixed(0)} KB in ${((Date.now() - started) / 1000).toFixed(1)}s`)
 }
 
 await main()

@@ -15,8 +15,8 @@ Record at golden hour SF time, so the real light matches the scene's; keep recor
 | 8 | 1:40–2:00 | How it was built | Cut to SPEC.md, board scorecard, commit log | Decision log scrolling; caption: "Board members are AI personas modeled on public writing, not the real people." | "Spec first, reviewed by a board of AI advisors, built with Claude Code, every decision logged." |
 
 ## Facts behind the voiceover
-- Buildings: the bake has 27,463, of which 10,521 are inside the three neighborhoods (`public/city.bin`, rebaked 2026-10-20).
-- Street trees: 33,298 from DataSF's street tree inventory (`public/trees.bin`).
+- Buildings: the bake has 27,463, of which 10,521 are inside the three neighborhoods (`src/data/city.bin`, rebaked 2026-10-20).
+- Street trees: 33,298 from DataSF's street tree inventory (`src/data/trees.bin`).
 - Illustrative, not data: building materials, windows, storefronts, rooftop equipment, vehicle scale (up to 3x at distance) and the fixed golden-hour light. Don't call those "real" in the voiceover.
 - Update cadence: the poller calls 511 about every 75–80 s (SPEC.md decision log).
 - Shot 5 is staged: the replay stops delivering snapshots on purpose, and the badge says so on screen.

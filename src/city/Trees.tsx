@@ -21,7 +21,7 @@ import { type TreeLevel, isDoubleSided, isUnitSized, treeGeometry, variantsOf } 
 import { TREE_KINDS, type TreeKind, treeSize } from './treeSpecies.ts'
 import { useTrees } from './useTrees.ts'
 
-// Street trees from public/trees.bin (scripts/bake-trees.ts): one instanced
+// Street trees from src/data/trees.bin (scripts/bake-trees.ts): one instanced
 // mesh per kind, crown variant and level of detail (treeModels.ts,
 // treeLod.ts). Each tree's
 // transform and color are worked out once; when the camera has moved far

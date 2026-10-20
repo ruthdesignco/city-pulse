@@ -1,4 +1,4 @@
-// public/trees.bin: the baked street trees. Written by scripts/bake-trees.ts,
+// src/data/trees.bin: the baked street trees. Written by scripts/bake-trees.ts,
 // read by the app (Trees.tsx); both go through this module.
 //
 //   bytes 0-3   "CPT1"

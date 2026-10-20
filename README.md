@@ -16,21 +16,21 @@ npm run dev
 
 ## Baked data
 
-The city, the trees and the route shapes are baked offline into files in `public/` and committed. Nothing is fetched from OpenStreetMap, DataSF or 511 at runtime, except the live vehicle positions through the poller.
+The city, the trees and the route shapes are baked offline into files in `src/data/` and committed; the build serves them under content-hashed names, cached for good. Nothing is fetched from OpenStreetMap, DataSF or 511 at runtime, except the live vehicle positions through the poller.
 
 | File | Made by | From |
 |---|---|---|
-| `public/city.bin` | `npm run bake -- --pbf <extract>` (`scripts/bake-city.ts`) | OpenStreetMap, Geofabrik Northern California extract of 2026-10-17; neighborhood boundaries from DataSF |
-| `public/trees.bin` | `npm run bake:trees` (`scripts/bake-trees.ts`, run after the city bake) | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), data as of 2026-10-16 |
-| `public/routes.json` | `npm run bake:routes` (`scripts/bake-routes.ts`, needs `TRANSIT_511_API_KEY`) | 511 SF Bay static GTFS for Muni |
+| `src/data/city.bin` | `npm run bake -- --pbf <extract>` (`scripts/bake-city.ts`) | OpenStreetMap, Geofabrik Northern California extract of 2026-10-17; neighborhood boundaries from DataSF |
+| `src/data/trees.bin` | `npm run bake:trees` (`scripts/bake-trees.ts`, run after the city bake) | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), data as of 2026-10-16 |
+| `src/data/routes.json` | `npm run bake:routes` (`scripts/bake-routes.ts`, needs `TRANSIT_511_API_KEY`) | 511 SF Bay static GTFS for Muni |
 
 ## Data and licenses
 
 The code in this repository is MIT licensed (see [LICENSE](LICENSE)). The data is not covered by that license:
 
-- **OpenStreetMap data** (`public/city.bin`): © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). See [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright). `city.bin` is a derivative database of OpenStreetMap and is itself offered under the ODbL 1.0. It is made from the extract above by `scripts/bake-city.ts`.
-- **Street trees** (`public/trees.bin`): San Francisco Public Works via [DataSF](https://data.sf.gov/d/tkzw-k3nq), under the [Public Domain Dedication and License (PDDL) 1.0](https://opendatacommons.org/licenses/pddl/1-0/). The neighborhood boundaries (`scripts/data/analysis-neighborhoods.geojson`) are also from DataSF under the PDDL 1.0.
-- **Transit data** (`public/routes.json` and the live vehicle positions): data provided by [511.org](https://511.org), used under the 511 Data Disseminator Agreement.
+- **OpenStreetMap data** (`src/data/city.bin`): © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). See [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright). `city.bin` is a derivative database of OpenStreetMap and is itself offered under the ODbL 1.0. It is made from the extract above by `scripts/bake-city.ts`.
+- **Street trees** (`src/data/trees.bin`): San Francisco Public Works via [DataSF](https://data.sf.gov/d/tkzw-k3nq), under the [Public Domain Dedication and License (PDDL) 1.0](https://opendatacommons.org/licenses/pddl/1-0/). The neighborhood boundaries (`scripts/data/analysis-neighborhoods.geojson`) are also from DataSF under the PDDL 1.0.
+- **Transit data** (`src/data/routes.json` and the live vehicle positions): data provided by [511.org](https://511.org), used under the 511 Data Disseminator Agreement.
 
 The site credits all three on screen.
 

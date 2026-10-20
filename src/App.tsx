@@ -10,6 +10,7 @@ import { Ground } from './city/Ground.tsx'
 import { Rooftops } from './city/Rooftops.tsx'
 import { Streets } from './city/Streets.tsx'
 import { Trees } from './city/Trees.tsx'
+import { loadCity } from './city/useCity.ts'
 import { Atmosphere } from './scene/Atmosphere.tsx'
 import { Calibration } from './scene/Calibration.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
@@ -68,6 +69,14 @@ export default function App() {
   // A lost WebGL context (a driver reset, or memory pressure on an
   // integrated GPU) leaves a dead canvas: say so instead of claiming "live".
   const [contextLost, setContextLost] = useState(false)
+  // Until the city arrives the canvas shows only sky: say it's coming.
+  const [cityReady, setCityReady] = useState(false)
+  useEffect(() => {
+    loadCity().then(
+      () => setCityReady(true),
+      () => {}, // the scene's ErrorBoundary handles a failed load
+    )
+  }, [])
   if (contextLost)
     return (
       <div className="error-boundary" role="alert">
@@ -140,6 +149,11 @@ export default function App() {
         {monitorEnabled(QUALITY) && step < QUALITY_STEPS.length - 1 && <QualityMonitor key={step} onDecline={decline} />}
         {((import.meta.env.DEV && !DEMO) || SHOW_FPS) && <Stats />}
       </Canvas>
+      {!cityReady && (
+        <div className="loading" role="status">
+          Loading the city…
+        </div>
+      )}
       {!overlayHidden && <Freshness feed={feed} />}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
       <Credits />

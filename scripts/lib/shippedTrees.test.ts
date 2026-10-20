@@ -10,7 +10,7 @@ import { TREE_KINDS } from '../../src/city/treeSpecies.ts'
 const toBuffer = (b: Uint8Array) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
 
 describe('the shipped trees.bin', () => {
-  const read = (f: string) => toBuffer(readFileSync(join(import.meta.dirname, '../../public', f)))
+  const read = (f: string) => toBuffer(readFileSync(join(import.meta.dirname, '../../src/data', f)))
   const trees = decodeTrees(read('trees.bin'))
   const city = decodeCity(read('city.bin'))
 
@@ -31,7 +31,7 @@ describe('the shipped trees.bin', () => {
   })
 
   it('records its provenance: the inventory hash and the exact city.bin it was placed against', () => {
-    const cityBytes = readFileSync(join(import.meta.dirname, '../../public/city.bin'))
+    const cityBytes = readFileSync(join(import.meta.dirname, '../../src/data/city.bin'))
     expect(trees.header.inputSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(trees.header.city).toEqual({ bakedAt: city.header.bakedAt, sha256: createHash('sha256').update(cityBytes).digest('hex') })
   })

@@ -1,4 +1,4 @@
-// public/city.bin: the baked city. Written by scripts/bake-city.ts, read by
+// src/data/city.bin: the baked city. Written by scripts/bake-city.ts, read by
 // the app. Both sides go through this module so the layout can't drift.
 //
 //   bytes 0-3   "CPB1"
