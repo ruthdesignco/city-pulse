@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CREDITS } from './dataCredits.ts'
+import { ABOUT_VIEW, CREDITS } from './dataCredits.ts'
 
 describe('data credits', () => {
   it("credits OpenStreetMap as ODbL requires", () => {
@@ -14,5 +14,13 @@ describe('data credits', () => {
 
   it('credits the street trees to SF Public Works via DataSF', () => {
     expect(CREDITS.some((c) => c.text.includes('SF Public Works') && c.text.includes('DataSF'))).toBe(true)
+  })
+})
+
+describe('about this view', () => {
+  it('says which parts are illustrative and that the light is fixed', () => {
+    const text = ABOUT_VIEW.join(' ')
+    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'fixed'])
+      expect(text).toContain(word)
   })
 })

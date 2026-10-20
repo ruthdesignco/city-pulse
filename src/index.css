@@ -129,6 +129,20 @@ body,
   text-decoration: underline;
 }
 
+.credits__about {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #c9cde8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.credits__about:hover {
+  text-decoration: underline;
+}
+
+.credits__about + a::before,
 .credits a + a::before {
   content: '·';
   display: inline-block;
@@ -136,11 +150,37 @@ body,
   color: #6c7199;
 }
 
+/* What is data and what is illustrative (Credits.tsx), above the credits. */
+.about-view {
+  position: absolute;
+  right: 16px;
+  bottom: 52px;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgb(27 30 48 / 0.86);
+  backdrop-filter: blur(6px);
+  color: #c9cde8;
+  font: 500 12px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.about-view p {
+  margin: 0;
+}
+
+.about-view p + p {
+  margin-top: 6px;
+}
+
 /* Narrow screens: above the freshness pill, not over it. */
 @media (max-width: 720px) {
   .credits {
     bottom: 52px;
     border-radius: 12px;
+  }
+
+  .about-view {
+    bottom: 100px;
   }
 }
 
