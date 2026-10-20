@@ -36,9 +36,14 @@ const MAX_MITER = 3
 export interface Mesh {
   position: number[] // x, y, z
   index: number[]
+  // Per vertex, ribbons only (for streetlight pools, Streets.tsx): distance
+  // along the street from its start, and signed offset from its centerline
+  // (+ left), in meters.
+  along: number[]
+  offset: number[]
 }
 
-export const emptyMesh = (): Mesh => ({ position: [], index: [] })
+export const emptyMesh = (): Mesh => ({ position: [], index: [], along: [], offset: [] })
 
 // Direction of (dx, dz), or of the fallback when it's degenerate.
 function unit(dx: number, dz: number, fx: number, fz: number): Pt {
@@ -56,7 +61,11 @@ export function ribbon(out: Mesh, line: Pt[], halfWidth: number, y: number) {
   const n = line.length
   if (n < 2) return
   const base = out.position.length / 3
+  let along = 0
   for (let i = 0; i < n; i++) {
+    if (i > 0) along += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1])
+    out.along.push(along, along)
+    out.offset.push(halfWidth, -halfWidth)
     const [px, pz] = line[Math.max(0, i - 1)]
     const [cx, cz] = line[i]
     const [nx, nz] = line[Math.min(n - 1, i + 1)]

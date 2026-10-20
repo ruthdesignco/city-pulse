@@ -113,4 +113,33 @@ export const palette = {
   // saturated the sun, the bluer the solved sky fill and the bluer every
   // shadow.
   sun: '#fff0dc',
+
+  // Time of day (skyState.ts). The sun's color by height: near white at
+  // midday, palette.sun's gold at ~16 deg (the old fixed look), deep orange
+  // at the horizon.
+  sunHigh: '#fff7ec',
+  sunLow: '#ffc58f',
+  // The sky fill as the sun goes: a cool blue at dusk, a deeper blue at
+  // night. At night the ground bounce turns faintly warm, standing in for
+  // the city's own streetlight glow (no streetlights are modeled).
+  twilightFill: '#a6afc4',
+  nightFill: '#7584a3',
+  nightBounce: '#878a92',
+  // Moonlight: cool, dim (its level comes from skyState.ts's night exposure).
+  moonlight: '#aec2e2',
+  // The night sky the dome blends to (SkyDome.tsx): deep blue overhead, a
+  // faint warm-violet city glow at the horizon, which the fog and the ring's
+  // haze then follow.
+  nightSkyZenith: '#0b1424',
+  nightSkyHorizon: '#2f3649',
+  // Blue hour, on the way there: a clear deep blue overhead, a cool
+  // blue-gray horizon, and a warm afterglow only toward where the sun set.
+  twilightSkyZenith: '#1d3d7c',
+  twilightSkyHorizon: '#7d90b6',
+  twilightGlow: '#f0a06a',
+  // Lit windows at night (facade.ts): warm 2700-3500 K whites, and a cooler
+  // LED white for some offices. Emitted, not lit; no bloom.
+  windowWarm: '#ffc985',
+  windowSoft: '#ffe2b8',
+  windowCool: '#c4d8ff',
 } as const

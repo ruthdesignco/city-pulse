@@ -13,6 +13,7 @@ import {
   type PerspectiveCamera,
 } from 'three'
 import { COORD_QUANTUM } from './format.ts'
+import { sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
 import type { TreesData } from './treeFormat.ts'
@@ -114,7 +115,7 @@ function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ roughness: 0.9, metalness: 0, side: doubleSided ? DoubleSide : FrontSide })
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTrunk = { value: new Color(palette.treeTrunk) }
-    shader.uniforms.uDim = { value: new Color(palette.sky) }
+    shader.uniforms.uDim = sceneUniforms.uHaze // the ring's fade, by time of day
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',

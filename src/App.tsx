@@ -5,7 +5,7 @@ import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
 import { Credits } from './Credits.tsx'
-import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, VIEW } from './params.ts'
+import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Rooftops } from './city/Rooftops.tsx'
 import { Streets } from './city/Streets.tsx'
@@ -19,6 +19,7 @@ import { QualityMonitor } from './scene/QualityMonitor.tsx'
 import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
 import { RecordedBadge } from './transit/RecordedBadge.tsx'
+import { LightNote } from './scene/LightNote.tsx'
 import { Vehicles } from './transit/Vehicles.tsx'
 import { useCurrentState } from './transit/useCurrentState.ts'
 import { type ReplayStatus, useRecordedState } from './transit/useRecordedState.ts'
@@ -156,6 +157,7 @@ export default function App() {
       )}
       {!overlayHidden && <Freshness feed={feed} recorded={feed.replay !== null} />}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
+      {TIME.mode === 'fixed' && <LightNote label={TIME.label} />}
       <Credits />
     </WebGLGate>
   )

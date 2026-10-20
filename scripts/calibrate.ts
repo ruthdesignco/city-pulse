@@ -3,7 +3,12 @@
 // ?calibrate (src/scene/Calibration.tsx), screenshots the sunlit swatches,
 // and prints each one's palette value next to what it rendered as.
 //
-//   npm run calibrate
+//   npm run calibrate                 at the real San Francisco time
+//   npm run calibrate -- --time 12:00 at a set time (?time=)
+//
+// By day the exposure keeps sunlit ground at its palette value, so the
+// ratios hold from morning to golden hour; at night the scene is exposed
+// down to NIGHT_EXPOSURE (skyState.ts), and the ratios with it.
 //
 // "ratio" is rendered / palette relative luminance in linear light: 1.00
 // means a sunlit horizontal surface shows exactly its palette value.
@@ -25,7 +30,10 @@ const fromHex = (hex: string): Rgb => [1, 3, 5].map((i) => parseInt(hex.slice(i,
 const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`
 
 async function main() {
-  await withScenePage('calibrate', { view: 'calibrate', calibrate: '' }, async (page) => {
+  const i = process.argv.indexOf('--time')
+  const time = i >= 0 ? process.argv[i + 1] : undefined
+  if (time !== undefined && !/^\d{1,2}:\d{2}$/.test(time)) throw new Error('calibrate: --time must be HH:MM')
+  await withScenePage('calibrate', { view: 'calibrate', calibrate: '', ...(time ? { time } : {}) }, async (page) => {
     const png = (await page.screenshot()).toString('base64')
     const samples = await page.evaluate(
       async ({ png, half }) => {
@@ -56,7 +64,7 @@ async function main() {
       return ratio
     })
     ratios.sort((a, b) => a - b)
-    console.log(`\nmedian ratio ${ratios[ratios.length >> 1].toFixed(2)} (1.00 = renders as its palette value)`)
+    console.log(`\nmedian ratio ${ratios[ratios.length >> 1].toFixed(2)} at ${time ?? 'the real time'} (1.00 = renders as its palette value)`)
   })
 }
 

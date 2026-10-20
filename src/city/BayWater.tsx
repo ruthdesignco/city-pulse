@@ -2,6 +2,8 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo } from 'react'
 import { type Object3D, type ShaderMaterial, Shape, ShapeGeometry, Vector2, Vector3 } from 'three'
 import { Water } from 'three/examples/jsm/objects/Water.js'
+import { useSkyState } from '../scene/skyClock.ts'
+import type { SkyState } from '../scene/skyState.ts'
 import { SUN_POSITION } from '../scene/sun.ts'
 import { bayOutline } from './bay.ts'
 import { palette } from './palette.ts'
@@ -47,6 +49,8 @@ const CHOP = [
 const CALM_NEAR_M = 600
 const CALM_FAR_M = 4000
 const CALM_FAR_SLOPE = 0.35
+// The moon's glints, as a share of the sun's.
+const MOON_GLINT = 0.35
 // Sun glints: Water.js's shininess and strength are 100 and 2.
 const GLINT_SHININESS = 220
 const GLINT_STRENGTH = 0.9
@@ -130,6 +134,15 @@ function createBayWater() {
 
   return {
     mesh,
+    // The time of day: glints from the sun or the moon, and the water's own
+    // color (Water.js adds it unlit) scaled to the scene's exposure, so the
+    // Bay darkens at night with everything else.
+    setSky(s: SkyState) {
+      material.uniforms.sunDirection.value.copy(s.light.direction)
+      const glint = s.light.isMoon ? MOON_GLINT * Math.min(1, s.light.intensity) : Math.min(1, s.exposure)
+      material.uniforms.sunColor.value.copy(s.light.color).multiplyScalar(glint)
+      material.uniforms.waterColor.value.set(palette.bay).multiplyScalar(s.exposure)
+    },
     // Once per frame, before rendering: drift the ripples, allow a new reflection.
     tick(delta: number) {
       material.uniforms.time.value += delta * RIPPLE_SPEED
@@ -146,6 +159,8 @@ function createBayWater() {
 export function BayWater({ y }: { y: number }) {
   const water = useMemo(() => createBayWater(), [])
   useEffect(() => () => water.dispose(), [water])
+  const sky = useSkyState()
+  useEffect(() => water.setSky(sky), [water, sky])
   useFrame((_, delta) => water.tick(delta))
   return <primitive object={water.mesh} position-z={y} />
 }

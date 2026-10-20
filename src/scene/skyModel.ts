@@ -120,3 +120,81 @@ export function horizonColor(azimuth: number, out = new Color()): Color {
   const [r, g, b] = skyRadiance(dir, SUN_DIRECTION, SKY_PARAMS, SUN_DIRECTION.y)
   return out.setRGB(r * SKY_EXPOSURE, g * SKY_EXPOSURE, b * SKY_EXPOSURE)
 }
+
+// ------------------------------------------------- the sky at any time of day
+
+// What the dome shows for a given sun (SkyDome.tsx; skyState.ts computes it
+// from the time): the Preetham sky at `exposure`, blended by `night` (0 day,
+// 1 night) toward a night gradient, deep blue overhead and a faint warm
+// city glow at the horizon. SkyDome's shader does the same per pixel.
+export interface SkyLook {
+  sunDirection: Vector3
+  exposure: number
+  night: number
+  nightZenith: Color // linear, scene units
+  nightHorizon: Color
+  // The afterglow on the gradient: its color and strength, low on the
+  // horizon toward the sun's bearing.
+  glowColor: Color
+  glow: number
+}
+
+// How the afterglow falls off: with angle from the sun's bearing, and with
+// height above the horizon.
+export const GLOW_BEARING_POWER = 3
+export const GLOW_HEIGHT_POWER = 4
+
+export function skyColor(direction: Vector3, look: SkyLook, out = new Color()): Color {
+  const [r, g, b] = skyRadiance(direction, look.sunDirection, SKY_PARAMS, look.sunDirection.y)
+  const up = Math.sqrt(Math.min(1, Math.max(0, direction.y)))
+  const n = look.night
+  const flat = Math.hypot(direction.x, direction.z) || 1
+  const sunFlat = Math.hypot(look.sunDirection.x, look.sunDirection.z) || 1
+  const toward = Math.max(0, (direction.x * look.sunDirection.x + direction.z * look.sunDirection.z) / (flat * sunFlat))
+  const glow = look.glow * toward ** GLOW_BEARING_POWER * (1 - up) ** GLOW_HEIGHT_POWER
+  const nr = look.nightHorizon.r + (look.nightZenith.r - look.nightHorizon.r) * up + look.glowColor.r * glow
+  const ng = look.nightHorizon.g + (look.nightZenith.g - look.nightHorizon.g) * up + look.glowColor.g * glow
+  const nb = look.nightHorizon.b + (look.nightZenith.b - look.nightHorizon.b) * up + look.glowColor.b * glow
+  return out.setRGB(r * look.exposure * (1 - n) + nr * n, g * look.exposure * (1 - n) + ng * n, b * look.exposure * (1 - n) + nb * n)
+}
+
+// The sky at the horizon toward compass bearing `azimuth` (radians), for the
+// fog in the direction the camera faces.
+export function horizonColorFor(azimuth: number, look: SkyLook, out = new Color()): Color {
+  return skyColor(new Vector3(Math.sin(azimuth), 0, -Math.cos(azimuth)), look, out)
+}
+
+const AROUND = Array.from({ length: 16 }, (_, i) => (i * Math.PI) / 8)
+const lum3 = (c: { r: number; g: number; b: number }) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+
+// The mean of the dimmer half of `colors`: the horizon's haze away from the
+// sun's glare, which is what palette.sky always was.
+function dimHalf(colors: Color[], out: Color): Color {
+  const dim = [...colors].sort((a, b) => lum3(a) - lum3(b)).slice(0, colors.length / 2)
+  out.setRGB(0, 0, 0)
+  for (const c of dim) {
+    out.r += c.r / dim.length
+    out.g += c.g / dim.length
+    out.b += c.b / dim.length
+  }
+  return out
+}
+
+// The haze the context ring fades toward: the horizon all the way around,
+// away from the sun (the ring isn't seen from one direction).
+export function hazeColor(look: SkyLook, out = new Color()): Color {
+  return dimHalf(
+    AROUND.map((a) => horizonColorFor(a, look)),
+    out,
+  )
+}
+
+// The same haze from the Preetham sky alone at exposure 1, for holding the
+// sky's brightness steady as the sun moves (skyState.ts).
+export function rawHorizonLuminance(sunDirection: Vector3): number {
+  const colors = AROUND.map((a) => {
+    const [r, g, b] = skyRadiance(new Vector3(Math.sin(a), 0, -Math.cos(a)), sunDirection, SKY_PARAMS, sunDirection.y)
+    return new Color(r, g, b)
+  })
+  return lum3(dimHalf(colors, new Color()))
+}

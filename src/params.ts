@@ -15,6 +15,10 @@
 //   ?quality=low     start at the render's floor; =high pins full quality and
 //                    never steps down (quality.ts)
 //   ?fps             show the frame-rate counter (also outside dev)
+//   ?time=HH:MM      pin the light to that San Francisco time today;
+//                    =live (the default) follows the real time (sfTime.ts)
+
+import { parseTimeParam } from './scene/sfTime.ts'
 
 const params = new URLSearchParams(window.location.search)
 
@@ -40,3 +44,4 @@ export const CALIBRATE = params.has('calibrate')
 const quality = params.get('quality')
 export const QUALITY: 'low' | 'high' | null = quality === 'low' || quality === 'high' ? quality : null
 export const SHOW_FPS = params.has('fps')
+export const TIME = parseTimeParam(params.get('time'))

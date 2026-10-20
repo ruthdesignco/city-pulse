@@ -2,18 +2,19 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { DirectionalLight, Object3D, Vector3 } from 'three'
 import { palette } from '../city/palette.ts'
-import { SKY_INTENSITY, SKY_LIGHT_COLOR, SUN_INTENSITY } from './lighting.ts'
 import { SHADOW_MAP_SIZE, fitShadow } from './shadowFit.ts'
+import { useSkyState } from './skyClock.ts'
 import { SkyDome } from './SkyDome.tsx'
-import { SUN_DISTANCE, sunLightPosition } from './sun.ts'
+import { SUN_DISTANCE, lightPosition } from './sun.ts'
 import { TARGET } from './view.ts'
 
-// Daytime golden hour: a low sun in the west-southwest (sun.ts) lighting
-// the city, the Preetham sky lit by that same sun (SkyDome.tsx), and fog in
-// the sky's own horizon color.
+// The time of day (skyState.ts, from the real San Francisco time or
+// ?time=): the sun by day and the moon by night as the directional light,
+// the hemisphere light as the sky's fill and the ground's bounce, the
+// Preetham sky lit by that same sun (SkyDome.tsx), and fog in the sky's own
+// horizon color.
 //
-// The directional light is the scene's main light; the hemisphere light
-// fills shadows. Its shadow frustum follows the camera (shadowFit.ts).
+// The directional light's shadow frustum follows the camera (shadowFit.ts).
 // Shadow-map texels per meter vary with the fit, so the biases scale with
 // the texel: enough to stop acne, not so much that shadows detach from walls.
 const SHADOW_NORMAL_BIAS_TEXELS = 0.75
@@ -24,6 +25,8 @@ const FOG_FAR_M = 10000
 // `shadowMapSize` comes from the quality step (quality.ts); a change
 // reallocates the shadow map.
 export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?: number }) {
+  const sky = useSkyState()
+  const dir = sky.light.direction
   const lightRef = useRef<DirectionalLight>(null)
   const lightTargetRef = useRef<Object3D>(null)
   // The shadow camera's ortho frustum (sized each frame below, shadowFit.ts)
@@ -57,11 +60,11 @@ export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?
     const orbit = (state.controls as unknown as { target?: Vector3 } | null)?.target
     const look: [number, number, number] = orbit ? [orbit.x, orbit.y, orbit.z] : TARGET
     const fit = fitShadow(look, state.camera.position.distanceTo({ x: look[0], y: look[1], z: look[2] } as Vector3), shadowMapSize)
-    const key = `${fit.center.join()},${fit.extent}`
+    const key = `${fit.center.join()},${fit.extent},${dir.x.toFixed(5)},${dir.y.toFixed(5)},${dir.z.toFixed(5)}`
     if (key === fitKey.current) return
     fitKey.current = key
     lightTarget.position.set(...fit.center)
-    light.position.set(...sunLightPosition(fit.center))
+    light.position.set(...lightPosition(fit.center, dir))
     const cam = light.shadow.camera
     cam.left = -fit.extent
     cam.right = fit.extent
@@ -74,11 +77,11 @@ export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?
 
   return (
     <>
-      {/* Sky fill and sun, both from lighting.ts: intensities and the sky's
-          color are solved so a sunlit horizontal surface renders as its
-          palette color, neutral -- the sun's warmth shows only on faces it
-          hits, the sky's cool only in shadow. */}
-      <hemisphereLight args={[SKY_LIGHT_COLOR, palette.bounce, SKY_INTENSITY]} />
+      {/* Sky fill and sun (or moon), from skyState.ts: by day solved so a
+          sunlit horizontal surface renders as its palette color, neutral --
+          the sun's warmth shows only on faces it hits, the sky's cool only
+          in shadow; through dusk to a dim, blue night. */}
+      <hemisphereLight color={sky.fill.sky} groundColor={sky.fill.ground} intensity={sky.fill.intensity} />
       {/* Haze for the far distance only: the city and its skyline sit
           within ~3 km of the camera in the opening view and stay crisp
           (starting at 2 km washed the Financial District blue-gray); past
@@ -90,9 +93,9 @@ export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?
       <object3D ref={lightTargetRef} position={TARGET} />
       <directionalLight
         ref={lightRef}
-        color={palette.sun}
-        position={sunLightPosition(TARGET)}
-        intensity={SUN_INTENSITY}
+        color={sky.light.color}
+        position={lightPosition(TARGET, dir)}
+        intensity={sky.light.intensity}
         castShadow
         shadow-mapSize={[shadowMapSize, shadowMapSize]}
         shadow-camera-near={10}

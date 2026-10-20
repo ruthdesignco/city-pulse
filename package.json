@@ -14,7 +14,8 @@
     "record": "node --experimental-strip-types scripts/record-state.ts",
     "shot": "node --experimental-strip-types scripts/shot.ts",
     "calibrate": "node --experimental-strip-types scripts/calibrate.ts",
-    "bake:trees": "node --experimental-strip-types scripts/bake-trees.ts"
+    "bake:trees": "node --experimental-strip-types scripts/bake-trees.ts",
+    "smoke": "node --experimental-strip-types scripts/smoke.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
@@ -23,6 +24,7 @@
     "postprocessing": "^6.39.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "suncalc": "2.1.1",
     "three": "^0.186.1"
   },
   "devDependencies": {

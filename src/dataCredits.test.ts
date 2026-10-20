@@ -18,9 +18,9 @@ describe('data credits', () => {
 })
 
 describe('about this view', () => {
-  it('says which parts are illustrative and that the light is fixed', () => {
+  it('says which parts are illustrative, and that the light follows the real time', () => {
     const text = ABOUT_VIEW.join(' ')
-    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'fixed'])
+    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'real time', 'windows are lit'])
       expect(text).toContain(word)
   })
 })

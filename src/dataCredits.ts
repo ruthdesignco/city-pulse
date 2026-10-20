@@ -18,5 +18,5 @@ export const ABOUT_VIEW = [
   'Real data: building footprints, heights where OpenStreetMap has them, the street trees, and the Muni vehicles, live.',
   'Buildings without a recorded height are drawn 8 m tall.',
   'Illustrative: building materials, windows, storefronts, rooftop equipment, and vehicle size (enlarged at a distance so they stay visible).',
-  'The light is a fixed late-afternoon sun, not the current time of day.',
+  'The light follows the real time in San Francisco: the sun, and the moon at night. Which windows are lit at night is illustrative.',
 ]

@@ -25,7 +25,17 @@ const SETTLE_MS = 4000
 // (App.tsx), so the page matches what a viewer, not a developer, would see,
 // and to ?quality=high, so the frame-rate monitor never steps a shot or a
 // calibration down (quality.ts) and every run renders the same way.
-export async function withScenePage(label: string, query: Record<string, string>, withPage: (page: Page) => Promise<void>) {
+// What the page itself reported: page errors, and console errors (three.js
+// logs shader compile failures there). npm run smoke fails on these.
+export interface PageReport {
+  errors: string[]
+}
+
+// SCENE_GL=software renders with SwiftShader instead of the GPU: what CI
+// (Linux, no GPU) has. Slow, but it compiles every shader the same way.
+const SOFTWARE_GL = process.env.SCENE_GL === 'software'
+
+export async function withScenePage(label: string, query: Record<string, string>, withPage: (page: Page, report: PageReport) => Promise<void>) {
   const server = await createServer({ root: ROOT, server: { port: 0 }, logLevel: 'warn' })
   await server.listen()
   const url = server.resolvedUrls?.local[0]
@@ -36,13 +46,23 @@ export async function withScenePage(label: string, query: Record<string, string>
   // WebGL, which rendered the scene at ~1 fps and, with the street trees,
   // too slowly to load within the page timeouts. (ANGLE's Metal backend is
   // macOS only; elsewhere Chromium ignores the flag and picks its default.)
-  const browser = await chromium.launch({ headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] })
+  const browser = await chromium.launch({
+    headless: true,
+    args: SOFTWARE_GL ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'],
+  })
+  const report: PageReport = { errors: [] }
   try {
     const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 })
     // Surface what the page itself saw -- a shot that looks wrong is often a
     // failed asset load or a thrown error, not just a color to retune.
-    page.on('console', (msg) => console.log(`${label}: [page ${msg.type()}] ${msg.text()}`))
-    page.on('pageerror', (err) => console.error(`${label}: [page error] ${err}`))
+    page.on('console', (msg) => {
+      console.log(`${label}: [page ${msg.type()}] ${msg.text()}`)
+      if (msg.type() === 'error') report.errors.push(msg.text())
+    })
+    page.on('pageerror', (err) => {
+      console.error(`${label}: [page error] ${err}`)
+      report.errors.push(String(err))
+    })
     page.on('requestfailed', (req) => console.error(`${label}: [request failed] ${req.url()} -- ${req.failure()?.errorText}`))
     page.on('response', (res) => {
       if (!res.ok()) console.error(`${label}: [http ${res.status()}] ${res.url()}`)
@@ -50,7 +70,7 @@ export async function withScenePage(label: string, query: Record<string, string>
     await page.goto(`${url}?${new URLSearchParams({ demo: '', quality: 'high', ...query })}`, { waitUntil: 'networkidle' })
     await page.waitForSelector('canvas', { timeout: 15_000 })
     await page.waitForTimeout(SETTLE_MS)
-    await withPage(page)
+    await withPage(page, report)
   } finally {
     await browser.close()
     await server.close()

@@ -30,6 +30,8 @@
 // so distance never shimmers and never changes a wall's brightness.
 
 import { Color } from 'three'
+import { palette } from './palette.ts'
+import { LIT_SHARE_GLSL } from './windowLight.ts'
 
 export interface Facade {
   floorM: number // floor-to-floor height
@@ -164,6 +166,19 @@ export const SHOP_GLINT = 0.85
 export const AWNING_SHARE = 0.55
 export const FASCIA_SHADE = 0.6
 
+// Lit windows at night: emitted light (not lit by the scene), so they glow
+// against the dark without bloom. Brightness in scene units at the night
+// exposure; storefronts a little brighter. Which windows: windowLight.ts.
+export const WINDOW_RADIANCE = 0.5
+export const SHOP_RADIANCE = 0.75
+// Offices lit with cooler LED white, as a share of their lit windows, and
+// a little brighter (a pale cool fill otherwise reads as an empty pane).
+export const COOL_OFFICE_SHARE = 0.3
+export const COOL_BOOST = 1.35
+// A lit window is brighter toward its top, where the ceiling lights are:
+// this much at its foot, 1 at its head.
+export const WINDOW_FOOT = 0.7
+
 // The share of a window cell that is glass: what a wall averages to once
 // the pattern has faded with distance. Mirrors `coverage` in FACADE_COLOR.
 export function glassShare(width: number, height: number, mullion: boolean): number {
@@ -185,6 +200,12 @@ uniform vec3 uStoneColors[3];
 uniform vec3 uPaleStone;
 uniform vec3 uGranite;
 uniform vec3 uAwnings[5];
+uniform float uWindowsOn;
+uniform float uHour;
+float fcHash( vec3 p ) {
+  return fract( sin( dot( p, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+}
+${LIT_SHARE_GLSL}
 varying vec4 vFacade;
 varying float vMaterial;
 varying float vStorefront;
@@ -288,6 +309,34 @@ float windowGlass = fcUpperGlass + fcShopGlass;
 // Panes that show no reflection at all (FACADE_SPECULAR): everything but a
 // glass tower's curtain wall.
 float windowMatte = fcUpperGlass * ( fcType == 2 ? 0.0 : 1.0 ) + fcShopGlass;
+
+// Lit windows (windowLight.ts): each window's hash against the share lit
+// at this hour for this building's use; color and brightness vary per
+// window. Far away, where the pattern has faded to its average, the
+// expected glow instead (the share, an average color), so nothing shimmers.
+// No branch (this chunk takes derivatives; see facade.test.ts): computed
+// always, scaled to nothing by day through uWindowsOn.
+int fcUse = fcType == 1 ? 1 : 0;
+float fcShare = litShare( fcUse, uHour );
+vec3 fcCell = vec3( fcSeed * 113.0, floor( fcCu ), floor( fcCv ) );
+float fcLit = step( fcHash( fcCell ), fcShare );
+float fcTone = fcHash( fcCell + 17.0 );
+float fcCool = fcUse == 0 ? step( fcHash( fcCell + 31.0 ), ${v(COOL_OFFICE_SHARE)} ) : 0.0;
+vec3 fcWarm = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, fcTone );
+vec3 fcColor = mix( fcWarm, ${vec3(palette.windowCool)}, fcCool );
+float fcDetail = min( fcDetailAcross, fcDetailUp );
+float fcInPane = clamp( ( fract( fcCv ) - fcSill ) / max( fcHeight, 0.01 ), 0.0, 1.0 );
+float fcCeiling = mix( ${v((1 + WINDOW_FOOT) / 2)}, mix( ${v(WINDOW_FOOT)}, 1.0, fcInPane ), fcDetail );
+float fcLevel = ( 0.6 + 0.4 * fcHash( fcCell + 53.0 ) ) * fcCeiling * mix( 1.0, ${v(COOL_BOOST)}, fcCool );
+vec3 fcAverage = mix( mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, 0.5 ), ${vec3(palette.windowCool)}, fcUse == 0 ? ${v(COOL_OFFICE_SHARE)} : 0.0 ) * 0.8;
+vec3 fcUpperLight = mix( fcAverage * fcShare, fcColor * fcLevel * fcLit, fcDetail );
+
+float fcShopShare = litShare( 2, uHour );
+vec3 fcBay = vec3( fcSeed * 71.0, floor( fcBu ), 3.0 );
+float fcShopLit = mix( fcShopShare, step( fcHash( fcBay ), fcShopShare ), min( fcShopAcrossDetail, fcShopUpDetail ) );
+vec3 fcShopLight = ${vec3(palette.windowSoft)} * fcShopLit;
+
+vec3 windowLight = uWindowsOn * ( fcUpperGlass * fcUpperLight * ${v(WINDOW_RADIANCE)} + fcShopGlass * fcShopLight * ${v(SHOP_RADIANCE)} );
 float windowReflect = fcUpperGlass * ${pick((f) => v(f.reflect))} + fcShopGlass * ${v(SHOP_REFLECT)};
 float windowGlint = mix( ${pick((f) => v(f.glint))}, ${v(SHOP_GLINT)}, fcGround );
 `
@@ -314,5 +363,6 @@ export const FACADE_REFLECTION = /* glsl */ `
   float facing = clamp( dot( normal, normalize( vViewPosition ) ), 0.0, 1.0 );
   float fresnel = 0.04 + 0.96 * pow( 1.0 - facing, 5.0 );
   totalEmissiveRadiance += uSkyReflection * fresnel * windowReflect;
+  totalEmissiveRadiance += windowLight;
 }
 `

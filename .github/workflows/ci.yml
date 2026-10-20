@@ -45,3 +45,21 @@ jobs:
       # fixture test for how to run this by hand.
       - run: psql "$PGURL" -v ON_ERROR_STOP=1 -c "create role anon; create role authenticated; create role service_role;"
       - run: psql "$PGURL" -v ON_ERROR_STOP=1 $(scripts/sql-fixture-files.sh)
+
+  smoke:
+    name: Scene renders (smoke)
+    runs-on: ubuntu-latest
+    # The city, at day, blue hour and night, from three cameras: its shader
+    # compiles and draws, and nothing logs a shader error (scripts/smoke.ts).
+    # SwiftShader, since the runner has no GPU.
+    env:
+      SCENE_GL: software
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run smoke

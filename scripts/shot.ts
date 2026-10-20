@@ -7,6 +7,8 @@
 //   npm run shot -- closeup --view market
 //                             shots/closeup.png from a camera preset
 //                             (src/scene/shots.ts PRESETS, ?view=<name>)
+//   --time HH:MM              light the scene at that San Francisco time
+//                             today (?time=HH:MM); default: the real time
 //   --replay <name>           play public/recordings/<name>.json instead of
 //                             the live feed (?replay=<name>)
 //   --min-vehicles <n>        wait until at least n vehicles are in the
@@ -45,6 +47,7 @@ async function main() {
   const args = process.argv.slice(2)
   const view = flag(args, 'view')
   const replay = flag(args, 'replay')
+  const time = flag(args, 'time')
   const minVehicles = Number(flag(args, 'min-vehicles') ?? 1)
   if (!Number.isInteger(minVehicles) || minVehicles < 0) throw new Error('shot: --min-vehicles must be a whole number')
   const name = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--')) ?? 'opening'
@@ -53,6 +56,7 @@ async function main() {
   const query: Record<string, string> = {}
   if (view) query.view = view
   if (replay) query.replay = replay
+  if (time) query.time = time
   await withScenePage('shot', query, async (page) => {
     if (minVehicles > 0) {
       const started = Date.now()

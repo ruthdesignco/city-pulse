@@ -19,6 +19,7 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { ringDim } from './ring.ts'
 import { RoofItem, type RoofPiece, generateRooftops } from './rooftops.ts'
@@ -100,12 +101,20 @@ interface FadeUniforms {
 
 const pxPerMeter = (camera: PerspectiveCamera, heightPx: number) => heightPx / (2 * Math.tan(((camera.fov ?? 40) * Math.PI) / 360))
 
-function withFade<M extends MeshStandardMaterial | MeshDepthMaterial>(material: M, uniforms: FadeUniforms, px: [number, number], key: string): M {
+// `ringFade`: the color material also fades the context ring toward the time
+// of day's haze (sceneUniforms.ts), per instance (iRingFade).
+function withFade<M extends MeshStandardMaterial | MeshDepthMaterial>(material: M, uniforms: FadeUniforms, px: [number, number], key: string, ringFade = false): M {
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     Object.assign(shader.uniforms, uniforms)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${FADE_PARS}`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${fadeVertex(px)}`)
+      .replace('#include <common>', `#include <common>\n${FADE_PARS}${ringFade ? 'attribute float iRingFade;\nvarying float vRingFade;\n' : ''}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${fadeVertex(px)}${ringFade ? 'vRingFade = iRingFade;\n' : ''}`)
+    if (ringFade) {
+      shader.uniforms.uHaze = sceneUniforms.uHaze
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 uHaze;\nvarying float vRingFade;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHaze, vRingFade);')
+    }
   }
   material.customProgramCacheKey = () => key
   return material
@@ -116,14 +125,15 @@ interface Slot {
   // Every item of this kind, in the order generated.
   matrices: Float32Array // 16 per item
   colors: Float32Array // 3 per item, linear
+  ringFades: Float32Array // 1 per item: how far toward the haze (ring.ts)
+  ringFade: InstancedBufferAttribute
   centers: Float32Array // 3 per item
   sizes: Float32Array // largest dimension, m
 }
 
 function buildSlots(pieces: RoofPiece[], buildingColorIndex: Uint8Array, uniforms: FadeUniforms): Slot[] {
-  const material = withFade(new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 }), uniforms, FADE_PX, 'city-rooftops-v2')
+  const material = withFade(new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 }), uniforms, FADE_PX, 'city-rooftops-v3', true)
   const depth = withFade(new MeshDepthMaterial({ depthPacking: RGBADepthPacking }), uniforms, SHADOW_FADE_PX, 'city-rooftops-depth-v2')
-  const sky = new Color(palette.sky)
   const hvac = new Color(palette.roofHvac)
   const buildingColors = palette.buildingColors.map((c) => new Color(c))
   const dummy = new Object3D()
@@ -134,10 +144,15 @@ function buildSlots(pieces: RoofPiece[], buildingColorIndex: Uint8Array, uniform
   return KINDS.map((kind) => {
     const mine = pieces.filter((p) => p.kind === kind)
     const n = mine.length
+    const geometry = kind === RoofItem.Tank ? tank() : box()
+    const ringFade = new InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1).setUsage(DynamicDrawUsage)
+    geometry.setAttribute('iRingFade', ringFade)
     const slot: Slot = {
-      mesh: new InstancedMesh(kind === RoofItem.Tank ? tank() : box(), material, Math.max(1, n)),
+      mesh: new InstancedMesh(geometry, material, Math.max(1, n)),
       matrices: new Float32Array(16 * n),
       colors: new Float32Array(3 * n),
+      ringFades: new Float32Array(n),
+      ringFade,
       centers: new Float32Array(3 * n),
       sizes: new Float32Array(n),
     }
@@ -153,8 +168,9 @@ function buildSlots(pieces: RoofPiece[], buildingColorIndex: Uint8Array, uniform
         c.setHSL(hsl.h, hsl.s, hsl.l * (1 + HVAC_LIGHTNESS_JITTER * (2 * (j - Math.floor(j)) - 1)))
       } else if (kind === RoofItem.Penthouse) c.copy(buildingColors[buildingColorIndex[p.building]]).multiplyScalar(PENTHOUSE_SHADE)
       else c.setRGB(1, 1, 1)
-      // The context ring fades toward the haze, as its buildings do.
-      c.lerp(sky, ringDim(p.ring)).toArray(slot.colors, 3 * i)
+      c.toArray(slot.colors, 3 * i)
+      // The context ring fades toward the haze, as its buildings do (shader).
+      slot.ringFades[i] = ringDim(p.ring)
       slot.centers.set([p.x, p.y + p.h / 2, p.z], 3 * i)
       slot.sizes[i] = Math.max(p.w, p.h, p.d)
     })
@@ -178,6 +194,7 @@ function reassign(slots: Slot[], cam: Vector3, pxPerM: number) {
   for (const s of slots) {
     const m = s.mesh.instanceMatrix.array as Float32Array
     const col = s.mesh.instanceColor!.array as Float32Array
+    const fade = s.ringFade.array as Float32Array
     let k = 0
     for (let i = 0; i < s.sizes.length; i++) {
       const dx = s.centers[3 * i] - cam.x
@@ -187,10 +204,11 @@ function reassign(slots: Slot[], cam: Vector3, pxPerM: number) {
       if (dx * dx + dy * dy + dz * dz > reach * reach) continue
       for (let e = 0; e < 16; e++) m[16 * k + e] = s.matrices[16 * i + e]
       for (let e = 0; e < 3; e++) col[3 * k + e] = s.colors[3 * i + e]
+      fade[k] = s.ringFades[i]
       k++
     }
     s.mesh.count = k
-    for (const attr of [s.mesh.instanceMatrix, s.mesh.instanceColor!]) {
+    for (const attr of [s.mesh.instanceMatrix, s.mesh.instanceColor!, s.ringFade]) {
       attr.clearUpdateRanges()
       attr.addUpdateRange(0, k * attr.itemSize)
       attr.needsUpdate = true

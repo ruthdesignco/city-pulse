@@ -1,0 +1,10 @@
+// Shown whenever ?time= pins the light, so a recording or a screenshot never
+// passes a set time of day off as now (the data stays live; only the light
+// is set). Never hidden by the overlay toggle, like the Recorded badge.
+export function LightNote({ label }: { label: string }) {
+  return (
+    <div className="light-note" role="status">
+      Light set to {label} (San Francisco time)
+    </div>
+  )
+}

@@ -1,7 +1,7 @@
 # City Pulse: 2 minute walkthrough shot list
 
 Target: a designer watches and asks "how did you build this?"
-Record at golden hour SF time, so the real light matches the scene's; keep recorded replay as backup.
+Record with `?time=` set to the light you want (golden hour is `?time=16:50` in late October; it moves with the date), so takes match whatever the clock says; the scene then shows "Light set to HH:MM" top right. Keep the recorded replay as backup.
 
 | # | Time | Shot | Camera | On screen | Voiceover (draft) |
 |---|------|------|--------|-----------|-------------------|
@@ -22,7 +22,7 @@ Record at golden hour SF time, so the real light matches the scene's; keep recor
 - Shot 5 is staged: the replay stops delivering snapshots on purpose, and the badge says so on screen.
 
 ## Recording setup
-- Open with `?demo&quality=high`. `quality=high` pins full render quality: without it, the screen recorder's own load can make the frame-rate monitor step the scene down mid-take (src/scene/quality.ts). The credits line stays on screen in every shot; it's required.
+- Open with `?demo&quality=high&time=16:50` (or the time you want). `quality=high` pins full render quality: without it, the screen recorder's own load can make the frame-rate monitor step the scene down mid-take (src/scene/quality.ts). The credits line stays on screen in every shot; it's required.
 - Demo mode: `?demo`. The FPS counter is hidden, `h` toggles the freshness pill (shot 1), and keys 1–7 play each shot's camera move the same way every take. Esc or a drag stops a move.
 - Backup recordings: `public/recordings/morning.json` (recorded 2026-10-20, about 9:45 a.m.) is committed. For one that matches the light, at golden hour run `npm run record -- --name dusk --minutes 15` and commit `public/recordings/dusk.json` (the name is just a label). Play either with `?replay=<name>`; it's always badged "Recorded".
 - Shot 5: `?demo&quality=high&replay=dusk&start=100&hold=0` (or `replay=morning`), press 5 and roll. Vehicles fade and the pill turns stale within about a minute.

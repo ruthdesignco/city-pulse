@@ -122,6 +122,23 @@ body,
   pointer-events: none;
 }
 
+/* "Light set to HH:MM" (LightNote.tsx), top right: the freshness pill's
+   look. */
+.light-note {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(27 30 48 / 0.72);
+  backdrop-filter: blur(6px);
+  color: #c9cde8;
+  font: 500 12px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Data credits (src/Credits.tsx): the freshness pill's look, bottom right,
    quieter. Links are the only part of the overlay that takes the pointer. */
 .credits {

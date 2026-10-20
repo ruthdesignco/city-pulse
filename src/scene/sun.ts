@@ -35,3 +35,9 @@ export const SUN_POSITION = bearingToScene(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, S
 export function sunLightPosition(target: readonly [number, number, number]): [number, number, number] {
   return [target[0] + SUN_POSITION[0], target[1] + SUN_POSITION[1], target[2] + SUN_POSITION[2]]
 }
+
+// The same for any light direction (unit, toward the light): the time of
+// day's sun or moon (skyState.ts).
+export function lightPosition(target: readonly [number, number, number], direction: { x: number; y: number; z: number }): [number, number, number] {
+  return [target[0] + direction.x * SUN_DISTANCE, target[1] + direction.y * SUN_DISTANCE, target[2] + direction.z * SUN_DISTANCE]
+}

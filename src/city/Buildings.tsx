@@ -1,8 +1,10 @@
 import { useEffect, useMemo } from 'react'
-import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
+import { DEMO } from '../params.ts'
+import { BufferAttribute, BufferGeometry, Color, type Material, type Mesh, MeshStandardMaterial } from 'three'
 import type { CityData } from './format.ts'
 import { extrudeBuildings } from './extrude.ts'
 import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
+import { sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
 import { useCity } from './useCity.ts'
@@ -41,10 +43,14 @@ function buildMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: palette.building, roughness: 0.92, metalness: 0 })
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
-    shader.uniforms.uDim = { value: new Color(palette.sky) }
+    shader.uniforms.uDim = sceneUniforms.uHaze
     shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
-    // What the windows reflect (facade.ts): the haze at the horizon.
-    shader.uniforms.uSkyReflection = { value: new Color(palette.sky) }
+    // What the windows reflect (facade.ts): the haze at the horizon, by
+    // time of day. Lit windows at night (facade.ts) read the hour and the
+    // dusk-to-dawn factor.
+    shader.uniforms.uSkyReflection = sceneUniforms.uHaze
+    shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
+    shader.uniforms.uHour = sceneUniforms.uHour
     shader.uniforms.uStoneColors = { value: palette.stoneTowerColors.map((c) => new Color(c)) }
     shader.uniforms.uPaleStone = { value: new Color(palette.landmarkPaleStone) }
     shader.uniforms.uGranite = { value: new Color(palette.landmarkGranite) }
@@ -77,8 +83,39 @@ function buildMaterial(): MeshStandardMaterial {
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v13'
+  material.customProgramCacheKey = () => 'city-buildings-v15'
   return material
+}
+
+declare global {
+  interface Window {
+    // ?demo only: whether the city mesh's shader program is runnable, set on
+    // each draw. A shader that fails to compile drops the whole city while
+    // everything else still renders; npm run smoke checks this.
+    __cityDrawn?: boolean
+  }
+}
+
+// Asks WebGL itself whether the program linked: three.js's own diagnostics
+// aren't always filled in for a failed compile. Cached per program. The hook
+// also runs in the shadow and SSAO normal passes, with their own working
+// materials, so only the city's own material counts.
+type ProgramInfo = { currentProgram?: { program: WebGLProgram } }
+const linked = new WeakMap<WebGLProgram, boolean>()
+const reportDrawn = (own: Material): Mesh['onAfterRender'] => (renderer, _scene, _camera, _geometry, material) => {
+  if (material !== own) return
+  const program = (renderer.properties.get(material) as ProgramInfo).currentProgram?.program
+  if (!program) {
+    window.__cityDrawn = false
+    return
+  }
+  let ok = linked.get(program)
+  if (ok === undefined) {
+    const gl = renderer.getContext()
+    ok = gl.getProgramParameter(program, gl.LINK_STATUS) === true
+    linked.set(program, ok)
+  }
+  window.__cityDrawn = ok
 }
 
 export function Buildings() {
@@ -88,5 +125,5 @@ export function Buildings() {
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
 
-  return <mesh geometry={geometry} material={material} castShadow receiveShadow />
+  return <mesh geometry={geometry} material={material} castShadow receiveShadow onAfterRender={DEMO ? reportDrawn(material) : undefined} />
 }

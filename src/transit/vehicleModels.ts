@@ -15,6 +15,7 @@
 import { BoxGeometry, BufferAttribute, type BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { palette } from '../city/palette.ts'
+import { sceneUniforms } from '../scene/sceneUniforms.ts'
 import type { VehicleKind } from './fleet.ts'
 
 export const MODEL_LENGTH_M: Record<VehicleKind, number> = { bus40: 12.2, bus60: 18.3, rail: 23, cable: 8.3 }
@@ -24,6 +25,13 @@ export const MODEL_WIDTH_M: Record<VehicleKind, number> = { bus40: 2.55, bus60: 
 // then this much toward white -- faded, not darker.
 export const STALE_DESATURATE = 0.8
 export const STALE_LIGHTEN = 0.15
+
+// Night lighting (vehicleMaterial): the cabin seen through the glass, and
+// the headlamps; dimmer on a stale vehicle. Scene units at night exposure.
+const GLOW_CABIN = 1
+const GLOW_LAMP = 2
+export const CABIN_LIGHT = 0.22
+export const LAMP_LIGHT = 1.1
 
 interface Part {
   at: [number, number, number] // center
@@ -43,6 +51,9 @@ function build(parts: Part[]): BufferGeometry {
     const color = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) color.set([c.r, c.g, c.b], i * 3)
     g.setAttribute('color', new BufferAttribute(color, 3))
+    // At night (vehicleMaterial): window glass shows a lit cabin, lamps glow.
+    const glow = p.color === palette.liveryGlass ? GLOW_CABIN : p.color === palette.liveryLamp ? GLOW_LAMP : 0
+    g.setAttribute('aGlow', new BufferAttribute(new Float32Array(n).fill(glow), 1))
     return g
   })
   const merged = mergeGeometries(pieces)
@@ -185,10 +196,18 @@ export function vehicleMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0, flatShading: true })
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aStale;\nvarying float vStale;')
-      .replace('#include <color_vertex>', '#include <color_vertex>\nvStale = aStale;')
+      .replace('#include <common>', '#include <common>\nattribute float aStale;\nattribute float aGlow;\nvarying float vStale;\nvarying float vGlow;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvStale = aStale;\nvGlow = aGlow;')
+    shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vStale;')
+      .replace('#include <common>', '#include <common>\nuniform float uWindowsOn;\nvarying float vStale;\nvarying float vGlow;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+float cabin = 1.0 - step( 0.5, abs( vGlow - ${GLOW_CABIN.toFixed(1)} ) );
+float lamp = 1.0 - step( 0.5, abs( vGlow - ${GLOW_LAMP.toFixed(1)} ) );
+totalEmissiveRadiance += uWindowsOn * ( 1.0 - 0.7 * vStale ) * ( cabin * ${CABIN_LIGHT.toFixed(3)} * vec3( 1.0, 0.92, 0.78 ) + lamp * ${LAMP_LIGHT.toFixed(3)} * vec3( 1.0, 0.95, 0.85 ) );`,
+      )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -197,7 +216,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(gray), ${STALE_DESATURATE.toFixed(
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), ${STALE_LIGHTEN.toFixed(3)} * vStale);`,
       )
   }
-  material.customProgramCacheKey = () => 'city-vehicles-v2'
+  material.customProgramCacheKey = () => 'city-vehicles-v3'
   return material
 }
 
