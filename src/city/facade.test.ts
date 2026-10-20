@@ -60,6 +60,13 @@ describe('facades', () => {
     expect(g.b).toBeGreaterThan(g.r)
   })
 
+  it('reflects the sky on glass towers only, so punched windows stay dark in sun', () => {
+    for (const f of [neutral, residential, stone]) {
+      expect(f.reflect).toBe(0)
+      expect(f.glint).toBeGreaterThanOrEqual(0.8)
+    }
+  })
+
   it('reflects the sky most on towers, with the sharpest glints', () => {
     expect(tower.reflect).toBeGreaterThan(neutral.reflect)
     expect(tower.reflect).toBeGreaterThan(residential.reflect)

@@ -43,7 +43,11 @@ export interface Facade {
   varyWidth: number
   mullion: number // share of buildings whose windows a center mullion splits
   glass: string // pane color, as lit albedo
-  reflect: number // strength of the sky reflection on the panes
+  // Sky reflection on the panes: glass towers only. Punched windows in sun
+  // read as pale gray blanks with it (strong at grazing angles), so they
+  // get none, and matte panes (high roughness) so the sun can't glint them
+  // pale either: they stay dark, as real recessed windows look in daylight.
+  reflect: number
   glint: number // pane roughness (lower = sharper sun glints)
 }
 
@@ -62,8 +66,8 @@ export const FACADES: [Facade, Facade, Facade, Facade] = [
     varyWidth: 0.35,
     mullion: 0.5,
     glass: '#3b4247',
-    reflect: 0.35,
-    glint: 0.5,
+    reflect: 0,
+    glint: 0.85,
   },
   {
     floorM: 3.1,
@@ -76,8 +80,8 @@ export const FACADES: [Facade, Facade, Facade, Facade] = [
     varyWidth: 0.3,
     mullion: 0.6,
     glass: '#2d3135',
-    reflect: 0.2,
-    glint: 0.6,
+    reflect: 0,
+    glint: 0.85,
   },
   {
     floorM: 3.5,
@@ -104,8 +108,8 @@ export const FACADES: [Facade, Facade, Facade, Facade] = [
     varyWidth: 0.2,
     mullion: 0.4,
     glass: '#2f3439',
-    reflect: 0.3,
-    glint: 0.5,
+    reflect: 0,
+    glint: 0.85,
   },
 ]
 
@@ -153,8 +157,8 @@ export const SHOP_BULKHEAD_M = 0.45
 export const SHOP_GLASS_GAP_M = 1.15
 export const SHOP_BAND: [number, number] = [0.4, 1.0] // band from/to, meters below the floor's top
 export const SHOP_GLASS = '#3a454e'
-export const SHOP_REFLECT = 0.6
-export const SHOP_GLINT = 0.3
+export const SHOP_REFLECT = 0
+export const SHOP_GLINT = 0.85
 // The share of storefronts with a colored awning line (palette.awnings);
 // the rest get a fascia, the wall's own color darkened.
 export const AWNING_SHARE = 0.55
@@ -281,6 +285,9 @@ diffuseColor.rgb = mix( diffuseColor.rgb, fcBandColor, fcBand );
 diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SHOP_GLASS)}, fcShopGlass );
 
 float windowGlass = fcUpperGlass + fcShopGlass;
+// Panes that show no reflection at all (FACADE_SPECULAR): everything but a
+// glass tower's curtain wall.
+float windowMatte = fcUpperGlass * ( fcType == 2 ? 0.0 : 1.0 ) + fcShopGlass;
 float windowReflect = fcUpperGlass * ${pick((f) => v(f.reflect))} + fcShopGlass * ${v(SHOP_REFLECT)};
 float windowGlint = mix( ${pick((f) => v(f.glint))}, ${v(SHOP_GLINT)}, fcGround );
 `
@@ -288,6 +295,15 @@ float windowGlint = mix( ${pick((f) => v(f.glint))}, ${v(SHOP_GLINT)}, fcGround 
 // After roughnessmap_fragment: panes are smoother than the wall.
 export const FACADE_ROUGHNESS = /* glsl */ `
 roughnessFactor = mix( roughnessFactor, windowGlint, windowGlass );
+`
+
+// After lights_physical_fragment: punched windows and shopfronts show no
+// specular either, not even the grazing-angle sheen that a rough pane still
+// has, which turned sunlit windows seen along a wall pale gray. They read as
+// dark openings, as recessed windows do in daylight.
+export const FACADE_SPECULAR = /* glsl */ `
+material.specularColorBlended *= 1.0 - windowMatte;
+material.specularF90 *= 1.0 - windowMatte;
 `
 
 // After emissivemap_fragment (normal and vViewPosition are in view space):

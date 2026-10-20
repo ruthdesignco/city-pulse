@@ -24,7 +24,7 @@ export interface CityMesh {
 
 // A stable per-building seed in [0, 1) from its first footprint point, so a
 // building keeps its window pattern across rebakes.
-function seedOf(x: number, z: number): number {
+export function seedOf(x: number, z: number): number {
   let h = Math.imul(x | 0, 0x9e3779b1) ^ Math.imul(z | 0, 0x85ebca77)
   h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d)
   h ^= h >>> 13

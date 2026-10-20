@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import type { CityData } from './format.ts'
 import { extrudeBuildings } from './extrude.ts'
-import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS } from './facade.ts'
+import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
 import { useCity } from './useCity.ts'
@@ -74,9 +74,10 @@ function buildMaterial(): MeshStandardMaterial {
         diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);`,
       )
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
+      .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v12'
+  material.customProgramCacheKey = () => 'city-buildings-v13'
   return material
 }
 

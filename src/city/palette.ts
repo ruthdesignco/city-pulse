@@ -62,6 +62,13 @@ export const palette = {
   // Storefront awning lines (facade.ts): muted canvas, the colors real
   // awnings fade to -- forest, oxblood, navy, khaki, black.
   awnings: ['#4f5d4a', '#6e3a33', '#3d4a5c', '#8c7a5e', '#2f3133'],
+  // Rooftop detail (rooftops.ts, Rooftops.tsx): galvanized HVAC units;
+  // penthouses take their building's color. Water tanks are weathered
+  // redwood on a dark steel stand.
+  roofHvac: '#9c9e9a',
+  roofTankWood: '#7a5c42',
+  roofTankRoof: '#5a4a3c',
+  roofTankStand: '#3e3a36',
   buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
   // Roads (Streets.tsx, roads.ts) and paving (paving.ts): mid-gray asphalt,

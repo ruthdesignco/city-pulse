@@ -7,6 +7,7 @@ import { Buildings } from './city/Buildings.tsx'
 import { Credits } from './Credits.tsx'
 import { CALIBRATE, DEMO, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, VIEW } from './params.ts'
 import { Ground } from './city/Ground.tsx'
+import { Rooftops } from './city/Rooftops.tsx'
 import { Streets } from './city/Streets.tsx'
 import { Trees } from './city/Trees.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
@@ -77,6 +78,7 @@ export default function App() {
           <Ground />
           <Streets />
           <Buildings />
+          <Rooftops />
         </Suspense>
         <Suspense fallback={null}>
           <Trees />
