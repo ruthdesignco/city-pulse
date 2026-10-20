@@ -46,6 +46,7 @@ import {
 } from './lib/overpass.ts'
 import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
+import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
@@ -380,6 +381,13 @@ async function main() {
     .filter((b) => b.name)
     .map((b) => ({ name: b.name!, x: b.center[0], z: b.center[1], height: b.height }))
 
+  // Landmark facades, pinned by exact OSM name; every name must match.
+  const pinnedMaterials = buildings.flatMap((x, building) =>
+    x.name !== undefined && Object.hasOwn(LANDMARK_MATERIALS, x.name) ? [{ building, material: LANDMARK_MATERIALS[x.name], name: x.name }] : [],
+  )
+  const unmatched = Object.keys(LANDMARK_MATERIALS).filter((name) => !pinnedMaterials.some((p) => p.name === name))
+  if (unmatched.length) throw new Error(`bake: landmark material names match no building: ${unmatched.join(', ')}`)
+
   const b = packLines(buildings.map((x) => x.ring))
   const s = packLines(streets.map((x) => x.line))
   const n = packLines(boundary)
@@ -390,6 +398,7 @@ async function main() {
       ringMeters: RING_METERS,
       waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
       extent: bboxExtent(QUERY_BBOX),
+      pinnedMaterials,
       attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
       osmTimestamp: null,
       bakedAt: new Date().toISOString(),
@@ -421,6 +430,7 @@ async function main() {
     const top = [...stats.badHeightValues].sort((a, b) => b[1] - a[1]).slice(0, 8)
     console.log(`  unparseable height values (${stats.badHeightValues.size} distinct): ${top.map(([v, c]) => `${JSON.stringify(v)}×${c}`).join(', ')}`)
   }
+  console.log(`landmark materials: ${pinnedMaterials.map((p) => `${p.name} (#${p.building}, ${buildings[p.building].height.toFixed(0)} m)`).join(', ')}`)
   console.log(`streets: ${streets.length} runs`)
   console.log(`\ntallest:`)
   for (const t of tallest) {

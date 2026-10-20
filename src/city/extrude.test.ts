@@ -81,4 +81,12 @@ describe('extrudeBuildings', () => {
     // The other building gets its own seed.
     expect(f(g.facade.length / 4 - 1)[3]).not.toBe(seed)
   })
+
+  it('carries a pinned facade material per vertex, 0 for everything else', () => {
+    const pinned = extrudeBuildings(buildings, 600, [{ building: 1, material: 3 }])
+    const first = 4 * 4 + 4 // the first building's vertices
+    for (let v = 0; v < first; v++) expect(pinned.material[v]).toBe(0)
+    for (let v = first; v < pinned.material.length; v++) expect(pinned.material[v]).toBe(3)
+    expect(g.material.every((m) => m === 0)).toBe(true)
+  })
 })

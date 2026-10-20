@@ -14,6 +14,8 @@ export interface CityMesh {
   // (m), and a per-building seed in [0, 1). Roof vertices have 0 for the
   // first two.
   facade: Float32Array
+  // facade.ts PinnedMaterial per vertex: 0 (the random choice) unless pinned.
+  material: Float32Array
   index: Uint32Array
 }
 
@@ -26,7 +28,7 @@ function seedOf(x: number, z: number): number {
   return (h >>> 0) / 4294967296
 }
 
-export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600): CityMesh {
+export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600, pinned: { building: number; material: number }[] = []): CityMesh {
   let verts = 0
   let tris = 0
   for (const n of b.counts) {
@@ -38,6 +40,8 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600): Ci
   const ring = new Float32Array(verts)
   const colorIndex = new Float32Array(verts)
   const facade = new Float32Array(verts * 4)
+  const material = new Float32Array(verts)
+  const pinnedBy = new Map(pinned.map((p) => [p.building, p.material]))
   const index = new Uint32Array(tris * 3)
 
   let v = 0
@@ -47,12 +51,14 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600): Ci
   let height = 0
   let seed = 0
   let wallLen = 0
+  let mat = 0
   const put = (x: number, y: number, z: number, nx: number, ny: number, nz: number, r: number, ci: number, wallU = 0) => {
     positions.set([x, y, z], v * 3)
     normals.set([nx, ny, nz], v * 3)
     ring[v] = r
     colorIndex[v] = ci
     facade.set([wallU, ny > 0.5 ? 0 : wallLen, height, seed], v * 4)
+    material[v] = mat
     return v++
   }
 
@@ -64,6 +70,7 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600): Ci
     const pts: [number, number][] = []
     seed = seedOf(b.coords[c], b.coords[c + 1])
     height = h
+    mat = pinnedBy.get(k) ?? 0
     for (let i = 0; i < n; i++, c += 2) pts.push([b.coords[c] * COORD_QUANTUM, b.coords[c + 1] * COORD_QUANTUM])
 
     // Walls. Rings have signedArea(x, z) > 0, so for edge direction (dx, dz)
@@ -103,5 +110,5 @@ export function extrudeBuildings(b: CityData['buildings'], ringMeters = 600): Ci
   }
 
   // Degenerate rings can make earcut return fewer triangles than n - 2.
-  return { positions, normals, ring, colorIndex, facade, index: t === index.length ? index : index.slice(0, t) }
+  return { positions, normals, ring, colorIndex, facade, material, index: t === index.length ? index : index.slice(0, t) }
 }

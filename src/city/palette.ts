@@ -54,6 +54,11 @@ export const palette = {
   // by the tower's color variant: cream limestone, warm gray concrete, pale
   // sandstone. Same value range as the glass towers they stand among.
   stoneTowerColors: ['#d8ccb6', '#b5ab9c', '#c9bda4'],
+  // Pinned landmark stone (scripts/lib/landmarkMaterials.ts): the
+  // Transamerica Pyramid's pale crushed-quartz panels, and 555 California
+  // Street's dark red-brown carnelian granite.
+  landmarkPaleStone: '#e6e1d6',
+  landmarkGranite: '#5c4743',
   buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
   // Roads (Streets.tsx, roads.ts) and paving (paving.ts): mid-gray asphalt,

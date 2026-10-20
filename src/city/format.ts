@@ -36,6 +36,9 @@ export interface CityHeader {
   // The area OSM data was baked from, scene meters [minX, minZ, maxX, maxZ]:
   // the ring is cut off where it runs past this (the north edge).
   extent?: [number, number, number, number]
+  // Landmark facades pinned by name (scripts/lib/landmarkMaterials.ts):
+  // building index, facade.ts PinnedMaterial code, and the OSM name.
+  pinnedMaterials?: { building: number; material: number; name: string }[]
   attribution: string
   osmTimestamp: string | null
   bakedAt: string

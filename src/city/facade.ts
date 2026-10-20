@@ -103,6 +103,11 @@ export const FACADES: [Facade, Facade, Facade, Facade] = [
   },
 ]
 
+// A facade material pinned for a landmark (scripts/lib/landmarkMaterials.ts,
+// city.bin header `pinnedMaterials`), overriding the random choice below.
+export const PinnedMaterial = { Auto: 0, Glass: 1, PaleStone: 2, Granite: 3 } as const
+export type PinnedMaterial = (typeof PinnedMaterial)[keyof typeof PinnedMaterial]
+
 // The share of towers built in stone or concrete instead of curtain wall.
 export const STONE_TOWER_SHARE = 1 / 3
 // Which towers: a hash of the building's seed (extrude.ts), independent of
@@ -111,6 +116,8 @@ export const STONE_TOWER_SHARE = 1 / 3
 // of towers). Mirrored in FACADE_COLOR.
 const STONE_HASH = [17, 0.29]
 const fract = (x: number) => x - Math.floor(x)
+// Pinned codes from here up are stone.
+const PINNED_STONE_FROM = PinnedMaterial.PaleStone - 0.5
 export function isStoneTower(seed: number): boolean {
   return fract(seed * STONE_HASH[0] + STONE_HASH[1]) < STONE_TOWER_SHARE
 }
@@ -147,7 +154,10 @@ const pick = (key: (f: Facade) => string) =>
 export const FACADE_PARS = /* glsl */ `
 uniform vec3 uSkyReflection;
 uniform vec3 uStoneColors[3];
+uniform vec3 uPaleStone;
+uniform vec3 uGranite;
 varying vec4 vFacade;
+varying float vMaterial;
 float facadeBox( float x, float lo, float hi, float aa ) {
   return smoothstep( lo - aa, lo + aa, x ) * ( 1.0 - smoothstep( hi - aa, hi + aa, x ) );
 }
@@ -160,9 +170,15 @@ float facadeBox( float x, float lo, float hi, float aa ) {
 export const FACADE_COLOR = /* glsl */ `
 float fcSeed = vFacade.w;
 float fcFamily = floor( ( vColorIndex + 0.5 ) / 3.0 );
-float fcStone = step( 1.5, fcFamily ) * step( fract( fcSeed * ${v(STONE_HASH[0])} + ${v(STONE_HASH[1])} ), ${v(STONE_TOWER_SHARE)} );
-int fcType = fcStone > 0.5 ? ${STONE_TOWER} : int( fcFamily );
-diffuseColor.rgb = mix( diffuseColor.rgb, uStoneColors[ int( mod( vColorIndex + 0.5, 3.0 ) ) ], fcStone );
+// Towers: stone by the random choice, unless a landmark's material is pinned
+// (any pinned material makes it a tower facade, glass or stone).
+float fcPinned = step( 0.5, vMaterial );
+float fcTower = max( step( 1.5, fcFamily ), fcPinned );
+float fcRandomStone = step( fract( fcSeed * ${v(STONE_HASH[0])} + ${v(STONE_HASH[1])} ), ${v(STONE_TOWER_SHARE)} );
+float fcStone = fcTower * mix( fcRandomStone, step( ${v(PINNED_STONE_FROM)}, vMaterial ), fcPinned );
+int fcType = fcStone > 0.5 ? ${STONE_TOWER} : fcTower > 0.5 ? 2 : int( fcFamily );
+vec3 fcStoneColor = vMaterial > ${v(PinnedMaterial.Granite - 0.5)} ? uGranite : vMaterial > ${v(PinnedMaterial.PaleStone - 0.5)} ? uPaleStone : uStoneColors[ int( mod( vColorIndex + 0.5, 3.0 ) ) ];
+diffuseColor.rgb = mix( diffuseColor.rgb, fcStoneColor, fcStone );
 float fcS1 = fract( fcSeed * 7.31 + 0.13 );
 float fcS2 = fract( fcSeed * 13.17 + 0.71 );
 float fcS3 = fract( fcSeed * 29.93 + 0.37 );
