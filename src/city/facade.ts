@@ -11,6 +11,10 @@
 //   Tower        curtain wall: ~3.5 m floors, near-continuous glass between
 //                narrow mullions and spandrel bands, cool and darker, with a
 //                Fresnel sky reflection and a sun glint
+//   Stone tower  about a third of towers, chosen per building by its seed
+//                (isStoneTower): stone or concrete in a masonry tone
+//                (palette.stoneTowerColors) with punched windows, so the
+//                skyline isn't uniformly blue-gray glass
 //
 // Window columns are centered on each wall, so no window is cut at a
 // corner; the top floor stops below a parapet. Where window columns or
@@ -37,8 +41,10 @@ export interface Facade {
   glint: number // pane roughness (lower = sharper sun glints)
 }
 
-// Indexed by BuildingColorType: Neutral, Residential, Tower.
-export const FACADES: [Facade, Facade, Facade] = [
+// Indexed by BuildingColorType (Neutral, Residential, Tower), then
+// STONE_TOWER for the towers isStoneTower picks.
+export const STONE_TOWER = 3
+export const FACADES: [Facade, Facade, Facade, Facade] = [
   {
     floorM: 4.0,
     spacingM: 3.6,
@@ -81,7 +87,33 @@ export const FACADES: [Facade, Facade, Facade] = [
     reflect: 1,
     glint: 0.25,
   },
+  {
+    floorM: 3.5,
+    spacingM: 2.4,
+    width: 0.44,
+    height: 0.56,
+    sill: 0.24,
+    varyFloor: 0.05,
+    varySpacing: 0.25,
+    varyWidth: 0.2,
+    mullion: 0.4,
+    glass: '#2f3439',
+    reflect: 0.3,
+    glint: 0.5,
+  },
 ]
+
+// The share of towers built in stone or concrete instead of curtain wall.
+export const STONE_TOWER_SHARE = 1 / 3
+// Which towers: a hash of the building's seed (extrude.ts), independent of
+// the other per-building variations. The multiplier is a whole number so
+// the hash stays evenly spread (3.71 wrapped unevenly and picked only 22%
+// of towers). Mirrored in FACADE_COLOR.
+const STONE_HASH = [17, 0.29]
+const fract = (x: number) => x - Math.floor(x)
+export function isStoneTower(seed: number): boolean {
+  return fract(seed * STONE_HASH[0] + STONE_HASH[1]) < STONE_TOWER_SHARE
+}
 
 // No windows on buildings lower than this (sheds, kiosks, garages) or on
 // walls shorter than this.
@@ -108,23 +140,29 @@ const vec3 = (hex: string) => {
   const c = new Color(hex)
   return `vec3( ${v(c.r)}, ${v(c.g)}, ${v(c.b)} )`
 }
-const pick = (key: (f: Facade) => string) => `( fcType == 0 ? ${key(FACADES[0])} : fcType == 1 ? ${key(FACADES[1])} : ${key(FACADES[2])} )`
+const pick = (key: (f: Facade) => string) =>
+  `( fcType == 0 ? ${key(FACADES[0])} : fcType == 1 ? ${key(FACADES[1])} : fcType == 2 ? ${key(FACADES[2])} : ${key(FACADES[3])} )`
 
 // Declarations for the fragment shader (after #include <common>).
 export const FACADE_PARS = /* glsl */ `
 uniform vec3 uSkyReflection;
+uniform vec3 uStoneColors[3];
 varying vec4 vFacade;
 float facadeBox( float x, float lo, float hi, float aa ) {
   return smoothstep( lo - aa, lo + aa, x ) * ( 1.0 - smoothstep( hi - aa, hi + aa, x ) );
 }
 `
 
-// Run after the wall's base color is in diffuseColor.rgb (color_fragment).
+// Run after the wall's base color is in diffuseColor.rgb (color_fragment);
+// a stone tower's wall color is swapped in here, from its color variant.
 // Declares windowGlass, windowReflect and windowGlint for the later chunks.
 // Derivatives are taken unconditionally, as GLSL requires.
 export const FACADE_COLOR = /* glsl */ `
-int fcType = int( floor( ( vColorIndex + 0.5 ) / 3.0 ) );
 float fcSeed = vFacade.w;
+float fcFamily = floor( ( vColorIndex + 0.5 ) / 3.0 );
+float fcStone = step( 1.5, fcFamily ) * step( fract( fcSeed * ${v(STONE_HASH[0])} + ${v(STONE_HASH[1])} ), ${v(STONE_TOWER_SHARE)} );
+int fcType = fcStone > 0.5 ? ${STONE_TOWER} : int( fcFamily );
+diffuseColor.rgb = mix( diffuseColor.rgb, uStoneColors[ int( mod( vColorIndex + 0.5, 3.0 ) ) ], fcStone );
 float fcS1 = fract( fcSeed * 7.31 + 0.13 );
 float fcS2 = fract( fcSeed * 13.17 + 0.71 );
 float fcS3 = fract( fcSeed * 29.93 + 0.37 );

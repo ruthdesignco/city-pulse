@@ -43,6 +43,7 @@ function buildMaterial(): MeshStandardMaterial {
     shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
     // What the windows reflect (facade.ts): the haze at the horizon.
     shader.uniforms.uSkyReflection = { value: new Color(palette.sky) }
+    shader.uniforms.uStoneColors = { value: palette.stoneTowerColors.map((c) => new Color(c)) }
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -70,7 +71,7 @@ function buildMaterial(): MeshStandardMaterial {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v9'
+  material.customProgramCacheKey = () => 'city-buildings-v10'
   return material
 }
 

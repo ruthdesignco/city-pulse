@@ -50,6 +50,10 @@ export const palette = {
     '#7891a8', // Tower 1: medium blue-gray glass
     '#c3ccd6', // Tower 2: pale glass
   ],
+  // Towers in stone or concrete instead of glass (facade.ts isStoneTower),
+  // by the tower's color variant: cream limestone, warm gray concrete, pale
+  // sandstone. Same value range as the glass towers they stand among.
+  stoneTowerColors: ['#d8ccb6', '#b5ab9c', '#c9bda4'],
   buildingBase: '#4a4238', // street-level tone; walls brighten toward the roof
 
   // Roads (Streets.tsx, roads.ts) and paving (paving.ts): mid-gray asphalt,
