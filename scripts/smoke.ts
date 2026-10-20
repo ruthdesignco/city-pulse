@@ -20,6 +20,9 @@ const CASES = [
   { view: 'opening', time: '12:00' },
   { view: 'cinematic', time: '18:30' },
   { view: 'street', time: '22:00' },
+  // The drone-height night view: what broke there once (pools, windows) only
+  // showed from that camera.
+  { view: 'opening', time: '22:00' },
 ]
 const DRAW_TIMEOUT_MS = 90_000
 const SHADER_ERROR = /shader error|webglprogram|validate_status|compile/i

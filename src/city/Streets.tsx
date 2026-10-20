@@ -32,6 +32,8 @@ const POOL_ACROSS_M = 3.5 // and across it, centered on the curb
 const POOL_BASE = 0.06
 const POOL_LIGHT = 0.24
 const POOL_COLOR = new Color('#fff0dc') // ~4000 K LED: warm white, not orange
+// The faded line's brightness, relative to the pools' own average.
+const POOL_FAR = 0.6
 const POOL_BY_CLASS: Record<number, number> = { [StreetClass.Major]: 1, [StreetClass.Minor]: 0.75, [StreetClass.Local]: 0.5 }
 
 // Streets in the context ring fade toward the haze like the ring's
@@ -138,7 +140,11 @@ function roadMaterial(layer: number, markings = false): MeshStandardMaterial {
   float across = exp( -dl * dl / ${(2 * POOL_ACROSS_M * POOL_ACROSS_M).toFixed(1)} );
   float near = exp( -da * da / ${(2 * POOL_ALONG_M * POOL_ALONG_M).toFixed(1)} );
   float average = ${((POOL_ALONG_M * Math.sqrt(2 * Math.PI)) / POOL_SPACING_M).toFixed(4)};
-  float pool = across * ( ${POOL_BASE.toFixed(3)} + ${(1 - POOL_BASE).toFixed(3)} * mix( average, near, 1.0 - smoothstep( 0.15, 0.4, fwidth( pu ) ) ) );
+  // Single pools only up close (spaced 25+ px apart); from there out a soft,
+  // continuous line along each curb, dimmer, so a street seen from the air
+  // never outshines the buildings.
+  float poolDetail = 1.0 - smoothstep( ${(1 / 40).toFixed(4)}, ${(1 / 15).toFixed(4)}, fwidth( pu ) );
+  float pool = across * mix( ${POOL_FAR.toFixed(3)} * average, ${POOL_BASE.toFixed(3)} + ${(1 - POOL_BASE).toFixed(3)} * near, poolDetail );
   totalEmissiveRadiance += uWindowsOn * vLit * pool * ${POOL_LIGHT.toFixed(3)} * uPoolColor;
 }`
     const markingFade = markings
@@ -157,7 +163,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uHaze, vRingFade);`,
       )
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${pools}`)
   }
-  material.customProgramCacheKey = () => `city-roads-v5-${markings ? 'markings' : 'surface'}`
+  material.customProgramCacheKey = () => `city-roads-v6-${markings ? 'markings' : 'surface'}`
   return material
 }
 

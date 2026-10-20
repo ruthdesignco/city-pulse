@@ -83,7 +83,7 @@ function buildMaterial(): MeshStandardMaterial {
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v15'
+  material.customProgramCacheKey = () => 'city-buildings-v19'
   return material
 }
 

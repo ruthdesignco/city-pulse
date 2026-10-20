@@ -1,8 +1,10 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo } from 'react'
-import { type Object3D, type ShaderMaterial, Shape, ShapeGeometry, Vector2, Vector3 } from 'three'
+import { Color, type Object3D, type ShaderMaterial, Shape, ShapeGeometry, Vector2, Vector3 } from 'three'
 import { Water } from 'three/examples/jsm/objects/Water.js'
+import { sceneUniforms } from '../scene/sceneUniforms.ts'
 import { useSkyState } from '../scene/skyClock.ts'
+import { TARGET } from '../scene/view.ts'
 import type { SkyState } from '../scene/skyState.ts'
 import { SUN_POSITION } from '../scene/sun.ts'
 import { bayOutline } from './bay.ts'
@@ -49,6 +51,13 @@ const CHOP = [
 const CALM_NEAR_M = 600
 const CALM_FAR_M = 4000
 const CALM_FAR_SLOPE = 0.35
+// At night, a faint warm glow of city light on the water: strongest along
+// the waterfront, gone by CITY_GLOW_FAR_M from the city's center (TARGET).
+// (The water's mirror reflection is too coarse to carry single lit windows.
+// Water.js's shader has a local named `distance`, so length() is used.)
+const CITY_GLOW = 0.012
+const CITY_GLOW_NEAR_M = 1300
+const CITY_GLOW_FAR_M = 3800
 // The moon's glints, as a share of the sun's.
 const MOON_GLINT = 0.35
 // Sun glints: Water.js's shininess and strength are 100 and 2.
@@ -110,6 +119,15 @@ function createBayWater() {
   )
   frag = patch(frag, 'sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5,', `sunLight( surfaceNormal, eyeDirection, ${f(GLINT_SHININESS)}, ${f(GLINT_STRENGTH)}, 0.5,`)
   frag = patch(frag, '* getShadowMask()', `* mix( 1.0, getShadowMask(), ${f(SHADOW_STRENGTH)} )`)
+  frag = patch(
+    frag,
+    'vec3 outgoingLight = albedo;',
+    `vec3 outgoingLight = albedo + uCityGlow * ( uWindowsOn * ${f(CITY_GLOW)} * ( 1.0 - smoothstep( ${f(CITY_GLOW_NEAR_M)}, ${f(CITY_GLOW_FAR_M)}, length( worldPosition.xz - uCity ) ) ) );`,
+  )
+  frag = 'uniform float uWindowsOn;\nuniform vec3 uCityGlow;\nuniform vec2 uCity;\n' + frag
+  material.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
+  material.uniforms.uCityGlow = { value: new Color(palette.windowWarm) }
+  material.uniforms.uCity = { value: new Vector2(TARGET[0], TARGET[2]) }
   material.fragmentShader = frag
   // Over the ground and the paving (the ring reaches into the water at
   // Mission Bay), under the sidewalks and roads.

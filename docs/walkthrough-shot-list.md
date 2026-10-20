@@ -27,6 +27,9 @@ Record with `?time=` set to the light you want (golden hour is `?time=16:50` in 
 - Backup recordings: `public/recordings/morning.json` (recorded 2026-10-20, about 9:45 a.m.) is committed. For one that matches the light, at golden hour run `npm run record -- --name dusk --minutes 15` and commit `public/recordings/dusk.json` (the name is just a label). Play either with `?replay=<name>`; it's always badged "Recorded".
 - Shot 5: `?demo&quality=high&replay=dusk&start=100&hold=0` (or `replay=morning`), press 5 and roll. Vehicles fade and the pill turns stale within about a minute.
 
+## Checking the light
+`npm run shots:time` renders the fixed time-of-day set (cinematic at 08:00, 12:00, 16:50, 18:30, 22:00; opening at 18:30 and 22:00; street at 22:00) to `shots/tod-<view>-<HHMM>.png`. Run it after any change to the light, the sky or the night city.
+
 ## Recording-day checklist
 1. Healthchecks shows the poller check green.
 2. In Supabase, the newest `ingest_runs` row is `ok` and under 2 minutes old.
