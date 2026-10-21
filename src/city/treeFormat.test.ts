@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { type TreesData, decodeTrees, encodeTrees } from './treeFormat.ts'
 
 const sample = (): TreesData => ({
-  header: { version: 1, count: 3, origin: { lat: 37.768, lng: -122.413 }, attribution: 'test', source: 'x', dataAsOf: '2026-10-16', bakedAt: 'now' },
+  header: { version: 2, count: 3, origin: { lat: 37.768, lng: -122.413 }, attribution: 'test', source: 'x', dataAsOf: '2026-10-16', bakedAt: 'now' },
   coords: Int16Array.from([1, -2, 300, 400, -32768, 32767]),
   kind: Uint8Array.from([0, 1, 2]),
   tone: Uint8Array.from([0, 1, 3]),

@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
 import { extrudeBuildings } from './extrude.ts'
+import { COORD_QUANTUM } from './format.ts'
 
 // One 10 x 10 m square, 20 m tall, wound so signedArea(x, z) > 0, plus a
-// triangle in the context ring. Coords in 0.1 m units, heights in 0.1 m.
+// triangle in the context ring. Coords in meters (quantized below), heights
+// in 0.1 m.
+const q = (m: number[]) => Int16Array.from(m, (v) => Math.round(v / COORD_QUANTUM))
 const buildings = {
   counts: new Uint16Array([4, 3]),
   heights: new Uint16Array([200, 50]),
   ringBand: new Uint8Array([0, 75]),
   colorIndex: new Uint8Array([4, 8]),
-  coords: new Int16Array([0, 0, 100, 0, 100, 100, 0, 100, 500, 500, 600, 500, 500, 600]),
+  seeds: new Uint32Array([123456789, 987654321]),
+  coords: q([0, 0, 10, 0, 10, 10, 0, 10, 50, 50, 60, 50, 50, 60]),
 }
 
 function triangles(g: ReturnType<typeof extrudeBuildings>) {
@@ -67,12 +71,15 @@ describe('extrudeBuildings', () => {
 
   it('carries wall position, wall length, height and a seed per vertex for the windows', () => {
     const f = (v: number) => Array.from(g.facade.slice(v * 4, v * 4 + 4))
-    // First wall of the 10 x 10 m, 20 m building: from (0,0) to (10,0).
+    // First wall of the 10 x 10 m (to the coordinate quantum), 20 m
+    // building: from (0,0) to (10,0).
+    const side = Math.round(10 / COORD_QUANTUM) * COORD_QUANTUM
+    const near = (got: number[], want: number[]) => want.forEach((w, i) => expect(got[i]).toBeCloseTo(w, 4))
     const [u0, len0, h0, seed] = f(0)
-    expect([u0, len0, h0]).toEqual([0, 10, 20])
-    expect(f(1).slice(0, 3)).toEqual([10, 10, 20]) // bottom right
-    expect(f(2).slice(0, 3)).toEqual([10, 10, 20]) // top right
-    expect(f(3).slice(0, 3)).toEqual([0, 10, 20]) // top left
+    near([u0, len0, h0], [0, side, 20])
+    near(f(1), [side, side, 20]) // bottom right
+    near(f(2), [side, side, 20]) // top right
+    near(f(3), [0, side, 20]) // top left
     expect(seed).toBeGreaterThanOrEqual(0)
     expect(seed).toBeLessThan(1)
     // Every vertex of a building shares its seed; roofs have no wall length.
@@ -94,10 +101,10 @@ describe('extrudeBuildings', () => {
     // A street along x at z = -12 m (1 m past the square's south wall's
     // sidewalk), so only that wall (z = 0, facing -z) fronts it. Major,
     // where 90% of buildings get one: try seeds until one does.
-    const streets = { counts: Uint16Array.from([2]), classes: Uint8Array.from([0]), coords: Int16Array.from([-1000, -120, 1000, -120]) }
+    const streets = { counts: Uint16Array.from([2]), classes: Uint8Array.from([0]), coords: q([-100, -12, 100, -12]) }
     let marked: number[] = []
     for (let dx = 0; dx < 50 && marked.length === 0; dx++) {
-      const moved = { ...buildings, coords: buildings.coords.map((c, i) => (i < 8 && i % 2 === 0 ? c + dx * 10 : c)) }
+      const moved = { ...buildings, seeds: Uint32Array.from(buildings.seeds, (s, k) => (k === 0 ? s + dx * 7919 : s)) }
       const m = extrudeBuildings(moved, 600, [], streets)
       marked = []
       for (let v = 0; v < m.storefront.length; v++) if (m.storefront[v]) marked.push(v)

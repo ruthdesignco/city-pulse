@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { CityData } from '../../src/city/format.ts'
+import { seedHash } from '../../src/city/extrude.ts'
 import { compareCities, describeCityChange } from './bakeSummary.ts'
 
+// Buildings by their facade seed (city.bin buildings.seeds), from the
+// first vertex in 0.1 m units as the bake computes it.
 const city = (footprints: number[][], streets = 1): CityData =>
   ({
     buildings: {
@@ -9,6 +12,7 @@ const city = (footprints: number[][], streets = 1): CityData =>
       heights: new Uint16Array(footprints.length),
       ringBand: new Uint8Array(footprints.length),
       colorIndex: new Uint8Array(footprints.length),
+      seeds: Uint32Array.from(footprints, (f) => seedHash(f[0], f[1])),
       coords: Int16Array.from(footprints.flat()),
     },
     streets: { counts: new Uint16Array(streets).fill(2), classes: new Uint8Array(streets), coords: new Int16Array(4 * streets) },

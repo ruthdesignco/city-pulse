@@ -23,6 +23,7 @@ import {
   decodeCity,
   encodeCity,
 } from '../src/city/format.ts'
+import { seedHash, SEED_UNIT_M } from '../src/city/extrude.ts'
 import { distToOutline, waterfrontOutline } from '../src/city/waterfront.ts'
 import { ORIGIN, toScene } from '../src/geo/projection.ts'
 import {
@@ -57,10 +58,11 @@ const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
 // 800 m (not 600) so the whole Transbay cluster is in: Salesforce Tower sits
 // ~600 m out, Millennium and 181 Fremont ~700 m.
 const RING_METERS = 800
-// Cluster bbox padded ~850 m, north to the waterfront extension's edge;
-// corners stay inside the Int16 range at 0.1 m. Part of the Overpass cache
-// key: changing it refetches every tile.
-const QUERY_BBOX: Bbox = { south: 37.74, west: -122.4367, north: 37.7975, east: -122.3825 }
+// Cluster bbox padded ~850 m, north to the waterfront extension's edge
+// (Bay St and the piers off it); corners stay inside the Int16 range at
+// COORD_QUANTUM. Part of the Overpass cache key: changing it refetches
+// every tile.
+const QUERY_BBOX: Bbox = { south: 37.74, west: -122.4367, north: 37.8095, east: -122.3825 }
 const WATERFRONT = waterfrontOutline()
 const INT16_LIMIT_M = 32767 * COORD_QUANTUM
 const TILES = 3
@@ -416,7 +418,7 @@ async function main() {
   const n = packLines(boundary)
   const data: CityData = {
     header: {
-      version: 1,
+      version: 2,
       origin: ORIGIN,
       ringMeters: RING_METERS,
       waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
@@ -433,6 +435,7 @@ async function main() {
       heights: Uint16Array.from(buildings, (x) => Math.round(x.height / HEIGHT_QUANTUM)),
       ringBand: Uint8Array.from(buildings, (x) => Math.min(255, x.ringBand)),
       colorIndex: Uint8Array.from(buildings, (x) => x.colorIndex),
+      seeds: Uint32Array.from(buildings, (x) => seedHash(Math.round(x.ring[0][0] / SEED_UNIT_M), Math.round(x.ring[0][1] / SEED_UNIT_M))),
       coords: b.coords,
     },
     streets: { counts: s.counts, classes: Uint8Array.from(streets, (x) => x.cls), coords: s.coords },
@@ -442,7 +445,12 @@ async function main() {
   const out = join(ROOT, 'src/data/city.bin')
   if (existsSync(out)) {
     const prev = readFileSync(out)
-    console.log(`\nchange vs the committed city.bin: ${describeCityChange(compareCities(decodeCity(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength)), data))}`)
+    try {
+      console.log(`\nchange vs the committed city.bin: ${describeCityChange(compareCities(decodeCity(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength)), data))}`)
+    } catch (err) {
+      // An older format version: nothing to compare against here.
+      console.log(`\nchange vs the committed city.bin: not compared (${err instanceof Error ? err.message : err})`)
+    }
   }
   writeFileSync(out, bytes)
 

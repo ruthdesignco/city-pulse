@@ -10,11 +10,16 @@
 // Coordinates are Int16 in units of COORD_QUANTUM meters, interleaved x,z in
 // scene space (src/geo/projection.ts). Rings are open and wound so that
 // signedArea in (x, z) is positive.
+//
+// Version 2: COORD_QUANTUM 0.15 m (was 0.1 m, which reached only 3.3 km
+// north of ORIGIN, about Washington St; North Beach and Telegraph Hill are
+// up to 4.6 km), and each building's facade seed stored (buildings.seeds),
+// since it hashed the first vertex in 0.1 m units and must not change.
 
 import type { LatLng } from '../geo/projection.ts'
 
 export const MAGIC = 'CPB1'
-export const COORD_QUANTUM = 0.1 // meters per Int16 unit: +-3276.7 m range
+export const COORD_QUANTUM = 0.15 // meters per Int16 unit: +-4915 m range
 export const HEIGHT_QUANTUM = 0.1 // meters per Uint16 unit
 export const RING_BAND_METERS = 4 // ringBand: 0 = inside the three neighborhoods, n = within n*4 m outside
 
@@ -28,7 +33,7 @@ export interface Landmark {
 }
 
 export interface CityHeader {
-  version: 1
+  version: 2
   origin: LatLng
   ringMeters: number
   // Extra ring area out to the Bay (waterfront.ts), outline in scene meters.
@@ -57,6 +62,7 @@ export interface CityData {
     heights: Uint16Array // HEIGHT_QUANTUM units
     ringBand: Uint8Array
     colorIndex: Uint8Array // scripts/lib/buildingColor.ts: BuildingColorType*3 + buildingVariant, 0-8
+    seeds: Uint32Array // facade seed hash (extrude.ts seedHash), from the first vertex in 0.1 m units
     coords: Int16Array
   }
   streets: {
@@ -75,6 +81,7 @@ const SECTIONS = [
   ['buildings.heights', Uint16Array],
   ['buildings.ringBand', Uint8Array],
   ['buildings.colorIndex', Uint8Array],
+  ['buildings.seeds', Uint32Array],
   ['buildings.coords', Int16Array],
   ['streets.counts', Uint16Array],
   ['streets.classes', Uint8Array],
@@ -84,7 +91,7 @@ const SECTIONS = [
 ] as const
 
 type SectionName = (typeof SECTIONS)[number][0]
-type Typed = Uint8Array | Uint16Array | Int16Array
+type Typed = Uint8Array | Uint16Array | Int16Array | Uint32Array
 
 const align4 = (n: number) => (n + 3) & ~3
 
@@ -134,7 +141,7 @@ export function decodeCity(buffer: ArrayBuffer): CityData {
   if (magic !== MAGIC) throw new Error(`city.bin: bad magic ${JSON.stringify(magic)}`)
   const headerLen = new DataView(buffer).getUint32(4, true)
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLen))) as CityHeader
-  if (header.version !== 1 || !header.sections) throw new Error(`city.bin: unsupported version ${header.version}`)
+  if (header.version !== 2 || !header.sections) throw new Error(`city.bin: unsupported version ${header.version}`)
 
   const get = <T extends Typed>(name: SectionName, Ctor: new (b: ArrayBuffer, o: number, l: number) => T): T => {
     const s = header.sections![name]
@@ -147,6 +154,7 @@ export function decodeCity(buffer: ArrayBuffer): CityData {
       heights: get('buildings.heights', Uint16Array),
       ringBand: get('buildings.ringBand', Uint8Array),
       colorIndex: get('buildings.colorIndex', Uint8Array),
+      seeds: get('buildings.seeds', Uint32Array),
       coords: get('buildings.coords', Int16Array),
     },
     streets: {

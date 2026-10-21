@@ -22,13 +22,20 @@ export interface CityMesh {
   index: Uint32Array
 }
 
-// A stable per-building seed in [0, 1) from its first footprint point, so a
-// building keeps its window pattern across rebakes.
-export function seedOf(x: number, z: number): number {
+// A stable per-building seed from its first footprint point in 0.1 m units
+// (the bake stores it: city.bin buildings.seeds), so a building keeps its
+// window pattern across rebakes and coordinate formats.
+export const SEED_UNIT_M = 0.1
+export function seedHash(x: number, z: number): number {
   let h = Math.imul(x | 0, 0x9e3779b1) ^ Math.imul(z | 0, 0x85ebca77)
   h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d)
   h ^= h >>> 13
-  return (h >>> 0) / 4294967296
+  return h >>> 0
+}
+
+// The seed in [0, 1).
+export function seedOf(hash: number): number {
+  return hash / 4294967296
 }
 
 // With `streets`, walls that front one may get a storefront (frontage.ts).
@@ -81,7 +88,7 @@ export function extrudeBuildings(
     const r = Math.min(1, (b.ringBand[k] * RING_BAND_METERS) / ringMeters)
     const ci = b.colorIndex[k]
     const pts: [number, number][] = []
-    seed = seedOf(b.coords[c], b.coords[c + 1])
+    seed = seedOf(b.seeds[k])
     height = h
     mat = pinnedBy.get(k) ?? 0
     for (let i = 0; i < n; i++, c += 2) pts.push([b.coords[c] * COORD_QUANTUM, b.coords[c + 1] * COORD_QUANTUM])

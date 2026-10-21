@@ -161,7 +161,7 @@ async function main() {
   })
   const bytes = encodeTrees({
     header: {
-      version: 1,
+      version: 2,
       count: n,
       origin,
       attribution: 'Street trees: San Francisco Public Works via DataSF (PDDL 1.0)',
@@ -180,8 +180,13 @@ async function main() {
   const out = join(ROOT, 'src/data/trees.bin')
   if (existsSync(out)) {
     const prev = readFileSync(out)
-    const old = decodeTrees(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength))
-    console.log(`change vs the committed trees.bin: trees ${old.header.count} -> ${n} (${n - old.header.count >= 0 ? '+' : ''}${n - old.header.count})`)
+    try {
+      const old = decodeTrees(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength))
+      console.log(`change vs the committed trees.bin: trees ${old.header.count} -> ${n} (${n - old.header.count >= 0 ? '+' : ''}${n - old.header.count})`)
+    } catch (err) {
+      // An older format version: nothing to compare against here.
+      console.log(`change vs the committed trees.bin: not compared (${err instanceof Error ? err.message : err})`)
+    }
   }
   writeFileSync(out, bytes)
 

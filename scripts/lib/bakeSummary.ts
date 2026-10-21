@@ -5,7 +5,6 @@
 // vertex (extrude.ts), so a new seed can mean a new look.
 
 import type { CityData } from '../../src/city/format.ts'
-import { seedOf } from '../../src/city/extrude.ts'
 
 export interface CityChange {
   buildings: [number, number]
@@ -15,13 +14,7 @@ export interface CityChange {
 }
 
 function seeds(b: CityData['buildings']): number[] {
-  const out: number[] = []
-  let c = 0
-  for (const n of b.counts) {
-    out.push(seedOf(b.coords[c], b.coords[c + 1]))
-    c += 2 * n
-  }
-  return out
+  return Array.from(b.seeds)
 }
 
 export function compareCities(before: CityData, after: CityData): CityChange {

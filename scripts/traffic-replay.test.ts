@@ -70,9 +70,12 @@ describe('traffic in a replayed recording', () => {
   // Not zero: where the data puts several buses at one spot, or one
   // estimate runs more than the 30 m budget past another, or two directions
   // snap to OSM ways that sit close together, some overlap remains.
-  // Measured 2026-10-21: 1011 overlapping pair-frames spaced, 18934 not (95% fewer).
-  it('cuts moving vehicles overlapping each other by more than 94%', () => {
+  // Measured 2026-10-21: 1011 overlapping pair-frames spaced, 18934 not
+  // (95% fewer); 1242 vs 19097 (93.5%) once route shapes ran past the old
+  // Int16 edge 3.3 km south, putting a 14 and a 49 on Mission near 30th
+  // St on their lines (and so counted) for the first time.
+  it('cuts moving vehicles overlapping each other by more than 93%', () => {
     expect(raw.overlaps).toBeGreaterThan(1000)
-    expect(spaced.overlaps).toBeLessThan(raw.overlaps * 0.06)
+    expect(spaced.overlaps).toBeLessThan(raw.overlaps * 0.07)
   })
 }, 180_000)

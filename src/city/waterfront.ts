@@ -2,22 +2,27 @@
 // neighborhoods, which stops 0.5-1.3 km short of the Bay north and east of
 // SoMa. This polygon adds the land between the ring and the water there
 // (Financial District, Rincon Hill, South Beach) to the bake area, so the
-// skyline runs right down to the Embarcadero. It's part of the ring: same
-// fade toward the sky, never the focus. The bake records the outline in
-// city.bin's header (`waterfront`), which is what the app reads.
+// skyline runs right down to the Embarcadero, and north of the ring up to
+// Bay St (Jackson Square, North Beach, Telegraph Hill and Coit Tower). It's
+// part of the ring: same fade toward the sky, never the focus. The bake
+// records the outline in city.bin's header (`waterfront`), which is what
+// the app reads.
 //
 // Its east edge sits out over the water so the piers come in whole. Its
-// north edge stops at WATERFRONT_NORTH_Z, just short of the Int16 coordinate
-// limit in city.bin (32767 x 0.1 m from ORIGIN), around Washington St; going
-// further north needs a new ORIGIN or format.
+// north edge, Bay St, is ~4.2 km from ORIGIN, inside city.bin's Int16
+// range at COORD_QUANTUM (format.ts).
 
 import { toScene } from '../geo/projection.ts'
 import type { LatLngPt } from './bay.ts'
 
-export const WATERFRONT_NORTH_Z = -3240
-
 const WATERFRONT: LatLngPt[] = [
-  [37.7972, -122.406], // Kearny near Washington (inside the ring)
+  [37.7955, -122.4115], // Powell and Clay (inside the ring)
+  [37.8058, -122.413], // Powell and Bay
+  [37.8068, -122.405], // Bay near the Embarcadero
+  [37.8088, -122.4035], // out over the water off Pier 35
+  [37.806, -122.3985], // off Pier 27
+  [37.803, -122.3955], // off Pier 17
+  [37.7995, -122.392], // off Pier 7
   [37.7972, -122.389], // out over the water past Pier 1
   [37.792, -122.3855], // off Pier 14
   [37.785, -122.3835], // off Pier 26
@@ -31,7 +36,7 @@ const WATERFRONT: LatLngPt[] = [
 export function waterfrontOutline(): [number, number][] {
   return WATERFRONT.map(([lat, lng]) => {
     const { x, z } = toScene(lat, lng)
-    return [x, Math.max(z, WATERFRONT_NORTH_Z)]
+    return [x, z]
   })
 }
 

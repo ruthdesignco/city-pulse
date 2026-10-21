@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { StreetClass } from '../../src/city/format.ts'
+import { COORD_QUANTUM, StreetClass } from '../../src/city/format.ts'
 import { ROAD_CLASS } from '../../src/city/roads.ts'
 import { CURB_INSET_M, CURB_PUSH_MAX_M, FootprintIndex, RoadwayIndex } from './treeSites.ts'
 
-// Coordinates are COORD_QUANTUM (0.1 m) units.
-const q = (pts: number[]) => Int16Array.from(pts.map((v) => v * 10))
+// Coordinates are COORD_QUANTUM units.
+const q = (pts: number[]) => Int16Array.from(pts.map((v) => Math.round(v / COORD_QUANTUM)))
 
 describe('FootprintIndex', () => {
   const footprints = new FootprintIndex({
@@ -12,6 +12,7 @@ describe('FootprintIndex', () => {
     heights: Uint16Array.from([100]),
     ringBand: Uint8Array.from([0]),
     colorIndex: Uint8Array.from([0]),
+    seeds: Uint32Array.from([0]),
     coords: q([10, 10, 40, 10, 40, 30, 10, 30]),
   })
   it('finds trunks inside a footprint, including across grid cells', () => {

@@ -14,7 +14,7 @@
 // The app never fetches GTFS at runtime: every 511 request counts against
 // the key's shared 60/hour budget.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { COORD_QUANTUM, decodeCity } from '../src/city/format.ts'
@@ -35,6 +35,7 @@ const SIMPLIFY_SHAPE_M = 2
 // Shapes run this far past the bake area, so a bus right at its edge still
 // projects onto its line instead of off the end.
 const SHAPE_MARGIN_M = 300
+const AREA_TOLERANCE_M = 0.2
 const INT16_LIMIT_M = 32767 * COORD_QUANTUM
 
 // routes.json lanes code for a stretch in a tunnel (routes-format.ts).
@@ -226,8 +227,18 @@ async function main() {
     ringMeters,
     rings: rings.map((r) => r.flatMap(([x, z]) => [round1(x), round1(z)])),
   }
+  // The deployed poller clips vehicles with this file. Rounding at a new
+  // coordinate quantum (format.ts) moves its points by a few centimeters;
+  // leave it alone unless something moved more than AREA_TOLERANCE_M, so
+  // the repo keeps matching what's deployed.
+  const committed = existsSync(AREA_OUT) ? (JSON.parse(readFileSync(AREA_OUT, 'utf8')) as typeof area) : null
+  const same =
+    committed !== null &&
+    committed.ringMeters === area.ringMeters &&
+    committed.rings.length === area.rings.length &&
+    committed.rings.every((r, i) => r.length === area.rings[i].length && r.every((v, j) => Math.abs(v - area.rings[i][j]) <= AREA_TOLERANCE_M))
   mkdirSync(dirname(AREA_OUT), { recursive: true })
-  writeFileSync(AREA_OUT, `${JSON.stringify(area, null, 1).replace(/\n\s+(-?[\d.]+)(?=[,\n])/g, ' $1')}\n`)
+  if (!same) writeFileSync(AREA_OUT, `${JSON.stringify(area, null, 1).replace(/\n\s+(-?[\d.]+)(?=[,\n])/g, ' $1')}\n`)
 
   // ------------------------------------------------------------- report
   const byType = new Map<number, number>()
@@ -241,7 +252,7 @@ async function main() {
   console.log(`subway: ${(stats.subwayM / 1000).toFixed(1)} km of Metro shapes underground`)
   console.log(`feed: ${file.feed.version ?? '(no feed_info)'} ${file.feed.startDate ?? ''}-${file.feed.endDate ?? ''}`)
   console.log(`wrote src/data/routes.json: ${(json.length / 1024).toFixed(0)} KB (${(gzipSync(json).length / 1024).toFixed(0)} KB gzipped)`)
-  console.log(`wrote supabase/functions/_shared/bake-area.json`)
+  console.log(same ? 'supabase/functions/_shared/bake-area.json: unchanged (within 0.2 m), left as is' : 'wrote supabase/functions/_shared/bake-area.json')
 }
 
 main().catch((err) => {

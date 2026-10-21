@@ -4,7 +4,7 @@ import { type CityData, decodeCity, encodeCity } from './format.ts'
 function sample(name = 'Salesforce Tower'): CityData {
   return {
     header: {
-      version: 1,
+      version: 2,
       origin: { lat: 37.768, lng: -122.413 },
       ringMeters: 600,
       attribution: '© OpenStreetMap contributors',
@@ -17,6 +17,7 @@ function sample(name = 'Salesforce Tower'): CityData {
       heights: new Uint16Array([3260, 85]),
       ringBand: new Uint8Array([0, 37]),
       colorIndex: new Uint8Array([6, 4]),
+      seeds: new Uint32Array([7, 4000000000]),
       coords: new Int16Array([0, 0, 100, 0, 100, 100, 0, 100, -32000, 32000, -31990, 32000, -32000, 31990]),
     },
     streets: {

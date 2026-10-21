@@ -15,8 +15,15 @@ describe('the waterfront extension', () => {
     expect(at(37.7805, -122.3895)).toBe(0) // South Beach, Oracle Park
   })
 
-  it('leaves out North Beach and the open water', () => {
-    expect(at(37.8, -122.41)).toBeGreaterThan(0)
+  it('takes in North Beach and Telegraph Hill up to Bay St', () => {
+    expect(at(37.8, -122.41)).toBe(0) // Washington Square, North Beach
+    expect(at(37.80246, -122.40593)).toBe(0) // Coit Tower
+    expect(at(37.7952, -122.4028)).toBe(0) // Transamerica Pyramid
+  })
+
+  it('leaves out Russian Hill, Fisherman\'s Wharf and the open water', () => {
+    expect(at(37.801, -122.419)).toBeGreaterThan(0) // Russian Hill
+    expect(at(37.808, -122.415)).toBeGreaterThan(0) // north of Bay St
     expect(at(37.79, -122.37)).toBeGreaterThan(0)
   })
 

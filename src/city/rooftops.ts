@@ -118,7 +118,7 @@ export function generateRooftops(b: CityData['buildings'], ringMeters: number, s
     const n = b.counts[k]
     const ring = new Array<number>(2 * n)
     for (let i = 0; i < 2 * n; i++) ring[i] = b.coords[c + i] * COORD_QUANTUM
-    const seed = seedOf(b.coords[c], b.coords[c + 1])
+    const seed = seedOf(b.seeds[k])
     c += 2 * n
     const height = b.heights[k] * HEIGHT_QUANTUM
     if (skip.has(k) || height < MIN_HEIGHT_M) continue

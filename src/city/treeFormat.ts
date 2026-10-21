@@ -19,7 +19,7 @@ import type { LatLng } from '../geo/projection.ts'
 export const TREES_MAGIC = 'CPT1'
 
 export interface TreesHeader {
-  version: 1
+  version: 2 // 2: coords at COORD_QUANTUM 0.15 m (format.ts)
   count: number
   origin: LatLng
   attribution: string
@@ -75,7 +75,7 @@ export function decodeTrees(buffer: ArrayBuffer): TreesData {
   if (magic !== TREES_MAGIC) throw new Error(`trees.bin: bad magic ${JSON.stringify(magic)}`)
   const headerLen = new DataView(buffer).getUint32(4, true)
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLen))) as TreesHeader
-  if (header.version !== 1) throw new Error(`trees.bin: unsupported version ${header.version}`)
+  if (header.version !== 2) throw new Error(`trees.bin: unsupported version ${header.version}`)
   const n = header.count
   const base = align4(8 + headerLen)
   if (buffer.byteLength < base + 8 * n) throw new Error(`trees.bin: truncated (${buffer.byteLength} bytes for ${n} trees)`)

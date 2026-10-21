@@ -29,8 +29,9 @@ import { useTrees } from './useTrees.ts'
 // enough, they're copied into the near or far mesh of its kind. Near trees
 // cast shadows; far ones only receive them.
 
-// Per-tree variation, from a hash of the tree's index (stable across
-// reloads, since the bake's order is).
+// Per-tree variation, from a hash of the tree's baked position (treeKey):
+// stable across reloads and across rebakes that add or drop other trees or
+// widen the area, which an index-based hash wasn't.
 const HEIGHT_JITTER = 0.2
 const CROWN_JITTER = 0.22
 // Crowns a little oval from above, not perfectly round.
@@ -70,6 +71,11 @@ function hash(i: number, salt: number): number {
   return (h >>> 0) / 4294967296
 }
 
+// A tree's identity for its variation: its quantized position.
+function treeKey(data: TreesData, i: number): number {
+  return Math.imul(data.coords[2 * i], 0x27d4eb2d) ^ Math.imul(data.coords[2 * i + 1], 0x165667b1)
+}
+
 interface KindSlot {
   kind: TreeKind
   trees: number[] // indices into TreesData
@@ -92,7 +98,7 @@ function buildSlots(data: TreesData): KindSlot[] {
     }
   for (let i = 0; i < data.header.count; i++) {
     const kind = data.kind[i] as TreeKind
-    groupOf.get(kind * 16 + Math.floor(hash(i, 6) * variantsOf(kind)))!.push(i)
+    groupOf.get(kind * 16 + Math.floor(hash(treeKey(data, i), 6) * variantsOf(kind)))!.push(i)
   }
   const dummy = new Object3D()
   const greens = palette.treeGreens.map((c) => new Color(c))
@@ -106,17 +112,18 @@ function buildSlots(data: TreesData): KindSlot[] {
     const rings = new Float32Array(n)
     trees.forEach((t, j) => {
       const { height, crown } = treeSize(kind, data.dbh[t])
-      const s = 1 + HEIGHT_JITTER * (2 * hash(t, 1) - 1)
-      const w = 1 + CROWN_JITTER * (2 * hash(t, 2) - 1)
-      const oval = STRETCH_JITTER * (2 * hash(t, 7) - 1)
+      const key = treeKey(data, t)
+      const s = 1 + HEIGHT_JITTER * (2 * hash(key, 1) - 1)
+      const w = 1 + CROWN_JITTER * (2 * hash(key, 2) - 1)
+      const oval = STRETCH_JITTER * (2 * hash(key, 7) - 1)
       dummy.position.set(data.coords[2 * t] * COORD_QUANTUM, 0, data.coords[2 * t + 1] * COORD_QUANTUM)
-      dummy.rotation.set(0, 2 * Math.PI * hash(t, 3), 0)
+      dummy.rotation.set(0, 2 * Math.PI * hash(key, 3), 0)
       if (isUnitSized(kind)) dummy.scale.set(crown * w * (1 + oval), height * s, crown * w * (1 - oval))
       else dummy.scale.setScalar(s)
       dummy.updateMatrix()
       dummy.matrix.toArray(matrices, 16 * j)
       c.copy(greens[data.tone[t]]).getHSL(hsl)
-      c.setHSL(hsl.h + HUE_JITTER * (2 * hash(t, 4) - 1), hsl.s, hsl.l * (1 + LIGHTNESS_JITTER * (2 * hash(t, 5) - 1)))
+      c.setHSL(hsl.h + HUE_JITTER * (2 * hash(key, 4) - 1), hsl.s, hsl.l * (1 + LIGHTNESS_JITTER * (2 * hash(key, 5) - 1)))
       c.toArray(greenOf, 3 * j)
       rings[j] = data.ring[t] / 255
     })
