@@ -25,6 +25,13 @@ const AO_DEPTH_M = 6 // this far below its surroundings is fully occluded
 export const AO_MAX = 0.35 // the most a hollow darkens
 // How strongly slope shading departs from flat ground's, at full sun.
 export const HILLSHADE = 0.4
+// With the sun low (light elevation sin from LOW_SUN_TO down to
+// LOW_SUN_FROM), slopes facing away shade by up to LOW_SUN_BOOST more, so
+// the hills read in long morning and evening light; slopes facing the sun
+// brighten no more than at noon (more washed pavement out to white).
+export const LOW_SUN_BOOST = 0.5
+const LOW_SUN_FROM = 0.2
+const LOW_SUN_TO = 0.7
 
 export const COVER_COLORS = {
   grass: new Color('#7c8d5c'),
@@ -163,15 +170,20 @@ uniform float uHillshade;
 
 // GLSL, after color_fragment: hillshading and occlusion on
 // `diffuseColor.rgb` at the vec2 `xz`; leaves `groundN` (the ground's
-// normal) for the code after it.
+// normal) and `groundShade` (the factor applied) for the code after it,
+// which shades any color it lays over the ground by the same factor.
 export function shadingCode(s: GroundShading, xz: string): string {
   return `
 vec4 groundTexel = texture2D( uGroundNormals, ${s.uv(xz)} );
 vec3 groundN = vec3( groundTexel.x * 2.0 - 1.0, groundTexel.y, groundTexel.z * 2.0 - 1.0 );
-// Lit as flat ground is, plus HILLSHADE of the slope's difference from it.
+// Lit as flat ground is, plus HILLSHADE (more on the shaded side with the
+// sun low) of the slope's difference from it.
 float flatLit = max( uLightDir.y, 0.15 );
 float slopeLit = clamp( ( dot( groundN, uLightDir ) - uLightDir.y ) / flatLit, -1.0, 1.0 );
-diffuseColor.rgb *= ( 1.0 + uHillshade * ${HILLSHADE.toFixed(3)} * slopeLit ) * groundTexel.a;
+float lowSun = 1.0 - smoothstep( ${LOW_SUN_FROM.toFixed(3)}, ${LOW_SUN_TO.toFixed(3)}, uLightDir.y );
+float hillshade = ${HILLSHADE.toFixed(3)} * ( 1.0 + ${LOW_SUN_BOOST.toFixed(3)} * lowSun * step( slopeLit, 0.0 ) );
+float groundShade = ( 1.0 + uHillshade * hillshade * slopeLit ) * groundTexel.a;
+diffuseColor.rgb *= groundShade;
 `
 }
 
@@ -187,6 +199,6 @@ vec3 coverColor = ( coverTexel.r * ${vec3(COVER_COLORS.grass)} + coverTexel.g * 
 vec3 pavingSpan = ${vec3(ground)} - ${vec3(sidewalk)};
 float ringFaded = clamp( dot( paved.rgb - ${vec3(sidewalk)}, pavingSpan ) / max( dot( pavingSpan, pavingSpan ), 1e-5 ), 0.0, 1.0 );
 coverColor = mix( coverColor, ${vec3(ground)}, ringFaded );
-diffuseColor.rgb = mix( diffuseColor.rgb, coverColor, min( 1.0, coverSum ) * paved.a );
+diffuseColor.rgb = mix( diffuseColor.rgb, coverColor * groundShade, min( 1.0, coverSum ) * paved.a );
 `
 }

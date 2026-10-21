@@ -94,7 +94,7 @@ vec4 paved = vec4( pow( pave.rgb, vec3( 2.2 ) ), pave.a );
 diffuseColor.rgb = mix( diffuseColor.rgb, paved.rgb, paved.a );
 ${shadingCode(shading, 'vGround')}
 float steep = smoothstep( ${f(STEEP_FROM)}, ${f(STEEP_FULL)}, groundN.y );
-diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SLOPE_EARTH)} * groundTexel.a, steep * paved.a );
+diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SLOPE_EARTH)} * groundShade, steep * paved.a );
 ${coverCode(shading, 'vGround', new Color(palette.sidewalk), new Color(palette.ground))}`,
       )
       .replace(
@@ -166,6 +166,7 @@ function GroundTiles({ terrain, material }: { terrain: Terrain; material: MeshSt
           }}
           geometry={geometryFor(k, LOD_STEPS.length - 1)}
           material={material}
+          castShadow
           receiveShadow
           userData={{ noReflect: true }}
         />

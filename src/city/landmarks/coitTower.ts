@@ -16,8 +16,8 @@ import { Glow, ModelBuilder, type V3, ring } from './build.ts'
 const CONCRETE = '#efece5'
 const PLINTH = '#e7e3da'
 const ROOF = '#cfcac0'
-const PLAZA = '#a29d92' // asphalt-gray paving, the parking circle
-const RIM = '#857f73' // its stone retaining wall
+const PLAZA = '#8e8a81' // asphalt-gray paving, the parking circle
+const RIM = '#767066' // its stone retaining wall
 const OPENING = '#33363a'
 const BASE_M = 3 // the plinth's top: the shaft rises from here
 const PLINTH_R = 7.5
