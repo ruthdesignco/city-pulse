@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RoutesFile } from './routes-format.ts'
-import { buildShapeIndex, makeLine, pointAt, projectOnLine } from './shapes.ts'
+import { buildShapeIndex, lanePoint, makeLine, pointAt, projectOnLine } from './shapes.ts'
 
 // An L: 100 m east, then 50 m south (+z).
 const L = makeLine('L#0', 'R', 0, [0, 0, 100, 0, 100, 50])
@@ -47,13 +47,13 @@ describe('pointAt', () => {
 describe('buildShapeIndex', () => {
   it('dequantizes pieces into lines grouped by route', () => {
     const file: RoutesFile = {
-      version: 1,
+      version: 2,
       source: 'test',
       feed: { version: null, startDate: null, endDate: null },
       coordQuantum: 0.1,
       routes: [
-        { id: '14', shortName: '14', longName: '', type: 3, color: null, shapes: [{ id: 's1', direction: 1, pieces: [[0, 0, 1000, 0], [0, 50, 0, 60]] }] },
-        { id: 'X', shortName: 'X', longName: '', type: 3, color: null, shapes: [{ id: 's2', direction: null, pieces: [[5, 5, 5, 5]] }] },
+        { id: '14', shortName: '14', longName: '', type: 3, color: null, shapes: [{ id: 's1', direction: 1, pieces: [[0, 0, 1000, 0], [0, 50, 0, 60]], lanes: [[0, 0], [2, 2]] }] },
+        { id: 'X', shortName: 'X', longName: '', type: 3, color: null, shapes: [{ id: 's2', direction: null, pieces: [[5, 5, 5, 5]], lanes: [[3, 3]] }] },
       ],
     }
     const index = buildShapeIndex(file)
@@ -62,5 +62,37 @@ describe('buildShapeIndex', () => {
     expect(a).toMatchObject({ key: 's1#0', routeId: '14', direction: 1, length: 100 })
     expect(b.key).toBe('s1#1')
     expect(b.length).toBeCloseTo(1, 9)
+  })
+})
+
+describe('lanePoint', () => {
+  // East along z = 0, then a right-hand turn south (+z) at x = 100.
+  const line = makeLine('l', 'r', 0, [0, 0, 100, 0, 100, 100], [0, 0, 2])
+
+  it('draws to the right of the direction of travel', () => {
+    // Heading east (+x), right is south (+z): on the line 5 m south. (Along
+    // the leg it runs a little short, toward the inside of the corner ahead.)
+    const p = lanePoint(line, 50, () => 5)
+    expect(p.z).toBeCloseTo(5, 9)
+    expect(p.x).toBeGreaterThan(45)
+    expect(p.x).toBeLessThan(50)
+    expect(p.hx).toBeCloseTo(1, 9)
+  })
+
+  it('keeps its offset around a corner (mitered) and blends it where the class changes', () => {
+    const corner = lanePoint(line, 100, () => 5)
+    // Inside the right-hand turn: back and down from the corner, 5 m from both legs.
+    expect(corner.x).toBeCloseTo(95, 6)
+    expect(corner.z).toBeCloseTo(5, 6)
+    const offsets = (c: number) => (c === 0 ? 6 : 2)
+    const mid = lanePoint(line, 150, offsets)
+    // Halfway down the second leg: between the corner's 6 (class 0) and the
+    // end's 2 (class 2), on the west side.
+    expect(100 - mid.x).toBeCloseTo(4, 6)
+  })
+
+  it('stays on the centerline off the drawn streets', () => {
+    const off = makeLine('o', 'r', 0, [0, 0, 100, 0])
+    expect(lanePoint(off, 50, (c) => (c === 3 ? 0 : 5)).z).toBeCloseTo(0, 9)
   })
 })

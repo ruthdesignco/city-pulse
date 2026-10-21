@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RoutesFile } from './routes-format.ts'
 
 const file: RoutesFile = {
-  version: 1,
+  version: 2,
   source: '511',
   feed: { version: null, startDate: null, endDate: null },
   coordQuantum: 0.1,

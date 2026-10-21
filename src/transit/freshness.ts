@@ -4,7 +4,7 @@
 // indicator always shows the age of the newest data we hold.
 
 import { STALE_MS } from './motion.ts'
-import type { FeedStatus } from './useCurrentState.ts'
+import type { FeedStatus } from './currentState.ts'
 
 const DIM_RAMP_MS = 20_000
 

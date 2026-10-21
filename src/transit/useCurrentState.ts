@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react'
-import { type CurrentState, fetchCurrentState } from './currentState.ts'
+import { type FeedStatus, fetchCurrentState } from './currentState.ts'
+
+export type { FeedStatus }
 
 const POLL_MS = 30_000
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const NOT_CONFIGURED = 'not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY'
-
-export interface FeedStatus {
-  state: CurrentState | null // last good read; kept through errors
-  error: string | null // last read failed (or the app isn't configured)
-  lastAttemptAt: number | null // ms, browser clock
-}
 
 // Reads current_state every 30 s while the tab is visible, and right away
 // when it becomes visible again.

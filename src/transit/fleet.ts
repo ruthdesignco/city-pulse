@@ -15,6 +15,11 @@
 
 export type VehicleKind = 'bus40' | 'bus60' | 'rail' | 'cable'
 
+// Each model's true size (vehicleModels.ts builds them to it; lanes.ts and
+// spacing.ts keep them apart by it).
+export const MODEL_LENGTH_M: Record<VehicleKind, number> = { bus40: 12.2, bus60: 18.3, rail: 23, cable: 8.3 }
+export const MODEL_WIDTH_M: Record<VehicleKind, number> = { bus40: 2.55, bus60: 2.55, rail: 2.65, cable: 2.45 }
+
 const SIXTY_FOOT: [number, number][] = [
   [6500, 6554],
   [6560, 6697],

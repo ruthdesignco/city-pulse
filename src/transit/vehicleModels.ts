@@ -16,10 +16,9 @@ import { BoxGeometry, BufferAttribute, type BufferGeometry, Color, MeshStandardM
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { palette } from '../city/palette.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
-import type { VehicleKind } from './fleet.ts'
+import { MODEL_LENGTH_M, MODEL_WIDTH_M, type VehicleKind } from './fleet.ts'
 
-export const MODEL_LENGTH_M: Record<VehicleKind, number> = { bus40: 12.2, bus60: 18.3, rail: 23, cable: 8.3 }
-export const MODEL_WIDTH_M: Record<VehicleKind, number> = { bus40: 2.55, bus60: 2.55, rail: 2.65, cable: 2.45 }
+export { MODEL_LENGTH_M, MODEL_WIDTH_M }
 
 // A fully stale vehicle: this much of the way to its own luminance (gray),
 // then this much toward white -- faded, not darker.
