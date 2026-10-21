@@ -11,6 +11,8 @@
 // scene space (src/geo/projection.ts). Rings are open and wound so that
 // signedArea in (x, z) is positive.
 //
+// Version 3: plus OSM ground cover (parks, woods, rock and cliffs, sand) as
+// outlines with a CoverClass each (cover.*).
 // Version 2: COORD_QUANTUM 0.15 m (was 0.1 m, which reached only 3.3 km
 // north of ORIGIN, about Washington St; North Beach and Telegraph Hill are
 // up to 4.6 km), and each building's facade seed stored (buildings.seeds),
@@ -26,6 +28,10 @@ export const RING_BAND_METERS = 4 // ringBand: 0 = inside the three neighborhood
 
 export const StreetClass = { Major: 0, Minor: 1, Local: 2 } as const
 
+// Ground cover (scripts/lib/cover.ts): what the ground shows where it isn't paved.
+export const CoverClass = { Grass: 0, Wood: 1, Rock: 2, Sand: 3 } as const
+export type CoverClass = (typeof CoverClass)[keyof typeof CoverClass]
+
 export interface Landmark {
   name: string
   x: number
@@ -34,7 +40,7 @@ export interface Landmark {
 }
 
 export interface CityHeader {
-  version: 2
+  version: 3
   origin: LatLng
   ringMeters: number
   // Extra ring area out to the Bay (waterfront.ts), outline in scene meters.
@@ -77,6 +83,11 @@ export interface CityData {
     counts: Uint16Array
     coords: Int16Array
   }
+  cover: {
+    counts: Uint16Array
+    classes: Uint8Array // CoverClass
+    coords: Int16Array
+  }
 }
 
 const SECTIONS = [
@@ -91,6 +102,9 @@ const SECTIONS = [
   ['streets.coords', Int16Array],
   ['boundary.counts', Uint16Array],
   ['boundary.coords', Int16Array],
+  ['cover.counts', Uint16Array],
+  ['cover.classes', Uint8Array],
+  ['cover.coords', Int16Array],
 ] as const
 
 type SectionName = (typeof SECTIONS)[number][0]
@@ -144,7 +158,7 @@ export function decodeCity(buffer: ArrayBuffer): CityData {
   if (magic !== MAGIC) throw new Error(`city.bin: bad magic ${JSON.stringify(magic)}`)
   const headerLen = new DataView(buffer).getUint32(4, true)
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLen))) as CityHeader
-  if (header.version !== 2 || !header.sections) throw new Error(`city.bin: unsupported version ${header.version}`)
+  if (header.version !== 3 || !header.sections) throw new Error(`city.bin: unsupported version ${header.version}`)
 
   const get = <T extends Typed>(name: SectionName, Ctor: new (b: ArrayBuffer, o: number, l: number) => T): T => {
     const s = header.sections![name]
@@ -168,6 +182,11 @@ export function decodeCity(buffer: ArrayBuffer): CityData {
     boundary: {
       counts: get('boundary.counts', Uint16Array),
       coords: get('boundary.coords', Int16Array),
+    },
+    cover: {
+      counts: get('cover.counts', Uint16Array),
+      classes: get('cover.classes', Uint8Array),
+      coords: get('cover.coords', Int16Array),
     },
   }
 }

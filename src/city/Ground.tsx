@@ -1,10 +1,12 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { BufferAttribute, BufferGeometry, Color, DataTexture, DoubleSide, LinearFilter, type Mesh, type MeshStandardMaterial, RGBAFormat, Vector3 } from 'three'
-import { registerHeightFog } from '../scene/sceneUniforms.ts'
+import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { TARGET } from '../scene/view.ts'
 import { BayWater } from './BayWater.tsx'
-import { LOD_STEPS, buildTile, groundNormals, lodFor, tileRanges } from './groundTiles.ts'
+import { palette } from './palette.ts'
+import { type GroundShading, SHADING_PARS, coverCode, groundShading, shadingCode } from './groundShading.ts'
+import { LOD_STEPS, buildTile, lodFor, tileRanges } from './groundTiles.ts'
 import { LAND_TILE_M, createLandMaterial, createLandTexture } from './landTexture.ts'
 import { CELL_M as PAVING_CELL_M, bareLand, buildPaving } from './paving.ts'
 import { buildShoreFeather } from './shore.ts'
@@ -62,43 +64,36 @@ function pavingTexture(city: LoadedCity): PavingTexture {
   return { texture, grid: [p.x0 - 1.5 * PAVING_CELL_M, p.z0 - 1.5 * PAVING_CELL_M, w * PAVING_CELL_M, h * PAVING_CELL_M] }
 }
 
-function normalTexture(t: Terrain): DataTexture {
-  const texture = new DataTexture(groundNormals(t), t.header.nx, t.header.nz, RGBAFormat)
-  texture.magFilter = LinearFilter
-  texture.minFilter = LinearFilter
-  texture.needsUpdate = true
-  return texture
-}
-
 const f = (v: number) => v.toFixed(5)
 const vec3 = (c: Color) => `vec3(${f(c.r)}, ${f(c.g)}, ${f(c.b)})`
 
-function groundMaterial(land: MeshStandardMaterial, t: Terrain, paving: PavingTexture, normals: DataTexture): MeshStandardMaterial {
+function groundMaterial(land: MeshStandardMaterial, paving: PavingTexture, shading: GroundShading): MeshStandardMaterial {
   const material = land.clone()
   material.side = DoubleSide // the tiles' skirts face either way
-  const { x0, z0, cell, nx, nz } = t.header
   const [px, pz, pw, ph] = paving.grid
   material.onBeforeCompile = (shader, renderer) => {
     land.onBeforeCompile(shader, renderer)
-    shader.uniforms.uNormals = { value: normals }
+    shader.uniforms.uGroundNormals = { value: shading.normals }
+    shader.uniforms.uGroundCover = { value: shading.cover }
+    shader.uniforms.uLightDir = sceneUniforms.uLightDir
+    shader.uniforms.uHillshade = sceneUniforms.uHillshade
     shader.uniforms.uPaving = { value: paving.texture }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vGround;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xz;')
-    // Sample (i, j) of the terrain is texel (i, j)'s center.
-    const normalUv = `( ( vGround - vec2( ${f(x0)}, ${f(z0)} ) ) / ${f(cell)} + 0.5 ) / vec2( ${f(nx)}, ${f(nz)} )`
     const pavingUv = `( vGround - vec2( ${f(px)}, ${f(pz)} ) ) / vec2( ${f(pw)}, ${f(ph)} )`
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uNormals;\nuniform sampler2D uPaving;\nvarying vec2 vGround;')
+      .replace('#include <common>', `#include <common>\nuniform sampler2D uPaving;\nvarying vec2 vGround;\n${SHADING_PARS}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-vec3 groundN = texture2D( uNormals, ${normalUv} ).xyz * 2.0 - 1.0;
-groundN.y = groundN.y * 0.5 + 0.5;
 vec4 pave = texture2D( uPaving, ${pavingUv} );
-diffuseColor.rgb = mix( diffuseColor.rgb, pow( pave.rgb, vec3( 2.2 ) ), pave.a );
+vec4 paved = vec4( pow( pave.rgb, vec3( 2.2 ) ), pave.a );
+diffuseColor.rgb = mix( diffuseColor.rgb, paved.rgb, paved.a );
+${shadingCode(shading, 'vGround')}
 float steep = smoothstep( ${f(STEEP_FROM)}, ${f(STEEP_FULL)}, groundN.y );
-diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SLOPE_EARTH)}, steep * pave.a );`,
+diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SLOPE_EARTH)} * groundTexel.a, steep * paved.a );
+${coverCode(shading, 'vGround', new Color(palette.sidewalk), new Color(palette.ground))}`,
       )
       .replace(
         '#include <normal_fragment_begin>',
@@ -106,7 +101,7 @@ diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SLOPE_EARTH)}, steep * pave.a )
 normal = normalize( ( viewMatrix * vec4( normalize( vec3( groundN.x, max( groundN.y, 0.05 ), groundN.z ) ), 0.0 ) ).xyz );`,
       )
   }
-  material.customProgramCacheKey = () => 'city-ground-v1'
+  material.customProgramCacheKey = () => 'city-ground-v2'
   return material
 }
 
@@ -209,11 +204,17 @@ export function Ground() {
     return createLandMaterial(t)
   }, [])
   const paving = useMemo(() => pavingTexture(city), [city])
-  const normals = useMemo(() => normalTexture(city.terrain), [city])
-  const ground = useMemo(() => groundMaterial(land, city.terrain, paving, normals), [land, city, paving, normals])
+  const shading = useMemo(() => groundShading(city), [city])
+  const ground = useMemo(() => groundMaterial(land, paving, shading), [land, paving, shading])
   useEffect(() => () => shore.dispose(), [shore])
   useEffect(() => () => paving.texture.dispose(), [paving])
-  useEffect(() => () => normals.dispose(), [normals])
+  useEffect(
+    () => () => {
+      shading.normals.dispose()
+      shading.cover.dispose()
+    },
+    [shading],
+  )
   useEffect(() => () => ground.dispose(), [ground])
   useEffect(
     () => () => {

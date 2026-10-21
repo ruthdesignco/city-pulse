@@ -4,7 +4,7 @@ import { type CityData, decodeCity, encodeCity } from './format.ts'
 function sample(name = 'Salesforce Tower'): CityData {
   return {
     header: {
-      version: 2,
+      version: 3,
       origin: { lat: 37.768, lng: -122.413 },
       ringMeters: 600,
       attribution: '© OpenStreetMap contributors',
@@ -29,6 +29,11 @@ function sample(name = 'Salesforce Tower'): CityData {
       counts: new Uint16Array([3]),
       coords: new Int16Array([1, 2, 3, 4, 5, 6]),
     },
+    cover: {
+      counts: new Uint16Array([3]),
+      classes: new Uint8Array([2]),
+      coords: new Int16Array([0, 0, 10, 0, 0, 10]),
+    },
   }
 }
 
@@ -40,6 +45,7 @@ describe('city.bin format', () => {
     expect(back.buildings).toEqual(data.buildings)
     expect(back.streets).toEqual(data.streets)
     expect(back.boundary).toEqual(data.boundary)
+    expect(back.cover).toEqual(data.cover)
     expect(back.header.landmarks).toEqual(data.header.landmarks)
     expect(back.header.origin).toEqual(data.header.origin)
   })

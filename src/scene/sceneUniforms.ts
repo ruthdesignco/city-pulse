@@ -1,4 +1,4 @@
-import { Color, Vector2 } from 'three'
+import { Color, Vector2, Vector3 } from 'three'
 import { palette } from '../city/palette.ts'
 import './heightFog.ts'
 import { FOG_RAMP_M, FOG_SOFT_M, FOG_TOP_M } from './weather.ts'
@@ -14,6 +14,9 @@ import type { SkyState } from './skyState.ts'
 //   uHour       San Francisco local hour, for which windows are lit
 //   uWeekend    1 on Saturday and Sunday: the weekend lit-window schedule
 //   uFog*       the height fog from the weather (heightFog.ts)
+//   uLightDir   toward the sun (or the moon), and uHillshade how strongly
+//               the ground's slopes shade against it (city/groundShading.ts):
+//               full in sun, weaker under cloud and by moonlight
 //   uWind*      the wind, eased (windClock.ts writes them): uWind 0 calm .. 1
 //               strong, uWindDir the unit direction it blows toward (scene
 //               x, z), uWindClock the trees' sway phase
@@ -28,6 +31,8 @@ export const sceneUniforms = {
   uFogSoft: { value: FOG_SOFT_M },
   uFogRamp: { value: FOG_RAMP_M },
   uFogGlow: { value: 0 },
+  uLightDir: { value: new Vector3(0, 1, 0) },
+  uHillshade: { value: 1 },
   uWind: { value: 0 },
   uWindDir: { value: new Vector2(1, 0) },
   uWindClock: { value: 0 },
@@ -44,6 +49,8 @@ export function applySkyState(s: SkyState) {
   sceneUniforms.uFogSoft.value = s.fog.soft
   sceneUniforms.uFogRamp.value = s.fog.ramp
   sceneUniforms.uFogGlow.value = s.fog.glow
+  sceneUniforms.uLightDir.value.copy(s.light.direction)
+  sceneUniforms.uHillshade.value = (s.light.isMoon ? 0.35 : 1) * (1 - 0.7 * s.cloud)
 }
 
 // Every material drawn with fog calls this from its onBeforeCompile (or uses

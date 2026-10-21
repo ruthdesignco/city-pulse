@@ -4,6 +4,7 @@
 // produces, so the rest of the bake is unchanged.
 
 import type { Bbox, OsmElement, OsmGeomPoint } from './overpass.ts'
+import { coverClass, isCliff } from './cover.ts'
 import { type RawRelation, type RawWay, readOsmPbf } from './osmpbf.ts'
 
 // Matches the highway filter in overpass.ts cityQuery.
@@ -44,7 +45,8 @@ export function loadFromPbf(pbfPath: string, b: Bbox, keepWays: Set<number> = ne
       if (way.refs.some((r) => coords.has(r))) ways.set(way.id, way)
     },
     relation(rel) {
-      if (isMultipolygonBuilding(rel.tags) && rel.members.some((m) => m.type === 'way' && ways.has(m.ref))) {
+      const kept = isMultipolygonBuilding(rel.tags) || (rel.tags.type === 'multipolygon' && coverClass(rel.tags) !== null)
+      if (kept && rel.members.some((m) => m.type === 'way' && ways.has(m.ref))) {
         relations.push(rel)
       }
     },
@@ -71,6 +73,23 @@ export function loadFromPbf(pbfPath: string, b: Bbox, keepWays: Set<number> = ne
       const geometry = geometryOf(way)
       if (geometry) out.push({ type: 'way', id: way.id, tags: way.tags, geometry })
       else incompleteBuildings++
+    } else if (coverClass(way.tags) !== null) {
+      // Areas whole or not at all; cliffs (lines) as their known runs.
+      if (isCliff(way.tags)) {
+        let run: OsmGeomPoint[] = []
+        for (const r of way.refs) {
+          const c = coords.get(r)
+          if (c) run.push(c)
+          else if (run.length) {
+            if (run.length >= 2) out.push({ type: 'way', id: way.id, tags: way.tags, geometry: run })
+            run = []
+          }
+        }
+        if (run.length >= 2) out.push({ type: 'way', id: way.id, tags: way.tags, geometry: run })
+      } else {
+        const geometry = geometryOf(way)
+        if (geometry) out.push({ type: 'way', id: way.id, tags: way.tags, geometry })
+      }
     } else if (keepWays.has(way.id)) {
       const geometry = geometryOf(way)
       if (geometry) out.push({ type: 'way', id: way.id, tags: way.tags, geometry })

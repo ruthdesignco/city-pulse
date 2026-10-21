@@ -52,6 +52,19 @@ export function cityQuery(b: Bbox): string {
 out tags geom;`
 }
 
+// Ground cover (scripts/lib/cover.ts), with full geometry for its
+// multipolygons: a query of its own, so the city tiles' cache stays valid.
+export function coverQuery(b: Bbox): string {
+  const bb = `${b.south},${b.west},${b.north},${b.east}`
+  return `[out:json][timeout:180];
+(
+  nwr["leisure"~"^(park|garden|dog_park)$"](${bb});
+  nwr["landuse"~"^(grass|meadow|recreation_ground|village_green|forest)$"](${bb});
+  nwr["natural"~"^(grassland|heath|wood|scrub|bare_rock|scree|cliff|sand|beach)$"](${bb});
+);
+out geom;`
+}
+
 export interface FetchOptions {
   // Never touch the network: use cached tiles (or cached sub-tiles) only and
   // skip anything missing. For previewing a partial bake.

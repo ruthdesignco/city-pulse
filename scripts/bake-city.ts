@@ -44,6 +44,7 @@ import {
   type OsmGeomPoint,
   buildingRelationsQuery,
   cityQuery,
+  coverQuery,
   fetchOverpass,
   fetchTiled,
   overpassDataTimestamps,
@@ -52,6 +53,7 @@ import { compareCities, describeCityChange } from './lib/bakeSummary.ts'
 import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
+import { CLIFF_WIDTH_M, coverClass, isCliff } from './lib/cover.ts'
 import { LANDMARKS, type LandmarkPlacement } from '../src/city/landmarks/registry.ts'
 import { minAreaRect } from './lib/geometry.ts'
 
@@ -338,6 +340,46 @@ function bakeStreets(elements: OsmElement[], boundary: Pt[][]): { line: Pt[]; cl
   return out
 }
 
+// ----------------------------------------------------------- ground cover
+
+// OSM ground cover (scripts/lib/cover.ts) over the bake area: areas as
+// their outer rings (holes ignored, as for buildings), cliffs widened from
+// their top edge to the right by CLIFF_WIDTH_M. Kept where any point is in
+// the area (the neighborhoods, the ring, the extensions) and inside the
+// Int16 range.
+const SIMPLIFY_COVER_M = 1
+function bakeCover(elements: OsmElement[], boundary: Pt[][]): { ring: Pt[]; cls: number }[] {
+  const within = (p: Pt) =>
+    Math.abs(p[0]) < INT16_LIMIT_M &&
+    Math.abs(p[1]) < INT16_LIMIT_M &&
+    (boundary.some((b) => pointInRing(p, b)) || Math.min(...boundary.map((b) => distToRing(p, b))) <= RING_METERS || distToOutline(p[0], p[1], WATERFRONT) === 0)
+  const out: { ring: Pt[]; cls: number }[] = []
+  for (const el of elements) {
+    const cls = coverClass(el.tags)
+    if (cls === null) continue
+    let rings: Pt[][] = []
+    if (el.type === 'way' && isCliff(el.tags) && el.geometry) {
+      const line = el.geometry.map(project)
+      // The cliff's face, to the right of its line: the line, then back along it offset.
+      const offset = line.map((p, i): Pt => {
+        const a = line[Math.max(0, i - 1)]
+        const b = line[Math.min(line.length - 1, i + 1)]
+        const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+        return [p[0] - ((b[1] - a[1]) / l) * CLIFF_WIDTH_M, p[1] + ((b[0] - a[0]) / l) * CLIFF_WIDTH_M]
+      })
+      rings = [[...line, ...offset.reverse()]]
+    } else rings = footprintsOf(el, el.tags ?? {}).map((f) => f.ring)
+    for (const r of rings) {
+      if (r.length < 3 || !r.some(within) || r.some(([x, z]) => Math.abs(x) >= INT16_LIMIT_M || Math.abs(z) >= INT16_LIMIT_M)) continue
+      let ring = simplifyRing(r, SIMPLIFY_COVER_M)
+      if (ring.length < 3) continue
+      if (signedArea(ring) < 0) ring = [...ring].reverse()
+      out.push({ ring, cls })
+    }
+  }
+  return out
+}
+
 // --------------------------------------------------------------- encode
 
 function quantize(v: number): number {
@@ -388,6 +430,8 @@ async function loadFromOverpass(): Promise<OsmElement[]> {
   // Full-geometry relations replace the tag-only copies from the tiles.
   const byId = new Map(tiled.map((e) => [`${e.type}/${e.id}`, e]))
   for (const r of relations) byId.set(`${r.type}/${r.id}`, r)
+  // Ground cover replaces any tag-only copies too.
+  for (const c of await fetchOverpass(coverQuery(QUERY_BBOX), undefined, { cachedOnly })) byId.set(`${c.type}/${c.id}`, c)
   if (LANDMARK_GROUNDS.size) {
     const grounds = await fetchOverpass(`[out:json][timeout:60];\nway(id:${[...LANDMARK_GROUNDS].join(',')});\nout tags geom;`, undefined, { cachedOnly })
     for (const g of grounds) byId.set(`${g.type}/${g.id}`, g)
@@ -416,6 +460,7 @@ async function main() {
 
   const buildings = bakeBuildings(elements, boundary)
   const streets = bakeStreets(elements, boundary)
+  const cover = bakeCover(elements, boundary)
 
   // A near-empty OSM source (e.g. --cached-only with nothing cached yet, or
   // a bad --pbf path) must never silently overwrite a good city.bin with a
@@ -467,9 +512,10 @@ async function main() {
   const b = packLines(buildings.map((x) => x.ring))
   const s = packLines(streets.map((x) => x.line))
   const n = packLines(boundary)
+  const cv = packLines(cover.map((x) => x.ring))
   const data: CityData = {
     header: {
-      version: 2,
+      version: 3,
       origin: ORIGIN,
       ringMeters: RING_METERS,
       waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
@@ -492,6 +538,7 @@ async function main() {
     },
     streets: { counts: s.counts, classes: Uint8Array.from(streets, (x) => x.cls), coords: s.coords },
     boundary: n,
+    cover: { counts: cv.counts, classes: Uint8Array.from(cover, (x) => x.cls), coords: cv.coords },
   }
   const bytes = encodeCity(data)
   const out = join(ROOT, 'src/data/city.bin')
@@ -522,6 +569,7 @@ async function main() {
   console.log(`landmark models: ${landmarkModels.map((m) => `${m.id} (${m.sizeX.toFixed(0)} x ${m.sizeZ.toFixed(0)} m at ${m.x.toFixed(0)}, ${m.z.toFixed(0)}, ${((m.angle * 180) / Math.PI).toFixed(1)} deg${m.grounds ? `, grounds ${m.grounds.length / 2} pts` : ''})`).join(', ')}`)
   console.log(`landmark materials: ${pinnedMaterials.map((p) => `${p.name} (#${p.building}, ${buildings[p.building].height.toFixed(0)} m)`).join(', ')}`)
   console.log(`streets: ${streets.length} runs`)
+  console.log(`ground cover: ${['grass', 'wood', 'rock', 'sand'].map((name, c) => `${cover.filter((x) => x.cls === c).length} ${name}`).join(', ')} outlines`)
   console.log(`\ntallest:`)
   for (const t of tallest) {
     console.log(`  ${t.height.toFixed(1).padStart(6)} m  ${t.name ?? '(unnamed)'}  at x=${t.center[0].toFixed(0)}, z=${t.center[1].toFixed(0)}${t.ringBand ? '  [ring]' : ''}`)

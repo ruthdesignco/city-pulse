@@ -7,8 +7,8 @@
 // differ in detail. Its cells split along the same diagonal heightAt uses.
 //
 // The ground's shading comes from a normal map of the full 5 m grid
-// (groundNormals), not from these vertices, so a coarse tile still shows
-// every slope.
+// (groundShading.ts), not from these vertices, so a coarse tile still
+// shows every slope.
 
 import { BufferAttribute, BufferGeometry } from 'three'
 import type { Terrain } from './terrain.ts'
@@ -110,23 +110,4 @@ export function buildTile(t: Terrain, r: TileRange, step: number, y: number): Bu
   g.setIndex(new BufferAttribute(position.length / 3 > 65535 ? new Uint32Array(index) : new Uint16Array(index), 1))
   g.computeBoundingSphere()
   return g
-}
-
-// The ground's normal at every terrain sample, packed for a texture: x, y
-// and z as 0..255 (x and z centered on 128).
-export function groundNormals(t: Terrain): Uint8Array {
-  const { nx, nz, cell } = t.header
-  const out = new Uint8Array(nx * nz * 4)
-  for (let j = 0; j < nz; j++)
-    for (let i = 0; i < nx; i++) {
-      const sx = (t.at(i + 1, j) - t.at(i - 1, j)) / (2 * cell)
-      const sz = (t.at(i, j + 1) - t.at(i, j - 1)) / (2 * cell)
-      const l = Math.hypot(sx, 1, sz)
-      const k = (j * nx + i) * 4
-      out[k] = Math.round((-sx / l) * 127.5 + 127.5)
-      out[k + 1] = Math.round((1 / l) * 255)
-      out[k + 2] = Math.round((-sz / l) * 127.5 + 127.5)
-      out[k + 3] = 255
-    }
-  return out
 }

@@ -5,7 +5,7 @@ import { FLAT, encodeTerrain } from './terrain.ts'
 // Minimal but valid city.bin bytes, so a successful fetch can actually decode.
 const bytes = encodeCity({
   header: {
-    version: 2,
+    version: 3,
     origin: { lat: 37.768, lng: -122.413 },
     ringMeters: 600,
     attribution: '© OpenStreetMap contributors',
@@ -23,6 +23,7 @@ const bytes = encodeCity({
   },
   streets: { counts: new Uint16Array(), classes: new Uint8Array(), coords: new Int16Array() },
   boundary: { counts: new Uint16Array(), coords: new Int16Array() },
+  cover: { counts: new Uint16Array(), classes: new Uint8Array(), coords: new Int16Array() },
 } satisfies CityData)
 
 const terrainBytes = await encodeTerrain(FLAT)
@@ -60,7 +61,7 @@ describe('loadCity', () => {
     const { loadCity } = await import('./useCity.ts')
 
     await expect(loadCity()).rejects.toThrow('city.bin: HTTP 500')
-    await expect(loadCity()).resolves.toMatchObject({ header: { version: 2 } })
+    await expect(loadCity()).resolves.toMatchObject({ header: { version: 3 } })
     expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 })

@@ -5,6 +5,7 @@ import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { ringDim, ringPosition } from './ring.ts'
 import { ROAD_CLASS, type Mesh, type Pt, dashes, emptyMesh, laneLineOffsets, ribbon } from './roads.ts'
+import { type GroundShading, SHADING_PARS, groundShading, shadingCode } from './groundShading.ts'
 import { densify, drape } from './terrain.ts'
 import { type LoadedCity, useCity } from './useCity.ts'
 
@@ -111,7 +112,9 @@ function buildLayers(city: LoadedCity) {
 
 // `layer` 1-3, bottom to top: each one wins the depth test over the one below.
 // Lane markings (`markings`) also fade into the asphalt with distance.
-function roadMaterial(layer: number, markings = false): MeshStandardMaterial {
+// `shading`: hillshading and the valleys' occlusion, as on the ground
+// around them (groundShading.ts).
+function roadMaterial(shading: GroundShading, layer: number, markings = false): MeshStandardMaterial {
   const material = new MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.95,
@@ -127,12 +130,16 @@ function roadMaterial(layer: number, markings = false): MeshStandardMaterial {
     shader.uniforms.uHaze = sceneUniforms.uHaze
     shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
     shader.uniforms.uPoolColor = { value: POOL_COLOR }
+    shader.uniforms.uGroundNormals = { value: shading.normals }
+    shader.uniforms.uGroundCover = { value: shading.cover }
+    shader.uniforms.uLightDir = sceneUniforms.uLightDir
+    shader.uniforms.uHillshade = sceneUniforms.uHillshade
     const poolVars = 'attribute float along;\nattribute float offset;\nattribute float curb;\nattribute float lit;\nvarying float vAlong;\nvarying float vOffset;\nvarying float vCurb;\nvarying float vLit;'
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nattribute float ringFade;\nvarying float vRingFade;\n${markings ? '' : poolVars}`)
+      .replace('#include <common>', `#include <common>\nattribute float ringFade;\nvarying float vRingFade;\nvarying vec2 vGround;\n${markings ? '' : poolVars}`)
       .replace(
         '#include <begin_vertex>',
-        `#include <begin_vertex>\nvRingFade = ringFade;\n${markings ? '' : 'vAlong = along;\nvOffset = offset;\nvCurb = curb;\nvLit = lit;'}`,
+        `#include <begin_vertex>\nvRingFade = ringFade;\nvGround = position.xz;\n${markings ? '' : 'vAlong = along;\nvOffset = offset;\nvCurb = curb;\nvLit = lit;'}`,
       )
     // Pools: a gaussian along the street around each light (left side at
     // multiples of the spacing, right side halfway between), and across it
@@ -161,24 +168,29 @@ function roadMaterial(layer: number, markings = false): MeshStandardMaterial {
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>\nuniform vec3 uAsphalt;\nuniform vec3 uHaze;\nuniform float uWindowsOn;\nuniform vec3 uPoolColor;\nvarying float vRingFade;\n${markings ? '' : 'varying float vAlong;\nvarying float vOffset;\nvarying float vCurb;\nvarying float vLit;'}`,
+        `#include <common>\nuniform vec3 uAsphalt;\nuniform vec3 uHaze;\nuniform float uWindowsOn;\nuniform vec3 uPoolColor;\nvarying float vRingFade;\nvarying vec2 vGround;\n${SHADING_PARS}\n${markings ? '' : 'varying float vAlong;\nvarying float vOffset;\nvarying float vCurb;\nvarying float vLit;'}`,
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
 ${markingFade}
+${shadingCode(shading, 'vGround')}
 diffuseColor.rgb = mix(diffuseColor.rgb, uHaze, vRingFade);`,
       )
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${pools}`)
   }
-  material.customProgramCacheKey = () => `city-roads-v6-${markings ? 'markings' : 'surface'}`
+  material.customProgramCacheKey = () => `city-roads-v7-${markings ? 'markings' : 'surface'}`
   return material
 }
 
 export function Streets() {
   const city = useCity()
   const layers = useMemo(() => buildLayers(city), [city])
-  const materials = useMemo(() => ({ sidewalk: roadMaterial(1), asphalt: roadMaterial(2), markings: roadMaterial(3, true) }), [])
+  const shading = useMemo(() => groundShading(city), [city])
+  const materials = useMemo(
+    () => ({ sidewalk: roadMaterial(shading, 1), asphalt: roadMaterial(shading, 2), markings: roadMaterial(shading, 3, true) }),
+    [shading],
+  )
   useEffect(() => () => Object.values(layers).forEach((g) => g.dispose()), [layers])
   useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials])
 
