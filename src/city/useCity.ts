@@ -1,18 +1,27 @@
 import { use } from 'react'
 import { type CityData, decodeCity } from './format.ts'
-// Through Vite, so the build gives it a content-hashed URL that can be cached
-// for good (vercel.json).
+import { type Terrain, decodeTerrain } from './terrain.ts'
+// Through Vite, so the build gives them content-hashed URLs that can be
+// cached for good (vercel.json).
 import cityUrl from '../data/city.bin?url'
+import terrainUrl from '../data/terrain.bin?url'
 
-let cityPromise: Promise<CityData> | undefined
+// The city and the ground it stands on, fetched together: everything that
+// draws the city needs both, and one promise keeps the Suspense boundaries
+// from remounting when one arrives before the other (App.tsx).
+export type LoadedCity = CityData & { terrain: Terrain }
 
-export function loadCity(): Promise<CityData> {
-  cityPromise ??= fetch(cityUrl)
-    .then((res) => {
-      if (!res.ok) throw new Error(`city.bin: HTTP ${res.status}. Run \`npm run bake\` first.`)
-      return res.arrayBuffer()
-    })
-    .then(decodeCity)
+let cityPromise: Promise<LoadedCity> | undefined
+
+const fetchBytes = (url: string, name: string, bake: string) =>
+  fetch(url).then((res) => {
+    if (!res.ok) throw new Error(`${name}: HTTP ${res.status}. Run \`npm run ${bake}\` first.`)
+    return res.arrayBuffer()
+  })
+
+export function loadCity(): Promise<LoadedCity> {
+  cityPromise ??= Promise.all([fetchBytes(cityUrl, 'city.bin', 'bake'), fetchBytes(terrainUrl, 'terrain.bin', 'bake:terrain')])
+    .then(([city, terrain]) => ({ ...decodeCity(city), terrain: decodeTerrain(terrain) }))
     // A rejected promise would otherwise stay cached forever: the root
     // ErrorBoundary's retry remounts this, and without clearing the cache
     // here it would suspend on the same dead promise and fail instantly.
@@ -23,7 +32,11 @@ export function loadCity(): Promise<CityData> {
   return cityPromise
 }
 
-// Suspends until src/data/city.bin is fetched and decoded.
-export function useCity(): CityData {
+// Suspends until src/data/city.bin and terrain.bin are fetched and decoded.
+export function useCity(): LoadedCity {
   return use(loadCity())
+}
+
+export function useTerrain(): Terrain {
+  return useCity().terrain
 }

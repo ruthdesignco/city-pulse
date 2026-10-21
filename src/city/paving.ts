@@ -12,7 +12,10 @@ import { palette } from './palette.ts'
 import { ringDim, ringPosition } from './ring.ts'
 import { distToOutline } from './waterfront.ts'
 
-export const CELL_M = 25
+// The terrain's cell (scripts/bake-terrain.ts), on the same lattice from the
+// scene origin and split along the same diagonal, so the paving lies exactly
+// on the ground mesh (Ground.tsx).
+export const CELL_M = 20
 // Paving blends into bare ground over this distance either side of the ring's
 // edge (inside it, at most half the ring).
 export const EDGE_BLEND_M = 300
@@ -76,6 +79,8 @@ export function buildPaving(city: CityData, y: number): PavingGrid {
   for (let i = 0; i < boundary.coords.length; i += 2)
     include(boundary.coords[i] * COORD_QUANTUM, boundary.coords[i + 1] * COORD_QUANTUM, reach)
   for (const [x, z] of waterfront) include(x, z, EDGE_BLEND_M)
+  minX = Math.floor(minX / CELL_M) * CELL_M
+  minZ = Math.floor(minZ / CELL_M) * CELL_M
   const nx = Math.ceil((maxX - minX) / CELL_M) + 1
   const nz = Math.ceil((maxZ - minZ) / CELL_M) + 1
 
@@ -108,7 +113,8 @@ export function buildPaving(city: CityData, y: number): PavingGrid {
   for (let j = 0; j < nz - 1; j++)
     for (let i = 0; i < nx - 1; i++) {
       const a = j * nx + i
-      index.set([a, a + nx, a + 1, a + 1, a + nx, a + nx + 1], t)
+      // Split from (i, j) to (i + 1, j + 1), as terrain.ts heightAt; facing up.
+      index.set([a, a + nx + 1, a + 1, a, a + nx, a + nx + 1], t)
       t += 6
     }
   return { position, color, index }

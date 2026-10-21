@@ -20,6 +20,8 @@ import type { TreesData } from './treeFormat.ts'
 import { type LodAnchor, isNear, nearDistance, shouldReassign } from './treeLod.ts'
 import { type TreeLevel, isDoubleSided, isUnitSized, treeGeometry, variantsOf } from './treeModels.ts'
 import { TREE_KINDS, type TreeKind, treeSize } from './treeSpecies.ts'
+import type { Terrain } from './terrain.ts'
+import { useTerrain } from './useCity.ts'
 import { useTrees } from './useTrees.ts'
 
 // Street trees from src/data/trees.bin (scripts/bake-trees.ts): one instanced
@@ -87,7 +89,8 @@ interface KindSlot {
   ring: Record<TreeLevel, InstancedBufferAttribute>
 }
 
-function buildSlots(data: TreesData): KindSlot[] {
+// Each tree stands on the ground under its trunk (terrain.ts).
+function buildSlots(data: TreesData, terrain: Terrain): KindSlot[] {
   const groups: { kind: TreeKind; variant: number; trees: number[] }[] = []
   const groupOf = new Map<number, number[]>()
   for (let kind = 0 as TreeKind; kind < TREE_KINDS; kind++)
@@ -116,7 +119,9 @@ function buildSlots(data: TreesData): KindSlot[] {
       const s = 1 + HEIGHT_JITTER * (2 * hash(key, 1) - 1)
       const w = 1 + CROWN_JITTER * (2 * hash(key, 2) - 1)
       const oval = STRETCH_JITTER * (2 * hash(key, 7) - 1)
-      dummy.position.set(data.coords[2 * t] * COORD_QUANTUM, 0, data.coords[2 * t + 1] * COORD_QUANTUM)
+      const tx = data.coords[2 * t] * COORD_QUANTUM
+      const tz = data.coords[2 * t + 1] * COORD_QUANTUM
+      dummy.position.set(tx, terrain.heightAt(tx, tz), tz)
       dummy.rotation.set(0, 2 * Math.PI * hash(key, 3), 0)
       if (isUnitSized(kind)) dummy.scale.set(crown * w * (1 + oval), height * s, crown * w * (1 - oval))
       else dummy.scale.setScalar(s)
@@ -188,7 +193,8 @@ function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
 
 export function Trees() {
   const data = useTrees()
-  const slots = useMemo(() => buildSlots(data), [data])
+  const terrain = useTerrain()
+  const slots = useMemo(() => buildSlots(data, terrain), [data, terrain])
   const materials = useMemo(() => ({ front: treeMaterial(false), double: treeMaterial(true) }), [])
   const meshes = useRef<Record<string, InstancedMesh | null>>({})
   const anchor = useRef<LodAnchor | null>(null)

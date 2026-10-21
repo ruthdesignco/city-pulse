@@ -3,12 +3,13 @@ import { type BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { WINDOW_RADIANCE } from './facade.ts'
-import type { CityData } from './format.ts'
 import { Glow, place } from './landmarks/build.ts'
 import { LANDMARK_MODELS } from './landmarks/models.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
-import { useCity } from './useCity.ts'
+import type { LandmarkPlacement } from './landmarks/registry.ts'
+import type { Terrain } from './terrain.ts'
+import { type LoadedCity, useCity } from './useCity.ts'
 import { LIT_SHARE_GLSL } from './windowLight.ts'
 
 // The landmarks drawn as models (landmarks/registry.ts) where the bake left
@@ -30,10 +31,23 @@ const FLOOD_RADIANCE = 0.42
 const OPENING_RADIANCE = 0.5
 const DETAIL_PX = [0.25, 0.6] // floors per pixel: full detail, then only the average
 
-function buildGeometry(city: CityData): BufferGeometry | null {
+// Each stands on the lowest ground under its footprint's rectangle (terrain.ts).
+function groundUnder(at: LandmarkPlacement, t: Terrain): number {
+  const c = Math.cos(at.angle)
+  const s = Math.sin(at.angle)
+  let lo = t.heightAt(at.x, at.z)
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const lx = (u * at.sizeX) / 2
+    const lz = (v * at.sizeZ) / 2
+    lo = Math.min(lo, t.heightAt(at.x + lx * c - lz * s, at.z + lx * s + lz * c))
+  }
+  return lo
+}
+
+function buildGeometry(city: LoadedCity): BufferGeometry | null {
   const parts = (city.header.landmarkModels ?? []).flatMap((at) => {
     const build = LANDMARK_MODELS[at.id]
-    return build ? [place(build(at), at, at.ring)] : []
+    return build ? [place(build(at), { ...at, y: groundUnder(at, city.terrain) }, at.ring)] : []
   })
   return parts.length ? mergeGeometries(parts) : null
 }

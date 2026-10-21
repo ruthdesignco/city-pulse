@@ -1,8 +1,10 @@
 import { type ComponentRef, useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { DEMO } from '../params.ts'
-import { type Pose, SHOTS, type Shot, shotPose } from './shots.ts'
+import { loadCity } from '../city/useCity.ts'
+import type { Terrain } from '../city/terrain.ts'
+import { DEMO, VIEW } from '../params.ts'
+import { type Pose, SHOTS, type Shot, liftPose, shotPose } from './shots.ts'
 import { ORBIT_LIMITS } from './view.ts'
 
 // Constrained orbit around the cluster (view.ts ORBIT_LIMITS) plus a slow
@@ -14,6 +16,10 @@ const DRIFT_EASE_IN_MS = 2000
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+// Poses are lifted onto the ground (shots.ts liftPose); not the calibration
+// view, which looks at swatches at a fixed height.
+const CLEARANCE_M = 8 // the camera never goes closer to the ground than this
+
 export function CameraRig({ start }: { start: Pose }) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null)
   const interacting = useRef(false)
@@ -21,6 +27,27 @@ export function CameraRig({ start }: { start: Pose }) {
   const reducedMotion = useRef(true)
   // The walkthrough shot playing, if any (?demo, keys 1-7; Esc or a drag stops it).
   const playing = useRef<{ shot: Shot; startedAt: number } | null>(null)
+  const terrain = useRef<Terrain | null>(null)
+
+  // Once the ground has loaded: lift the starting pose onto it.
+  useEffect(() => {
+    let live = true
+    loadCity()
+      .then((city) => {
+        if (!live) return
+        terrain.current = city.terrain
+        const c = controls.current
+        if (!c || VIEW === 'calibrate') return
+        const pose = liftPose(start, city.terrain)
+        c.object.position.set(...pose.position)
+        c.target.set(...pose.target)
+        c.update()
+      })
+      .catch(() => {}) // the city's own Suspense boundary reports a failed load
+    return () => {
+      live = false
+    }
+  }, [start])
 
   useEffect(() => {
     lastInteraction.current = performance.now() // count the first idle period from mount
@@ -52,11 +79,22 @@ export function CameraRig({ start }: { start: Pose }) {
   useFrame((_, delta) => {
     const c = controls.current
     if (!c) return
+    // Never into a hill.
+    const ground = terrain.current
+    if (ground) {
+      const cam = c.object.position
+      const floor = ground.heightAt(cam.x, cam.z) + CLEARANCE_M
+      if (cam.y < floor) {
+        cam.y = floor
+        c.update()
+      }
+    }
     const p = playing.current
     if (p) {
       // A shot plays even with reduced motion: someone asked for it.
       const elapsedS = (performance.now() - p.startedAt) / 1000
-      const pose = shotPose(p.shot, elapsedS)
+      const raw = shotPose(p.shot, elapsedS)
+      const pose = terrain.current ? liftPose(raw, terrain.current) : raw
       c.object.position.set(...pose.position)
       c.target.set(...pose.target)
       c.update()

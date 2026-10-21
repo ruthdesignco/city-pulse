@@ -21,6 +21,7 @@ import { lengthPx, modelScale, turnToward } from './lod.ts'
 import { FADE_S, type Motion } from './motion.ts'
 import type { Pose } from './spacing.ts'
 import { Traffic } from './traffic.ts'
+import { useTerrain } from '../city/useCity.ts'
 import { useRoutes } from './useRoutes.ts'
 import { MODEL_LENGTH_M, MODEL_WIDTH_M, buildVehicleGeometry, vehicleMaterial } from './vehicleModels.ts'
 
@@ -66,6 +67,7 @@ interface ModelSlot {
 
 export function Vehicles({ state }: { state: CurrentState | null }) {
   const routes = useRoutes()
+  const terrain = useTerrain()
   const meshes = useRef<Partial<Record<VehicleKind, InstancedMesh | null>>>({})
   const traffic = useRef(new Traffic())
   // Vehicles that dropped out of current_state, shrinking away since `since`
@@ -144,16 +146,29 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
     // leaving, `stale` 0..1.
     // How much larger than life a vehicle is drawn where it stands (lod.ts).
     const scaleAt = (kind: VehicleKind, x: number, z: number) =>
-      modelScale(lengthPx(MODEL_LENGTH_M[kind], Math.hypot(x - cam.x, MODEL_Y_M + 1.5 - cam.y, z - cam.z), camera.fov, heightPx))
+      modelScale(lengthPx(MODEL_LENGTH_M[kind], Math.hypot(x - cam.x, terrain.heightAt(x, z) + MODEL_Y_M + 1.5 - cam.y, z - cam.z), camera.fov, heightPx))
     let markerCount = 0
     const tint = new Color()
     // A subway train's marker, `amount` 0..1 of its full tint.
+    // On the ground (terrain.ts), pitched to its slope along the vehicle:
+    // the height under its middle and the pitch from its two ends.
+    const ground = { y: 0, pitch: 0 }
+    const onGround = (x: number, z: number, yaw: number, length: number) => {
+      const hx = (Math.cos(yaw) * length) / 2
+      const hz = (-Math.sin(yaw) * length) / 2
+      const front = terrain.heightAt(x + hx, z + hz)
+      const back = terrain.heightAt(x - hx, z - hz)
+      ground.y = (front + back) / 2
+      ground.pitch = Math.atan2(front - back, length)
+      return ground
+    }
     const putMarker = (kind: VehicleKind, x: number, z: number, yaw: number, amount: number) => {
       const mesh = markers.current
       if (!mesh || amount <= 0.001 || markerCount >= MAX_INSTANCES) return
       const scale = scaleAt(kind, x, z)
-      dummy.position.set(x, MARKER_Y_M, z)
-      dummy.rotation.set(0, yaw, 0)
+      const g = onGround(x, z, yaw, MODEL_LENGTH_M[kind] * scale)
+      dummy.position.set(x, g.y + MARKER_Y_M, z)
+      dummy.rotation.set(0, yaw, g.pitch, 'YZX')
       dummy.scale.set(MODEL_LENGTH_M[kind] * scale, 1, MODEL_WIDTH_M[kind] * scale)
       dummy.updateMatrix()
       mesh.setMatrixAt(markerCount, dummy.matrix)
@@ -164,15 +179,17 @@ export function Vehicles({ state }: { state: CurrentState | null }) {
       const mesh = meshes.current[kind]
       const i = counts[kind]
       if (!mesh || fade <= 0.001 || sink >= 0.999 || i >= MAX_INSTANCES) return
-      dummy.position.set(x, MODEL_Y_M - SINK_M * sink * sink, z)
-      dummy.rotation.set(0, yaw, 0)
-      dummy.scale.setScalar(fade * scaleAt(kind, x, z))
+      const scale = scaleAt(kind, x, z)
+      const g = onGround(x, z, yaw, MODEL_LENGTH_M[kind] * scale)
+      dummy.position.set(x, g.y + MODEL_Y_M - SINK_M * sink * sink, z)
+      dummy.rotation.set(0, yaw, g.pitch, 'YZX')
+      dummy.scale.setScalar(fade * scale)
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
       models[kind].stale.setX(i, stale)
       counts[kind] = i + 1
       if (DEMO && fade >= 1) {
-        ndc.set(x, MODEL_Y_M, z).project(camera)
+        ndc.set(x, g.y + MODEL_Y_M, z).project(camera)
         if (ndc.z < 1 && Math.abs(ndc.x) < IN_VIEW_NDC && Math.abs(ndc.y) < IN_VIEW_NDC) inView++
       }
     }

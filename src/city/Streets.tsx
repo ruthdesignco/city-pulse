@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
-import { COORD_QUANTUM, StreetClass, type CityData } from './format.ts'
+import { COORD_QUANTUM, StreetClass } from './format.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { ringDim, ringPosition } from './ring.ts'
 import { ROAD_CLASS, type Mesh, type Pt, dashes, emptyMesh, laneLineOffsets, ribbon } from './roads.ts'
-import { useCity } from './useCity.ts'
+import { densify, drape } from './terrain.ts'
+import { type LoadedCity, useCity } from './useCity.ts'
 
 // Real roads (roads.ts): sidewalks, asphalt over them, lane lines over that,
 // a few centimeters apart above the ground (Ground.tsx, y <= 0.1) and pushed
@@ -18,6 +19,8 @@ const MARKING_Y = 0.3
 // Lane lines fade into the asphalt with distance, so thin dashes don't
 // shimmer from the opening view.
 const MARKING_FADE_M: [number, number] = [250, 900]
+// Streets lie on the ground (terrain.ts) with a vertex at least this often.
+const DRAPE_STEP_M = 5
 
 // Streetlight pools at night: discrete pools of neutral warm-white LED light
 // along both curbs, staggered side to side, over the curb lane and the
@@ -41,7 +44,7 @@ const POOL_BY_CLASS: Record<number, number> = { [StreetClass.Major]: 1, [StreetC
 // day's haze color (sceneUniforms.ts uHaze), in the shader.
 // `pools` (ribbon layers): per vertex, the street's curb offset (m) and how
 // bright its streetlight pools are (POOL_BY_CLASS).
-function toGeometry(m: Mesh, base: Color, city: CityData, pools?: { curb: number[]; lit: number[] }): BufferGeometry {
+function toGeometry(m: Mesh, base: Color, city: LoadedCity, pools?: { curb: number[]; lit: number[] }): BufferGeometry {
   const { boundary } = city
   const ringMeters = city.header.ringMeters
   const position = new Float32Array(m.position)
@@ -51,8 +54,9 @@ function toGeometry(m: Mesh, base: Color, city: CityData, pools?: { curb: number
     base.toArray(color, i)
     ringFade[i / 3] = ringDim(ringPosition(boundary, ringMeters, position[i], position[i + 2]))
   }
+  // On the ground (terrain.ts), shaded by its slope.
   const normal = new Float32Array(position.length)
-  for (let i = 1; i < normal.length; i += 3) normal[i] = 1
+  drape(city.terrain, position, normal)
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(position, 3))
   g.setAttribute('normal', new BufferAttribute(normal, 3))
@@ -69,7 +73,7 @@ function toGeometry(m: Mesh, base: Color, city: CityData, pools?: { curb: number
   return g
 }
 
-function buildLayers(city: CityData) {
+function buildLayers(city: LoadedCity) {
   const { streets } = city
   const sidewalk = emptyMesh()
   const asphalt = emptyMesh()
@@ -85,8 +89,10 @@ function buildLayers(city: CityData) {
   }
   let c = 0
   streets.counts.forEach((n, k) => {
-    const line: Pt[] = []
-    for (let i = 0; i < n; i++, c += 2) line.push([streets.coords[c] * COORD_QUANTUM, streets.coords[c + 1] * COORD_QUANTUM])
+    const raw: Pt[] = []
+    for (let i = 0; i < n; i++, c += 2) raw.push([streets.coords[c] * COORD_QUANTUM, streets.coords[c + 1] * COORD_QUANTUM])
+    // A vertex every few meters, so the ribbon follows the ground's slope.
+    const line = densify(raw, DRAPE_STEP_M)
     const cls = ROAD_CLASS[streets.classes[k]] ?? ROAD_CLASS[StreetClass.Local]
     const lit = POOL_BY_CLASS[streets.classes[k]] ?? POOL_BY_CLASS[StreetClass.Local]
     ribbon(sidewalk, line, cls.asphaltM / 2 + cls.sidewalkM, SIDEWALK_Y)

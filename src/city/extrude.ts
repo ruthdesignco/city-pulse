@@ -19,6 +19,9 @@ export interface CityMesh {
   material: Float32Array
   // 1 on walls with a ground-floor storefront (frontage.ts), else 0.
   storefront: Float32Array
+  // Height above the building's base (the facade's floors count from it);
+  // positions add the ground under it.
+  localY: Float32Array
   index: Uint32Array
 }
 
@@ -38,12 +41,31 @@ export function seedOf(hash: number): number {
   return hash / 4294967296
 }
 
-// With `streets`, walls that front one may get a storefront (frontage.ts).
+// Where a building stands on sloping ground (terrain.ts): its walls start
+// at the lowest ground under its footprint, so no corner floats, and its
+// roof is its height above the footprint's average ground; `extra` is how
+// much taller that makes the walls than the height itself.
+export function buildingGround(pts: [number, number][], groundAt: (x: number, z: number) => number): { base: number; extra: number } {
+  let lo = Infinity
+  let sum = 0
+  for (const [x, z] of pts) {
+    const g = groundAt(x, z)
+    lo = Math.min(lo, g)
+    sum += g
+  }
+  return pts.length ? { base: lo, extra: sum / pts.length - lo } : { base: 0, extra: 0 }
+}
+
+const flatGround = () => 0
+
+// With `streets`, walls that front one may get a storefront (frontage.ts);
+// `groundAt` stands each building on the terrain (buildingGround).
 export function extrudeBuildings(
   b: CityData['buildings'],
   ringMeters = 600,
   pinned: { building: number; material: number }[] = [],
   streets?: CityData['streets'],
+  groundAt: (x: number, z: number) => number = flatGround,
 ): CityMesh {
   const frontage = streets ? new StreetFrontage(streets) : null
   let verts = 0
@@ -59,6 +81,7 @@ export function extrudeBuildings(
   const facade = new Float32Array(verts * 4)
   const material = new Float32Array(verts)
   const storefront = new Float32Array(verts)
+  const localY = new Float32Array(verts)
   const pinnedBy = new Map(pinned.map((p) => [p.building, p.material]))
   const index = new Uint32Array(tris * 3)
 
@@ -71,8 +94,10 @@ export function extrudeBuildings(
   let wallLen = 0
   let mat = 0
   let shop = 0
+  let ground = 0
   const put = (x: number, y: number, z: number, nx: number, ny: number, nz: number, r: number, ci: number, wallU = 0) => {
-    positions.set([x, y, z], v * 3)
+    positions.set([x, ground + y, z], v * 3)
+    localY[v] = y
     normals.set([nx, ny, nz], v * 3)
     ring[v] = r
     colorIndex[v] = ci
@@ -84,14 +109,18 @@ export function extrudeBuildings(
 
   for (let k = 0; k < b.counts.length; k++) {
     const n = b.counts[k]
-    const h = b.heights[k] * HEIGHT_QUANTUM
+    const tall = b.heights[k] * HEIGHT_QUANTUM
     const r = Math.min(1, (b.ringBand[k] * RING_BAND_METERS) / ringMeters)
     const ci = b.colorIndex[k]
     const pts: [number, number][] = []
     seed = seedOf(b.seeds[k])
-    height = h
     mat = pinnedBy.get(k) ?? 0
     for (let i = 0; i < n; i++, c += 2) pts.push([b.coords[c] * COORD_QUANTUM, b.coords[c + 1] * COORD_QUANTUM])
+    const g = buildingGround(pts, groundAt)
+    ground = g.base
+    // Its walls, from the lowest ground under it to its roof.
+    const h = tall + g.extra
+    height = h
 
     // Walls. Rings have signedArea(x, z) > 0, so for edge direction (dx, dz)
     // the outward normal is (dz, -dx).
@@ -102,7 +131,7 @@ export function extrudeBuildings(
       const nx = (z1 - z0) / len
       const nz = -(x1 - x0) / len
       wallLen = len
-      shop = frontage && hasStorefront(frontage.classOf(x0, z0, x1, z1, nx, nz), Math.floor(ci / 3), seed, h, len) ? 1 : 0
+      shop = frontage && hasStorefront(frontage.classOf(x0, z0, x1, z1, nx, nz), Math.floor(ci / 3), seed, tall, len) ? 1 : 0
       const a = put(x0, 0, z0, nx, 0, nz, r, ci, 0)
       const bb = put(x1, 0, z1, nx, 0, nz, r, ci, len)
       const cc = put(x1, h, z1, nx, 0, nz, r, ci, len)
@@ -131,5 +160,5 @@ export function extrudeBuildings(
   }
 
   // Degenerate rings can make earcut return fewer triangles than n - 2.
-  return { positions, normals, ring, colorIndex, facade, material, storefront, index: t === index.length ? index : index.slice(0, t) }
+  return { positions, normals, ring, colorIndex, facade, material, storefront, localY, index: t === index.length ? index : index.slice(0, t) }
 }

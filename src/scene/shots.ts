@@ -123,15 +123,33 @@ export const CALIBRATION_CENTER: Vec3 = [TARGET[0], 500, TARGET[2]]
 // Centers from the bake (city.bin landmarkModels).
 const TRANSAMERICA: Vec3 = [900, 130, -3015]
 const COIT: Vec3 = [631, 32, -3815]
+// California Street's climb to Nob Hill (the 1 California and the cable
+// car; 16 m at Kearny to 87 m at Mason, terrain.ts), seen across it from
+// the south and a little east, low, so the slope shows in profile: for the
+// terrain, and buses, trees and streets on a steep street. The target is
+// on California between Stockton and Powell.
+const NOB_HILL: Vec3 = [420, 0, -2695]
 
 export const PRESETS: Record<string, Pose> = {
   transamerica: poseAround(TRANSAMERICA, 430, 1.25, 0.35),
   coit: poseAround(COIT, 200, 1.2, 0.6),
+  nobhill: poseAround(NOB_HILL, 300, 1.3, 0.55),
   opening: OPENING,
   calibrate: poseAround(CALIBRATION_CENTER, 400, 0.15, -0.47),
   market: poseAround(ON_MARKET_3RD, 380, 0.75, UP_MARKET),
   cinematic: CINEMATIC,
   street: STREET,
+}
+
+// Poses here are written for sea level; on the terrain (city/terrain.ts) a
+// pose is lifted by the ground's height under its target, camera and target
+// alike, so it frames the same thing on a hill.
+export function liftPose(pose: Pose, ground: { heightAt(x: number, z: number): number }): Pose {
+  const g = ground.heightAt(pose.target[0], pose.target[2])
+  return {
+    position: [pose.position[0], pose.position[1] + g, pose.position[2]],
+    target: [pose.target[0], pose.target[1] + g, pose.target[2]],
+  }
 }
 
 // A preset by name, or the opening view for none or an unknown one.

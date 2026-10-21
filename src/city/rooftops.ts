@@ -8,7 +8,7 @@
 // overlapping the others.
 
 import { type CityData, COORD_QUANTUM, HEIGHT_QUANTUM, RING_BAND_METERS } from './format.ts'
-import { seedOf } from './extrude.ts'
+import { buildingGround, seedOf } from './extrude.ts'
 
 export const RoofItem = { Hvac: 0, Penthouse: 1, Tank: 2 } as const
 export type RoofItem = (typeof RoofItem)[keyof typeof RoofItem]
@@ -110,8 +110,14 @@ function wishList(family: number, height: number, area: number, r: () => number)
 }
 
 // Every building's roof items; buildings in `skip` (pinned landmarks) get
-// none.
-export function generateRooftops(b: CityData['buildings'], ringMeters: number, skip: Set<number> = new Set()): RoofPiece[] {
+// none. `groundAt` puts each roof where the building stands on the terrain
+// (extrude.ts buildingGround).
+export function generateRooftops(
+  b: CityData['buildings'],
+  ringMeters: number,
+  skip: Set<number> = new Set(),
+  groundAt: (x: number, z: number) => number = () => 0,
+): RoofPiece[] {
   const out: RoofPiece[] = []
   let c = 0
   for (let k = 0; k < b.counts.length; k++) {
@@ -122,6 +128,10 @@ export function generateRooftops(b: CityData['buildings'], ringMeters: number, s
     c += 2 * n
     const height = b.heights[k] * HEIGHT_QUANTUM
     if (skip.has(k) || height < MIN_HEIGHT_M) continue
+    const pts: [number, number][] = []
+    for (let i = 0; i < n; i++) pts.push([ring[2 * i], ring[2 * i + 1]])
+    const g = buildingGround(pts, groundAt)
+    const roofY = g.base + g.extra + height
 
     let area = 0
     let longest = 0
@@ -158,7 +168,7 @@ export function generateRooftops(b: CityData['buildings'], ringMeters: number, s
         if (!cornersOf({ x, z, yaw, w, d }, EDGE_M).every(([cx, cz]) => insideRing(ring, cx, cz))) continue
         if (placed.some((p) => Math.hypot(p.x - x, p.z - z) < p.rad + rad + GAP_M)) continue
         placed.push({ x, z, rad })
-        out.push({ kind, x, y: height, z, yaw, w, d, h, building: k, ring: ringPos })
+        out.push({ kind, x, y: roofY, z, yaw, w, d, h, building: k, ring: ringPos })
         break
       }
     }

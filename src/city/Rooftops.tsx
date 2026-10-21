@@ -231,7 +231,7 @@ function buildRooftops(city: ReturnType<typeof useCity>): Built {
   // Set every frame from the viewing camera.
   const uniforms: FadeUniforms = { uViewPos: { value: new Vector3() }, uPxPerMeter: { value: 1000 } }
   const skip = new Set((city.header.pinnedMaterials ?? []).map((p) => p.building))
-  const pieces = generateRooftops(city.buildings, city.header.ringMeters, skip)
+  const pieces = generateRooftops(city.buildings, city.header.ringMeters, skip, (x, z) => city.terrain.heightAt(x, z))
   const slots = buildSlots(pieces, city.buildings.colorIndex, uniforms)
   console.info(`rooftops: ${pieces.length} items in ${(performance.now() - started).toFixed(0)} ms`)
   return { slots, uniforms, anchor: { at: new Vector3(), pxPerM: 0, set: false } }
