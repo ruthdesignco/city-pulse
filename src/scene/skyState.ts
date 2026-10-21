@@ -22,7 +22,7 @@ import * as SunCalc from 'suncalc'
 import { Color, Vector3 } from 'three'
 import { palette } from '../city/palette.ts'
 import { ORIGIN } from '../geo/projection.ts'
-import { sfHour } from './sfTime.ts'
+import { sfHour, sfIsWeekend } from './sfTime.ts'
 import { CLEAR_WEATHER, FOG_RAMP_M, FOG_SOFT_M, FOG_TOP_M, type Weather, fogDensity } from './weather.ts'
 import { SKY_EXPOSURE, type SkyLook, SUN_DIRECTION, hazeColor, rawHorizonLuminance } from './skyModel.ts'
 import { bearingToScene } from './sun.ts'
@@ -68,6 +68,7 @@ const dirFrom = (azimuthDeg: number, altitudeDeg: number) => new Vector3(...bear
 export interface SkyState {
   date: Date
   hour: number // San Francisco local, fractional
+  weekend: boolean // Saturday or Sunday in San Francisco: which lit-window schedule
   sunElevation: number // degrees
   sunDirection: Vector3 // unit, scene space, toward the sun
   moonElevation: number
@@ -177,6 +178,7 @@ export function computeSkyState(date: Date, weather: Weather = CLEAR_WEATHER): S
   return {
     date,
     hour: sfHour(date),
+    weekend: sfIsWeekend(date),
     sunElevation: elev,
     sunDirection,
     moonElevation: moon.altitude,

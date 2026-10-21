@@ -38,6 +38,21 @@ export function sfHour(date: Date): number {
   return h + mi / 60 + s / 3600
 }
 
+// ?day=weekday|weekend pins which lit-window schedule shows (skyClock.ts),
+// so shots look the same on any day they're taken; anything else, today's.
+export type DaySetting = 'weekday' | 'weekend'
+export function parseDayParam(raw: string | null): DaySetting | null {
+  return raw === 'weekday' || raw === 'weekend' ? raw : null
+}
+
+// Saturday or Sunday on San Francisco's calendar (windowLight.ts's weekend
+// schedule).
+export function sfIsWeekend(date: Date): boolean {
+  const { y, mo, d } = parts(date)
+  const day = new Date(Date.UTC(y, mo - 1, d)).getUTCDay()
+  return day === 0 || day === 6
+}
+
 // "HH:MM" in San Francisco.
 export function sfClockLabel(date: Date): string {
   const { h, mi } = parts(date)

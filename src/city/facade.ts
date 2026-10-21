@@ -221,6 +221,7 @@ uniform vec3 uGranite;
 uniform vec3 uAwnings[5];
 uniform float uWindowsOn;
 uniform float uHour;
+uniform float uWeekend;
 float fcHash( vec3 p ) {
   return fract( sin( dot( p, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
 }
@@ -336,7 +337,7 @@ float windowMatte = fcUpperGlass * ( fcType == 2 ? 0.0 : 1.0 ) + fcShopGlass;
 // No branch (this chunk takes derivatives; see facade.test.ts): computed
 // always, scaled to nothing by day through uWindowsOn.
 int fcUse = fcType == 1 ? 1 : 0;
-float fcShare = litShare( fcUse, uHour );
+float fcShare = litShare( fcUse, uHour, uWeekend );
 vec3 fcCell = vec3( fcSeed * 113.0, floor( fcCu ), floor( fcCv ) );
 float fcLit = step( fcHash( fcCell ), fcShare );
 float fcTone = fcHash( fcCell + 17.0 );
@@ -360,7 +361,7 @@ vec3 fcFarColor = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)},
 vec3 fcFar = mix( fcFarColor * fcShare * ${v(FAR_AVERAGE)}, fcFarColor * mix( fcShare, fcBlockLit, ${v(BLOCK_CONTRAST)} * uWindowsOn ) * ${v(FAR_GLOW)}, fcBlockDetail );
 vec3 fcUpperLight = mix( fcFar, fcColor * fcLevel * fcLit, fcDetail );
 
-float fcShopShare = litShare( 2, uHour );
+float fcShopShare = litShare( 2, uHour, uWeekend );
 vec3 fcBay = vec3( fcSeed * 71.0, floor( fcBu ), 3.0 );
 float fcShopLit = mix( fcShopShare, step( fcHash( fcBay ), fcShopShare ), min( fcShopAcrossDetail, fcShopUpDetail ) );
 vec3 fcShopLight = ${vec3(palette.windowSoft)} * fcShopLit;

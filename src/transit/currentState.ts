@@ -24,6 +24,14 @@ export interface CurrentState {
   weatherFreshness: WeatherFreshness
 }
 
+// The live feed as the app holds it (useCurrentState.ts). Here, with the
+// pure parsing, so code that only reads it doesn't pull in the hook.
+export interface FeedStatus {
+  state: CurrentState | null // last good read; kept through errors
+  error: string | null // last read failed (or the app isn't configured)
+  lastAttemptAt: number | null // ms, browser clock
+}
+
 const ms = (v: unknown): number | null => {
   if (typeof v !== 'string') return null
   const t = Date.parse(v)
@@ -59,6 +67,8 @@ function parseWeather(raw: unknown): WeatherReport | null {
     cloudLayers,
     windSpeedMs: num(w.wind_speed_ms),
     windDirDeg: num(w.wind_dir_deg),
+    // Missing before 20261021090000_wind_observed_at.sql: then no wind (calm).
+    windObservedAt: ms(w.wind_observed_at),
   }
 }
 

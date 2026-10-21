@@ -7,7 +7,8 @@
 //
 // From the opening camera the fog should lie low over the streets and the
 // Bay with the tallest towers standing out of it; from the cinematic camera,
-// inside the layer, the distance should go gray.
+// inside the layer, the distance should go gray. The wind is pinned calm and
+// the day to a weekday.
 
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,7 +29,7 @@ const SHOTS_DIR = join(ROOT, 'shots')
 mkdirSync(SHOTS_DIR, { recursive: true })
 for (const s of WEATHER_SHOTS) {
   const out = join(SHOTS_DIR, `wx-${s.view}-${s.weather}-${s.time.replace(':', '')}.png`)
-  await withScenePage(`shots:weather ${s.view} ${s.weather} ${s.time}`, s, async (page, report) => {
+  await withScenePage(`shots:weather ${s.view} ${s.weather} ${s.time}`, { ...s, wind: 'calm', day: 'weekday' }, async (page, report) => {
     // A broken shader drops what it draws; don't save a picture of that.
     const shaderErrors = report.errors.filter((e) => /shader error|webglprogram|validate_status/i.test(e))
     if (shaderErrors.length) throw new Error(`shots:weather: ${s.view} ${s.weather}: ${shaderErrors.length} shader error(s); run npm run smoke`)

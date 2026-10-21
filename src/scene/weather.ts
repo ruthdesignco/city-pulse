@@ -22,6 +22,7 @@ export interface WeatherReport {
   cloudLayers: CloudLayer[]
   windSpeedMs: number | null
   windDirDeg: number | null
+  windObservedAt: number | null // ms; the report the wind came from (wind.ts)
 }
 
 export interface WeatherFreshness {

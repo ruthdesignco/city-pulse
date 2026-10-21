@@ -54,6 +54,7 @@ function buildMaterial(): MeshStandardMaterial {
     shader.uniforms.uSkyReflection = sceneUniforms.uHaze
     shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
     shader.uniforms.uHour = sceneUniforms.uHour
+    shader.uniforms.uWeekend = sceneUniforms.uWeekend
     shader.uniforms.uStoneColors = { value: palette.stoneTowerColors.map((c) => new Color(c)) }
     shader.uniforms.uPaleStone = { value: new Color(palette.landmarkPaleStone) }
     shader.uniforms.uGranite = { value: new Color(palette.landmarkGranite) }
@@ -90,7 +91,7 @@ function buildMaterial(): MeshStandardMaterial {
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v23'
+  material.customProgramCacheKey = () => 'city-buildings-v24'
   return material
 }
 

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { TIME } from '../params.ts'
+import { DAY, TIME } from '../params.ts'
 import { applySkyState } from './sceneUniforms.ts'
 import { sfDateAt } from './sfTime.ts'
 import { type SkyState, computeSkyState } from './skyState.ts'
@@ -15,15 +15,21 @@ const TICK_MS = 60_000
 
 const dateNow = () => (TIME.mode === 'fixed' ? sfDateAt(TIME.minutes, new Date()) : new Date())
 
+// ?day= pins the lit-window schedule; otherwise it's today's.
+const compute = (w: Weather): SkyState => {
+  const s = computeSkyState(dateNow(), w)
+  return DAY ? { ...s, weekend: DAY === 'weekend' } : s
+}
+
 let weather: Weather = CLEAR_WEATHER
-let state = computeSkyState(dateNow(), weather)
+let state = compute(weather)
 applySkyState(state)
 
 const listeners = new Set<() => void>()
 let timer: ReturnType<typeof setInterval> | undefined
 
 function tick() {
-  state = computeSkyState(dateNow(), weather)
+  state = compute(weather)
   applySkyState(state)
   for (const l of listeners) l()
 }

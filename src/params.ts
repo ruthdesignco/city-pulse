@@ -20,9 +20,16 @@
 //   ?weather=clear|fog|overcast
 //                    set the weather instead of the live NWS report
 //                    (weather.ts), with a note on screen saying so
+//   ?wind=calm|breezy|strong
+//                    set the wind (0, 5, 12 m/s) instead of the live NWS
+//                    report (wind.ts), with a note on screen saying so
+//   ?day=weekday|weekend
+//                    which lit-window schedule to show (windowLight.ts);
+//                    by default, today's in San Francisco
 
-import { parseTimeParam } from './scene/sfTime.ts'
+import { parseDayParam, parseTimeParam } from './scene/sfTime.ts'
 import { parseWeatherParam } from './scene/weather.ts'
+import { parseWindParam } from './scene/wind.ts'
 
 const params = new URLSearchParams(window.location.search)
 
@@ -50,3 +57,5 @@ export const QUALITY: 'low' | 'high' | null = quality === 'low' || quality === '
 export const SHOW_FPS = params.has('fps')
 export const TIME = parseTimeParam(params.get('time'))
 export const WEATHER = parseWeatherParam(params.get('weather'))
+export const WIND = parseWindParam(params.get('wind'))
+export const DAY = parseDayParam(params.get('day'))

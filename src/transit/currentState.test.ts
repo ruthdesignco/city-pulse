@@ -52,6 +52,7 @@ describe('parseCurrentState: weather', () => {
           cloud_layers: [{ amount: 'OVC', base_m: 60 }, { amount: 7 }, { amount: 'BKN', base_m: null }],
           wind_speed_ms: 5.1,
           wind_dir_deg: null,
+          wind_observed_at: '2026-10-18T18:56:00+00:00',
         },
       },
       receivedAt,
@@ -66,6 +67,7 @@ describe('parseCurrentState: weather', () => {
       ],
       windSpeedMs: 5.1,
       windDirDeg: null,
+      windObservedAt: Date.parse('2026-10-18T18:56:00Z'),
     })
     expect(s.weatherFreshness).toEqual({
       lastSuccessAt: Date.parse('2026-10-18T19:49:10Z'),
@@ -81,6 +83,11 @@ describe('parseCurrentState: weather', () => {
     expect(s.weather).toBeNull()
     expect(s.weatherFreshness.newestObservedAt).toBeNull()
     expect(parseCurrentState({ ...row, weather: { station: 'KSFO', observed_at: 'nope' } }, receivedAt).weather).toBeNull()
+  })
+
+  it('has no wind time before the wind_observed_at migration', () => {
+    const weather = { station: 'KSFO', observed_at: '2026-10-18T19:45:00+00:00', wind_speed_ms: 5.1, wind_dir_deg: 290 }
+    expect(parseCurrentState({ ...row, weather }, receivedAt).weather!.windObservedAt).toBeNull()
   })
 })
 

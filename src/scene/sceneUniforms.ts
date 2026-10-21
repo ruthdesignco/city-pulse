@@ -1,4 +1,4 @@
-import { Color } from 'three'
+import { Color, Vector2 } from 'three'
 import { palette } from '../city/palette.ts'
 import './heightFog.ts'
 import { FOG_RAMP_M, FOG_SOFT_M, FOG_TOP_M } from './weather.ts'
@@ -12,23 +12,32 @@ import type { SkyState } from './skyState.ts'
 //               day, the city-glow night sky after dark (ring.ts)
 //   uWindowsOn  0 by day, 1 from dusk: lit windows (facade.ts)
 //   uHour       San Francisco local hour, for which windows are lit
+//   uWeekend    1 on Saturday and Sunday: the weekend lit-window schedule
 //   uFog*       the height fog from the weather (heightFog.ts)
+//   uWind*      the wind, eased (windClock.ts writes them): uWind 0 calm .. 1
+//               strong, uWindDir the unit direction it blows toward (scene
+//               x, z), uWindClock the trees' sway phase
 export const sceneUniforms = {
   uHaze: { value: new Color(palette.sky) },
   uWindowsOn: { value: 0 },
   uHour: { value: 12 },
+  uWeekend: { value: 0 },
   uFogDensity: { value: 0 },
   uFogColor: { value: new Color(palette.fogDay) },
   uFogTop: { value: FOG_TOP_M },
   uFogSoft: { value: FOG_SOFT_M },
   uFogRamp: { value: FOG_RAMP_M },
   uFogGlow: { value: 0 },
+  uWind: { value: 0 },
+  uWindDir: { value: new Vector2(1, 0) },
+  uWindClock: { value: 0 },
 }
 
 export function applySkyState(s: SkyState) {
   sceneUniforms.uHaze.value.copy(s.haze)
   sceneUniforms.uWindowsOn.value = s.windowsOn
   sceneUniforms.uHour.value = s.hour
+  sceneUniforms.uWeekend.value = s.weekend ? 1 : 0
   sceneUniforms.uFogDensity.value = s.fog.density
   sceneUniforms.uFogColor.value.copy(s.fog.color)
   sceneUniforms.uFogTop.value = s.fog.top

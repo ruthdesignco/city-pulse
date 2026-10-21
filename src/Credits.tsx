@@ -4,8 +4,9 @@ import { ABOUT_VIEW, CREDITS } from './dataCredits.ts'
 // Data credits, bottom right (wording: dataCredits.ts). OpenStreetMap's ODbL
 // and the 511 agreement require their credits on the public site, so the
 // overlay toggle never hides this (like RecordedBadge). "About this view"
-// opens a short note on what is data and what is illustrative.
-export function Credits() {
+// opens a short note on what is data and what is illustrative, with the
+// wind's source and age (wind.ts describeWind) as of opening it.
+export function Credits({ wind }: { wind: () => string }) {
   const [open, setOpen] = useState(false)
   useEffect(() => {
     if (!open) return
@@ -22,6 +23,7 @@ export function Credits() {
           {ABOUT_VIEW.map((line) => (
             <p key={line}>{line}</p>
           ))}
+          <p>{wind()}</p>
         </div>
       )}
       <div className="credits">

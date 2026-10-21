@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTimeParam, sfClockLabel, sfDateAt, sfHour } from './sfTime.ts'
+import { parseDayParam, parseTimeParam, sfClockLabel, sfDateAt, sfHour, sfIsWeekend } from './sfTime.ts'
 
 describe('parseTimeParam', () => {
   it('reads HH:MM as a fixed San Francisco time, anything else as live', () => {
@@ -9,7 +9,25 @@ describe('parseTimeParam', () => {
   })
 })
 
+describe('parseDayParam', () => {
+  it('reads weekday or weekend, anything else as today', () => {
+    expect(parseDayParam('weekday')).toBe('weekday')
+    expect(parseDayParam('weekend')).toBe('weekend')
+    for (const v of [null, '', 'saturday', 'Weekend']) expect(parseDayParam(v)).toBeNull()
+  })
+})
+
 describe('San Francisco clock', () => {
+  it('knows the weekend on the San Francisco calendar', () => {
+    expect(sfIsWeekend(new Date('2026-10-21T19:00:00Z'))).toBe(false) // Wed
+    expect(sfIsWeekend(new Date('2026-10-24T19:00:00Z'))).toBe(true) // Sat
+    expect(sfIsWeekend(new Date('2026-10-25T19:00:00Z'))).toBe(true) // Sun
+    // 03:00 UTC Saturday is still Friday evening in San Francisco; Monday
+    // 03:00 UTC is still Sunday.
+    expect(sfIsWeekend(new Date('2026-10-24T03:00:00Z'))).toBe(false)
+    expect(sfIsWeekend(new Date('2026-10-26T03:00:00Z'))).toBe(true)
+  })
+
   it('reads the local hour across daylight saving', () => {
     expect(sfHour(new Date('2026-10-20T19:00:00Z'))).toBeCloseTo(12, 6) // PDT, UTC-7
     expect(sfHour(new Date('2026-12-20T20:00:00Z'))).toBeCloseTo(12, 6) // PST, UTC-8

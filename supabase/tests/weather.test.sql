@@ -1,5 +1,6 @@
 -- SQL fixture test for record_weather_observations() and current_state's
--- weather column (20261020120000_weather_observations.sql). Run the same way
+-- weather column (20261020120000_weather_observations.sql,
+-- 20261021090000_wind_observed_at.sql). Run the same way
 -- as current_state.test.sql (scripts/sql-fixture-files.sh, in CI's
 -- sql-fixture job).
 --
@@ -88,7 +89,8 @@ begin
     raise exception 'FAIL: expected KSFO''s 01:05 fog report, got %', r.weather;
   end if;
   -- Wind from KSFO's 00:56 report, the newest with wind; never from KOAK.
-  if (r.weather ->> 'wind_speed_ms')::real <> 5.1::real or (r.weather ->> 'wind_dir_deg')::real <> 290 then
+  if (r.weather ->> 'wind_speed_ms')::real <> 5.1::real or (r.weather ->> 'wind_dir_deg')::real <> 290
+     or (r.weather ->> 'wind_observed_at')::timestamptz <> '2020-06-01T00:56:00Z' then
     raise exception 'FAIL: wind should come from KSFO''s 00:56 report, got %', r.weather;
   end if;
   if (r.freshness -> 'weather' ->> 'last_success_at')::timestamptz <> '2020-06-01T01:10:00Z'
@@ -119,12 +121,31 @@ begin
   if r.weather ->> 'station' <> 'KOAK' or (r.weather ->> 'observed_at')::timestamptz <> '2020-06-01T03:10:00Z' then
     raise exception 'FAIL: with KSFO 2 h behind, KOAK''s report should be shown, got %', r.weather;
   end if;
-  -- KOAK's 01:50 wind is 80 minutes old: within 2 hours, so it's used.
-  if (r.weather ->> 'wind_speed_ms')::real <> 6 then
+  -- KOAK's 01:50 wind is 80 minutes old: within 90 minutes, so it's used.
+  if (r.weather ->> 'wind_speed_ms')::real <> 6
+     or (r.weather ->> 'wind_observed_at')::timestamptz <> '2020-06-01T01:50:00Z' then
     raise exception 'FAIL: wind should fall back to KOAK''s 01:50 report, got %', r.weather;
   end if;
   if r.freshness -> 'weather' ->> 'station' <> 'KOAK' then
     raise exception 'FAIL: freshness.weather.station should be KOAK, got %', r.freshness -> 'weather';
+  end if;
+end $$;
+
+-- KOAK's next report, 100 minutes after its last with wind: too old, so no wind.
+select public.record_weather_observations('[
+  {"station":"KOAK","observed_at":"2020-06-01T03:30:00Z","visibility_m":9000,"cloud_layers":[],
+   "wind_speed_ms":null,"wind_dir_deg":null,"wind_gust_ms":null,"description":"Clear"}
+]'::jsonb);
+
+do $$
+declare
+  r record;
+begin
+  select * into r from public.current_state;
+  if r.weather ->> 'station' <> 'KOAK'
+     or jsonb_typeof(r.weather -> 'wind_speed_ms') <> 'null'
+     or jsonb_typeof(r.weather -> 'wind_observed_at') <> 'null' then
+    raise exception 'FAIL: wind 100 minutes old should be left out, got %', r.weather;
   end if;
 end $$;
 

@@ -5,7 +5,7 @@ import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
 import { Credits } from './Credits.tsx'
-import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER } from './params.ts'
+import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER, WIND } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Rooftops } from './city/Rooftops.tsx'
 import { Streets } from './city/Streets.tsx'
@@ -19,10 +19,12 @@ import { QualityMonitor } from './scene/QualityMonitor.tsx'
 import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
 import { RecordedBadge } from './transit/RecordedBadge.tsx'
-import { LightNote, WeatherNote } from './scene/LightNote.tsx'
+import { LightNote, WeatherNote, WindNote } from './scene/LightNote.tsx'
 import { setWeather } from './scene/skyClock.ts'
 import { WEATHER_PRESETS, weatherToShow } from './scene/weather.ts'
 import { WeatherLabel } from './scene/WeatherLabel.tsx'
+import { WIND_PRESETS, describeWind, windToShow } from './scene/wind.ts'
+import { WindClock, setWind } from './scene/windClock.ts'
 import type { CurrentState } from './transit/currentState.ts'
 import { Vehicles } from './transit/Vehicles.tsx'
 import { useCurrentState } from './transit/useCurrentState.ts'
@@ -70,6 +72,22 @@ function useWeather(state: CurrentState | null) {
   }, [state])
 }
 
+// The wind the scene shows (wind.ts): ?wind='s preset, or the NWS report's
+// while it's under 90 minutes old (calm otherwise), checked again every
+// minute like the weather.
+function useWind(state: CurrentState | null) {
+  useEffect(() => {
+    if (WIND) {
+      setWind(WIND_PRESETS[WIND])
+      return
+    }
+    const apply = () => setWind(windToShow(state?.weather ?? null, Date.now() + (state?.serverOffsetMs ?? 0)))
+    apply()
+    const id = setInterval(apply, WEATHER_CHECK_MS)
+    return () => clearInterval(id)
+  }, [state])
+}
+
 // The GPU's name, for spotting software renderers (quality.ts). null where
 // the browser hides it.
 function rendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): string | null {
@@ -80,6 +98,7 @@ function rendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): strin
 export default function App() {
   const feed = useFeed()
   useWeather(feed.state)
+  useWind(feed.state)
   const overlayHidden = useOverlayToggle()
   // The render's quality step (quality.ts): full to start, lower while the
   // frame rate stays under the floor.
@@ -159,6 +178,7 @@ export default function App() {
           <Vehicles key={feed.replay?.loop ?? 0} state={feed.state} />
         </Suspense>
         {CALIBRATE && <Calibration />}
+        <WindClock />
         <CameraRig start={START_POSE} />
         {/* No bloom: the look is realistic, nothing in the scene glows. The
             composer turns off the renderer's tone mapping, so it's applied
@@ -185,13 +205,14 @@ export default function App() {
         </div>
       )}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
-      {(TIME.mode === 'fixed' || WEATHER) && (
+      {(TIME.mode === 'fixed' || WEATHER || WIND) && (
         <div className="notes">
           {TIME.mode === 'fixed' && <LightNote label={TIME.label} />}
           {WEATHER && <WeatherNote preset={WEATHER} />}
+          {WIND && <WindNote preset={WIND} />}
         </div>
       )}
-      <Credits />
+      <Credits wind={() => describeWind(feed.state?.weather ?? null, Date.now() + (feed.state?.serverOffsetMs ?? 0), WIND)} />
     </WebGLGate>
   )
 }

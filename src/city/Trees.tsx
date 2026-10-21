@@ -40,6 +40,28 @@ const HUE_JITTER = 0.015
 
 const LEVELS: TreeLevel[] = ['near', 'far']
 
+// Canopy sway in the wind (sceneUniforms.ts uWind*, windClock.ts): crown
+// vertices move downwind and back, more the higher they are, around
+// SWAY_PER_M of their height above the ground in a strong wind (some 0.3-0.4
+// m at the top of a 10 m tree, more in a gust). Trunks stay put. Each tree's
+// phase comes from a hash of its position, so neighbors don't move in step,
+// and gusts roll through the street downwind (two slow waves, one along the
+// wind and one across it), so the motion swells and eases instead of
+// ticking like a metronome. Shadows are drawn unswayed.
+const SWAY_PER_M = 0.032
+// The mean lean downwind, and the rock about it, as shares of the sway.
+const SWAY_LEAN = 0.35
+const SWAY_ROCK = [0.5, 0.2] // two sines, the second 2.3x as fast
+const SWAY_CROSS = 0.25 // a little across the wind too
+// Gusts: the sway scaled by 1 +- GUST_DEPTH, in waves GUST_ALONG_M long
+// moving downwind at roughly a strong wind's speed, and GUST_ACROSS_M wide.
+const GUST_DEPTH = [0.35, 0.15]
+const GUST_ALONG_M = 140
+const GUST_ACROSS_M = 300
+// uWindClock runs at up to ~2.8 rad/s (windClock.ts); this turns it into a
+// gust front moving at ~12 m/s.
+const GUST_RATE = (12 * (2 * Math.PI)) / GUST_ALONG_M / 2.8
+
 function hash(i: number, salt: number): number {
   let h = Math.imul(i ^ (salt * 0x9e3779b9), 0x85ebca6b)
   h ^= h >>> 13
@@ -117,10 +139,13 @@ function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
     registerHeightFog(shader)
     shader.uniforms.uTrunk = { value: new Color(palette.treeTrunk) }
     shader.uniforms.uDim = sceneUniforms.uHaze // the ring's fade, by time of day
+    shader.uniforms.uWind = sceneUniforms.uWind
+    shader.uniforms.uWindDir = sceneUniforms.uWindDir
+    shader.uniforms.uWindClock = sceneUniforms.uWindClock
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nuniform vec3 uTrunk;\nuniform vec3 uDim;\nattribute float aCrown;\nattribute float aTone;\nattribute vec3 iGreen;\nattribute float iRing;\nvarying vec3 vTreeColor;',
+        '#include <common>\nuniform vec3 uTrunk;\nuniform vec3 uDim;\nuniform float uWind;\nuniform vec2 uWindDir;\nuniform float uWindClock;\nattribute float aCrown;\nattribute float aTone;\nattribute vec3 iGreen;\nattribute float iRing;\nvarying vec3 vTreeColor;',
       )
       .replace(
         '#include <begin_vertex>',
@@ -129,11 +154,28 @@ function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
         vTreeColor = mix(uTrunk, iGreen, aCrown) * aTone;
         vTreeColor = mix(vTreeColor, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, iRing));`,
       )
+      // The sway, in world space (after the instance's own rotation and
+      // scale), so every tree leans the same way.
+      .replace(
+        '#include <project_vertex>',
+        `vec4 mvPosition = instanceMatrix * vec4( transformed, 1.0 );
+        float swayHeight = max( 0.0, mvPosition.y - instanceMatrix[3].y );
+        float swayPhase = 6.2832 * fract( sin( dot( instanceMatrix[3].xz, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+        float swayAlong = ${SWAY_LEAN.toFixed(3)} + ${SWAY_ROCK[0].toFixed(3)} * sin( uWindClock + swayPhase ) + ${SWAY_ROCK[1].toFixed(3)} * sin( 2.3 * uWindClock + 1.7 * swayPhase );
+        float swayAcross = ${SWAY_CROSS.toFixed(3)} * sin( 1.3 * uWindClock + 2.1 * swayPhase );
+        vec2 swayAt = instanceMatrix[3].xz;
+        float gust = 1.0
+          + ${GUST_DEPTH[0].toFixed(3)} * sin( dot( swayAt, uWindDir ) * ${((2 * Math.PI) / GUST_ALONG_M).toFixed(5)} - ${GUST_RATE.toFixed(4)} * uWindClock )
+          + ${GUST_DEPTH[1].toFixed(3)} * sin( dot( swayAt, vec2( -uWindDir.y, uWindDir.x ) ) * ${((2 * Math.PI) / GUST_ACROSS_M).toFixed(5)} + 0.37 * uWindClock );
+        mvPosition.xz += uWind * gust * aCrown * swayHeight * ${SWAY_PER_M.toFixed(4)} * ( uWindDir * swayAlong + vec2( -uWindDir.y, uWindDir.x ) * swayAcross );
+        mvPosition = modelViewMatrix * mvPosition;
+        gl_Position = projectionMatrix * mvPosition;`,
+      )
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTreeColor;')
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vTreeColor;')
   }
-  material.customProgramCacheKey = () => `city-trees-v1-${doubleSided ? 'double' : 'front'}`
+  material.customProgramCacheKey = () => `city-trees-v3-${doubleSided ? 'double' : 'front'}`
   return material
 }
 

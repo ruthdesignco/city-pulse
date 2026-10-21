@@ -18,3 +18,12 @@ export function WeatherNote({ preset }: { preset: string }) {
     </div>
   )
 }
+
+// And for ?wind=: the water and the trees move to a set wind.
+export function WindNote({ preset }: { preset: string }) {
+  return (
+    <div className="light-note" role="status">
+      Wind set to {preset}
+    </div>
+  )
+}

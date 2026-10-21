@@ -16,24 +16,27 @@ declare global {
 }
 
 // Every time-of-day path (day, blue hour, night), three cameras, and the
-// weather's fog and overcast paths (the clear cases pin ?weather=clear, so
-// the live report can't change what's tested).
+// weather's fog and overcast paths, and the wind's and the weekend's (every
+// case pins ?weather, ?wind and ?day, so neither the live report nor the
+// day it runs can change what's tested).
 const CASES = [
-  { view: 'opening', time: '12:00', weather: 'clear' },
-  { view: 'cinematic', time: '18:30', weather: 'clear' },
-  { view: 'street', time: '22:00', weather: 'clear' },
+  { view: 'opening', time: '12:00', weather: 'clear', wind: 'calm', day: 'weekday' },
+  { view: 'cinematic', time: '18:30', weather: 'clear', wind: 'calm', day: 'weekday' },
+  { view: 'street', time: '22:00', weather: 'clear', wind: 'calm', day: 'weekday' },
   // The drone-height night view: what broke there once (pools, windows) only
   // showed from that camera.
-  { view: 'opening', time: '22:00', weather: 'clear' },
-  { view: 'opening', time: '22:00', weather: 'fog' },
-  { view: 'cinematic', time: '12:00', weather: 'overcast' },
+  { view: 'opening', time: '22:00', weather: 'clear', wind: 'calm', day: 'weekday' },
+  { view: 'opening', time: '22:00', weather: 'fog', wind: 'calm', day: 'weekday' },
+  { view: 'cinematic', time: '12:00', weather: 'overcast', wind: 'calm', day: 'weekday' },
+  // Swaying trees and wind-driven water, and the weekend window schedule.
+  { view: 'street', time: '20:00', weather: 'clear', wind: 'strong', day: 'weekend' },
 ]
 const DRAW_TIMEOUT_MS = 90_000
 const SHADER_ERROR = /shader error|webglprogram|validate_status|compile/i
 
 let failed = 0
 for (const c of CASES) {
-  const label = `smoke ${c.view} ${c.time} ${c.weather}`
+  const label = `smoke ${c.view} ${c.time} ${c.weather} ${c.wind} ${c.day}`
   await withScenePage(label, c, async (page, report) => {
     let drawn = false
     try {

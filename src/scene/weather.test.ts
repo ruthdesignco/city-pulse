@@ -19,6 +19,7 @@ const report = (over: Partial<WeatherReport> = {}): WeatherReport => ({
   cloudLayers: [],
   windSpeedMs: null,
   windDirDeg: null,
+  windObservedAt: null,
   ...over,
 })
 const fresh: WeatherFreshness = { lastSuccessAt: NOW, lastPollAt: NOW, lastPollOk: true, newestObservedAt: NOW, station: 'KSFO' }
