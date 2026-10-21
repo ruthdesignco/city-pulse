@@ -5,6 +5,8 @@
 //
 //   npm run calibrate                 at the real San Francisco time
 //   npm run calibrate -- --time 12:00 at a set time (?time=)
+//   --weather clear|fog|overcast      default clear (?weather=), whatever the
+//                                     live NWS report says
 //
 // By day the exposure keeps sunlit ground at its palette value, so the
 // ratios hold from morning to golden hour; at night the scene is exposed
@@ -33,7 +35,11 @@ async function main() {
   const i = process.argv.indexOf('--time')
   const time = i >= 0 ? process.argv[i + 1] : undefined
   if (time !== undefined && !/^\d{1,2}:\d{2}$/.test(time)) throw new Error('calibrate: --time must be HH:MM')
-  await withScenePage('calibrate', { view: 'calibrate', calibrate: '', ...(time ? { time } : {}) }, async (page) => {
+  // Clear unless asked: the palette is measured in full sun, not under today's clouds.
+  const w = process.argv.indexOf('--weather')
+  const weather = w >= 0 ? process.argv[w + 1] : 'clear'
+  if (!['clear', 'fog', 'overcast'].includes(weather)) throw new Error('calibrate: --weather must be clear, fog or overcast')
+  await withScenePage('calibrate', { view: 'calibrate', calibrate: '', weather, ...(time ? { time } : {}) }, async (page) => {
     const png = (await page.screenshot()).toString('base64')
     const samples = await page.evaluate(
       async ({ png, half }) => {

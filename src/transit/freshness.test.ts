@@ -11,6 +11,8 @@ const state = (over: Partial<CurrentState['muni']> = {}, serverOffsetMs = 0): Cu
   serverOffsetMs,
   muni: { lastSuccessAt: NOW - 30_000, lastPollAt: NOW - 30_000, lastPollOk: true, newestFeedAt: NOW - 42_000, ...over },
   vehicles: [],
+  weather: null,
+  weatherFreshness: { lastSuccessAt: null, lastPollAt: null, lastPollOk: null, newestObservedAt: null, station: null },
 })
 const feed = (s: CurrentState | null, error: string | null = null): FeedStatus => ({ state: s, error, lastAttemptAt: NOW })
 

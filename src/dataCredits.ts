@@ -6,10 +6,13 @@
 //                  provided by 511.org" (or "powered by 511.org") linking
 //                  to 511.org, in view wherever the data is shown
 //   DataSF         PDDL 1.0 needs no credit; given as a courtesy
+//   NWS            US government work, public domain; credited as a
+//                  courtesy and so the weather's source is in view
 export const CREDITS = [
   { text: '© OpenStreetMap contributors', href: 'https://www.openstreetmap.org/copyright' },
   { text: 'Trees: SF Public Works via DataSF', href: 'https://data.sf.gov/d/tkzw-k3nq' },
   { text: 'Data provided by 511.org', href: 'https://511.org' },
+  { text: 'Weather: National Weather Service', href: 'https://www.weather.gov' },
 ]
 
 // "About this view" (Credits.tsx): what is data and what is illustrative,
@@ -19,4 +22,5 @@ export const ABOUT_VIEW = [
   'Buildings without a recorded height are drawn 8 m tall.',
   'Illustrative: building materials, windows, storefronts, rooftop equipment, and vehicle size (enlarged at a distance so they stay visible).',
   'The light follows the real time in San Francisco: the sun, and the moon at night. Which windows are lit at night is illustrative.',
+  "Fog and cloud cover come from the National Weather Service's observations at San Francisco International Airport (KSFO), 18 km south, or Oakland airport (KOAK) when SFO's are missing. Downtown can differ. How deep the fog is, is illustrative.",
 ]

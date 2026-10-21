@@ -9,6 +9,7 @@
 // meet without a seam once mipmapping averages the tile out.
 
 import { Color, DataTexture, LinearMipmapLinearFilter, MeshStandardMaterial, RepeatWrapping, RGBAFormat, SRGBColorSpace } from 'three'
+import { registerHeightFog } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 
 export const LAND_TILE_SIZE = 256
@@ -106,6 +107,7 @@ export function createLandMaterial(map: DataTexture): MeshStandardMaterial {
   const c = Math.cos(SECOND_ANGLE).toFixed(4)
   const sn = Math.sin(SECOND_ANGLE).toFixed(4)
   material.onBeforeCompile = (shader) => {
+    registerHeightFog(shader)
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',

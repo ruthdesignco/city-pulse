@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, DoubleSide } from 'three'
+import { registerHeightFog } from '../scene/sceneUniforms.ts'
 import { TARGET } from '../scene/view.ts'
 import type { CityData } from './format.ts'
 import { BayWater } from './BayWater.tsx'
@@ -88,10 +89,10 @@ export function Ground() {
         <BayWater y={WATER_Y} />
       </group>
       <mesh geometry={shore} receiveShadow userData={{ noReflect: true }}>
-        <meshStandardMaterial vertexColors transparent depthWrite={false} side={DoubleSide} roughness={0.95} polygonOffset polygonOffsetFactor={-0.9} polygonOffsetUnits={-3.5} />
+        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors transparent depthWrite={false} side={DoubleSide} roughness={0.95} polygonOffset polygonOffsetFactor={-0.9} polygonOffsetUnits={-3.5} />
       </mesh>
       <mesh geometry={paving} receiveShadow userData={{ noReflect: true }}>
-        <meshStandardMaterial vertexColors roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} polygonOffsetUnits={-2} />
+        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} polygonOffsetUnits={-2} />
       </mesh>
     </>
   )

@@ -5,7 +5,7 @@ import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
 import { Credits } from './Credits.tsx'
-import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW } from './params.ts'
+import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER } from './params.ts'
 import { Ground } from './city/Ground.tsx'
 import { Rooftops } from './city/Rooftops.tsx'
 import { Streets } from './city/Streets.tsx'
@@ -19,7 +19,11 @@ import { QualityMonitor } from './scene/QualityMonitor.tsx'
 import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
 import { RecordedBadge } from './transit/RecordedBadge.tsx'
-import { LightNote } from './scene/LightNote.tsx'
+import { LightNote, WeatherNote } from './scene/LightNote.tsx'
+import { setWeather } from './scene/skyClock.ts'
+import { WEATHER_PRESETS, weatherToShow } from './scene/weather.ts'
+import { WeatherLabel } from './scene/WeatherLabel.tsx'
+import type { CurrentState } from './transit/currentState.ts'
 import { Vehicles } from './transit/Vehicles.tsx'
 import { useCurrentState } from './transit/useCurrentState.ts'
 import { type ReplayStatus, useRecordedState } from './transit/useRecordedState.ts'
@@ -48,6 +52,24 @@ function useOverlayToggle(): boolean {
   return hidden
 }
 
+// The weather the scene shows (weather.ts): ?weather='s preset, or the
+// newest NWS report while it's under 6 hours old (clear after that, and
+// before the first report), checked again every minute so an old report
+// expires even if the feed stops.
+const WEATHER_CHECK_MS = 60_000
+function useWeather(state: CurrentState | null) {
+  useEffect(() => {
+    if (WEATHER) {
+      setWeather(WEATHER_PRESETS[WEATHER])
+      return
+    }
+    const apply = () => setWeather(weatherToShow(state?.weather ?? null, Date.now() + (state?.serverOffsetMs ?? 0)))
+    apply()
+    const id = setInterval(apply, WEATHER_CHECK_MS)
+    return () => clearInterval(id)
+  }, [state])
+}
+
 // The GPU's name, for spotting software renderers (quality.ts). null where
 // the browser hides it.
 function rendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): string | null {
@@ -57,6 +79,7 @@ function rendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): strin
 
 export default function App() {
   const feed = useFeed()
+  useWeather(feed.state)
   const overlayHidden = useOverlayToggle()
   // The render's quality step (quality.ts): full to start, lower while the
   // frame rate stays under the floor.
@@ -155,9 +178,19 @@ export default function App() {
           Loading the city…
         </div>
       )}
-      {!overlayHidden && <Freshness feed={feed} recorded={feed.replay !== null} />}
+      {!overlayHidden && (
+        <div className="pills">
+          <Freshness feed={feed} recorded={feed.replay !== null} />
+          <WeatherLabel state={feed.state} recorded={feed.replay !== null} preset={WEATHER} />
+        </div>
+      )}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
-      {TIME.mode === 'fixed' && <LightNote label={TIME.label} />}
+      {(TIME.mode === 'fixed' || WEATHER) && (
+        <div className="notes">
+          {TIME.mode === 'fixed' && <LightNote label={TIME.label} />}
+          {WEATHER && <WeatherNote preset={WEATHER} />}
+        </div>
+      )}
       <Credits />
     </WebGLGate>
   )

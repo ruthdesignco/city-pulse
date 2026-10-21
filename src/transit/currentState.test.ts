@@ -28,6 +28,62 @@ const row = {
   ],
 }
 
+describe('parseCurrentState: weather', () => {
+  const receivedAt = Date.parse('2026-10-18T20:00:07.123Z')
+
+  it('reads the NWS report and the weather freshness', () => {
+    const s = parseCurrentState(
+      {
+        ...row,
+        freshness: {
+          ...row.freshness,
+          weather: {
+            last_success_at: '2026-10-18T19:49:10+00:00',
+            last_poll_at: '2026-10-18T19:49:10+00:00',
+            last_poll_ok: true,
+            newest_observed_at: '2026-10-18T19:45:00+00:00',
+            station: 'KSFO',
+          },
+        },
+        weather: {
+          station: 'KSFO',
+          observed_at: '2026-10-18T19:45:00+00:00',
+          visibility_m: 800,
+          cloud_layers: [{ amount: 'OVC', base_m: 60 }, { amount: 7 }, { amount: 'BKN', base_m: null }],
+          wind_speed_ms: 5.1,
+          wind_dir_deg: null,
+        },
+      },
+      receivedAt,
+    )
+    expect(s.weather).toEqual({
+      station: 'KSFO',
+      observedAt: Date.parse('2026-10-18T19:45:00Z'),
+      visibilityM: 800,
+      cloudLayers: [
+        { amount: 'OVC', baseM: 60 },
+        { amount: 'BKN', baseM: null },
+      ],
+      windSpeedMs: 5.1,
+      windDirDeg: null,
+    })
+    expect(s.weatherFreshness).toEqual({
+      lastSuccessAt: Date.parse('2026-10-18T19:49:10Z'),
+      lastPollAt: Date.parse('2026-10-18T19:49:10Z'),
+      lastPollOk: true,
+      newestObservedAt: Date.parse('2026-10-18T19:45:00Z'),
+      station: 'KSFO',
+    })
+  })
+
+  it('has no weather before the first report, or in a recording made before weather existed', () => {
+    const s = parseCurrentState(row, receivedAt)
+    expect(s.weather).toBeNull()
+    expect(s.weatherFreshness.newestObservedAt).toBeNull()
+    expect(parseCurrentState({ ...row, weather: { station: 'KSFO', observed_at: 'nope' } }, receivedAt).weather).toBeNull()
+  })
+})
+
 describe('parseCurrentState', () => {
   const receivedAt = Date.parse('2026-10-18T20:00:07.123Z')
   const s = parseCurrentState(row, receivedAt)

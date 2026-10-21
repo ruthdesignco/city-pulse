@@ -19,6 +19,9 @@ import { TARGET } from './view.ts'
 // the texel: enough to stop acne, not so much that shadows detach from walls.
 const SHADOW_NORMAL_BIAS_TEXELS = 0.75
 
+// Extra PCF radius (texels) under full overcast.
+const SHADOW_RADIUS_OVERCAST = 3
+
 const FOG_NEAR_M = 4500
 const FOG_FAR_M = 10000
 
@@ -100,7 +103,8 @@ export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?
         shadow-mapSize={[shadowMapSize, shadowMapSize]}
         shadow-camera-near={10}
         shadow-bias={-0.0002}
-        shadow-radius={1.5}
+        // Wider under cloud: the little direct light left casts soft edges.
+        shadow-radius={1.5 + SHADOW_RADIUS_OVERCAST * sky.cloud}
       />
       <SkyDome />
     </>

@@ -10,9 +10,9 @@ body,
   position: relative;
 }
 
-/* Freshness indicator (src/transit/Freshness.tsx). Colors follow
-   src/city/palette.ts: sky for the backing, muniBus for a live feed. */
-.freshness {
+/* The status pills, bottom left: Muni's freshness, then the weather's
+   (App.tsx). Side by side; stacked on narrow screens. */
+.pills {
   position: absolute;
   left: 16px;
   bottom: 16px;
@@ -20,6 +20,17 @@ body,
   align-items: center;
   gap: 8px;
   max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+/* Freshness indicator (src/transit/Freshness.tsx; the weather label,
+   src/scene/WeatherLabel.tsx, uses it too). Colors follow
+   src/city/palette.ts: sky for the backing, muniBus for a live feed. */
+.freshness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
   padding: 6px 12px;
   border-radius: 999px;
   background: rgb(27 30 48 / 0.72);
@@ -44,8 +55,9 @@ body,
   box-shadow: 0 0 8px #ffcf7a;
 }
 
-/* A replay (RecordedBadge): plain, no live glow. */
-.freshness--recorded .freshness__dot {
+/* A replay (RecordedBadge), or weather set by ?weather=: plain, no live glow. */
+.freshness--recorded .freshness__dot,
+.freshness--set .freshness__dot {
   background: #c9cde8;
 }
 
@@ -122,13 +134,22 @@ body,
   pointer-events: none;
 }
 
-/* "Light set to HH:MM" (LightNote.tsx), top right: the freshness pill's
-   look. */
-.light-note {
+/* "Light set to HH:MM" and "Weather set to fog" (LightNote.tsx), top
+   right, stacked: the freshness pill's look. */
+.notes {
   position: absolute;
   right: 16px;
   top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
   max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+.light-note {
+  max-width: 100%;
   padding: 6px 12px;
   border-radius: 999px;
   background: rgb(27 30 48 / 0.72);
@@ -210,15 +231,21 @@ body,
   margin-top: 6px;
 }
 
-/* Narrow screens: above the freshness pill, not over it. */
+/* Narrow screens: the pills stacked, and the credits above them, not over them. */
 @media (max-width: 720px) {
+  .pills {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
   .credits {
-    bottom: 52px;
+    bottom: 88px;
     border-radius: 12px;
   }
 
   .about-view {
-    bottom: 100px;
+    bottom: 136px;
   }
 }
 

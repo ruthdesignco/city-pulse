@@ -145,4 +145,22 @@ export const palette = {
   windowWarm: '#ffc985',
   windowSoft: '#ffe2b8',
   windowCool: '#c4d8ff',
+
+  // Weather (weather.ts, skyState.ts). The marine layer's color (heightFog.ts):
+  // a bright gray-white by day, scaled with the light; at night the dim
+  // orange-gray of fog lit from below by the city, bright enough that the
+  // fog itself reads against the dark.
+  fogDay: '#e2e5e8',
+  fogNight: '#66615b',
+  // Light under full overcast by day (skyState.ts): the fill's cool white
+  // and a neutral gray ground bounce.
+  overcastLight: '#d0dcee',
+  overcastBounce: '#979ca4',
+  // An overcast sky (SkyDome.tsx): flat gray-white, a little brighter
+  // overhead; at night low clouds over San Francisco glow a dim gray from
+  // the city below, far brighter than a clear night sky.
+  overcastZenith: '#d0d8e2',
+  overcastHorizon: '#b9c1cc',
+  overcastNightZenith: '#36383b',
+  overcastNightHorizon: '#2b2d31',
 } as const

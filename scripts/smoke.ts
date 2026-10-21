@@ -15,21 +15,25 @@ declare global {
   }
 }
 
-// Every time-of-day path (day, blue hour, night) and three cameras.
+// Every time-of-day path (day, blue hour, night), three cameras, and the
+// weather's fog and overcast paths (the clear cases pin ?weather=clear, so
+// the live report can't change what's tested).
 const CASES = [
-  { view: 'opening', time: '12:00' },
-  { view: 'cinematic', time: '18:30' },
-  { view: 'street', time: '22:00' },
+  { view: 'opening', time: '12:00', weather: 'clear' },
+  { view: 'cinematic', time: '18:30', weather: 'clear' },
+  { view: 'street', time: '22:00', weather: 'clear' },
   // The drone-height night view: what broke there once (pools, windows) only
   // showed from that camera.
-  { view: 'opening', time: '22:00' },
+  { view: 'opening', time: '22:00', weather: 'clear' },
+  { view: 'opening', time: '22:00', weather: 'fog' },
+  { view: 'cinematic', time: '12:00', weather: 'overcast' },
 ]
 const DRAW_TIMEOUT_MS = 90_000
 const SHADER_ERROR = /shader error|webglprogram|validate_status|compile/i
 
 let failed = 0
 for (const c of CASES) {
-  const label = `smoke ${c.view} ${c.time}`
+  const label = `smoke ${c.view} ${c.time} ${c.weather}`
   await withScenePage(label, c, async (page, report) => {
     let drawn = false
     try {

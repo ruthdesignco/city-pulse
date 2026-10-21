@@ -137,6 +137,11 @@ export interface SkyLook {
   // horizon toward the sun's bearing.
   glowColor: Color
   glow: number
+  // Cloud cover (weather.ts): how far the whole sky goes to a flat overcast
+  // gradient, 0 clear .. 1 overcast.
+  overcast: number
+  overcastZenith: Color
+  overcastHorizon: Color
 }
 
 // How the afterglow falls off: with angle from the sun's bearing, and with
@@ -155,7 +160,14 @@ export function skyColor(direction: Vector3, look: SkyLook, out = new Color()): 
   const nr = look.nightHorizon.r + (look.nightZenith.r - look.nightHorizon.r) * up + look.glowColor.r * glow
   const ng = look.nightHorizon.g + (look.nightZenith.g - look.nightHorizon.g) * up + look.glowColor.g * glow
   const nb = look.nightHorizon.b + (look.nightZenith.b - look.nightHorizon.b) * up + look.glowColor.b * glow
-  return out.setRGB(r * look.exposure * (1 - n) + nr * n, g * look.exposure * (1 - n) + ng * n, b * look.exposure * (1 - n) + nb * n)
+  out.setRGB(r * look.exposure * (1 - n) + nr * n, g * look.exposure * (1 - n) + ng * n, b * look.exposure * (1 - n) + nb * n)
+  const o = look.overcast
+  if (o === 0) return out
+  return out.setRGB(
+    out.r + (look.overcastHorizon.r + (look.overcastZenith.r - look.overcastHorizon.r) * up - out.r) * o,
+    out.g + (look.overcastHorizon.g + (look.overcastZenith.g - look.overcastHorizon.g) * up - out.g) * o,
+    out.b + (look.overcastHorizon.b + (look.overcastZenith.b - look.overcastHorizon.b) * up - out.b) * o,
+  )
 }
 
 // The sky at the horizon toward compass bearing `azimuth` (radians), for the

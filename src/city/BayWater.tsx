@@ -2,7 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo } from 'react'
 import { Color, type Object3D, type ShaderMaterial, Shape, ShapeGeometry, Vector2, Vector3 } from 'three'
 import { Water } from 'three/examples/jsm/objects/Water.js'
-import { sceneUniforms } from '../scene/sceneUniforms.ts'
+import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { useSkyState } from '../scene/skyClock.ts'
 import { TARGET } from '../scene/view.ts'
 import type { SkyState } from '../scene/skyState.ts'
@@ -108,6 +108,7 @@ function createBayWater() {
     fog: true,
   })
   const material = mesh.material as ShaderMaterial
+  registerHeightFog(material) // Water.js includes three's fog chunks
   material.uniforms.size.value = RIPPLE_SIZE
   let frag = material.fragmentShader
   frag = patch(frag, /vec4 getNoise\( vec2 uv \) \{[\s\S]*?return noise \* 0\.5 - 1\.0;\s*\}/, CHOP_GLSL)
@@ -157,7 +158,8 @@ function createBayWater() {
     // Bay darkens at night with everything else.
     setSky(s: SkyState) {
       material.uniforms.sunDirection.value.copy(s.light.direction)
-      const glint = s.light.isMoon ? MOON_GLINT * Math.min(1, s.light.intensity) : Math.min(1, s.exposure)
+      // Behind cloud the sun leaves no glints, only the soft sky's sheen.
+      const glint = (s.light.isMoon ? MOON_GLINT * Math.min(1, s.light.intensity) : Math.min(1, s.exposure)) * (1 - 0.9 * s.cloud)
       material.uniforms.sunColor.value.copy(s.light.color).multiplyScalar(glint)
       material.uniforms.waterColor.value
         .set(palette.bay)

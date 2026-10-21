@@ -16,7 +16,7 @@ npm run dev
 
 ## Baked data
 
-The city, the trees and the route shapes are baked offline into files in `src/data/` and committed; the build serves them under content-hashed names, cached for good. Nothing is fetched from OpenStreetMap, DataSF or 511 at runtime, except the live vehicle positions through the poller.
+The city, the trees and the route shapes are baked offline into files in `src/data/` and committed; the build serves them under content-hashed names, cached for good. Nothing is fetched from OpenStreetMap, DataSF or 511 at runtime, except the live vehicle positions through the poller, which also fetches the National Weather Service's observations for the fog and clouds.
 
 | File | Made by | From |
 |---|---|---|

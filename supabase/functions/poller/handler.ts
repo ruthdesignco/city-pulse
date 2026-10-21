@@ -8,6 +8,11 @@
 //   4. fetch 511 Vehicle Positions (agency=SF), decode, clip to the bake area
 //   5. write observations, close the run
 //
+// A body of {"feed":"nws"} (the poll-weather cron job, four times an hour)
+// takes the weather path instead: open an ingest_runs row as 'nws', fetch
+// the NWS observations (nws.ts), write them, close the run. It never reads
+// or claims the 511 budget.
+//
 // The 511 key only ever appears in the request URL. Every error is passed
 // through redact() before it reaches ingest_runs, the function log, or the
 // response (which pg_net keeps in net._http_response).
@@ -17,6 +22,7 @@ import { redact } from '../_shared/redact.ts'
 import { type AuthResult, SECRET_HEADER, checkSecret } from './auth.ts'
 import { type VehicleObservation, VEHICLE_SOURCE, decodeVehicles } from './decode.ts'
 import { type BudgetClaim, type BudgetRow, decide } from './gate.ts'
+import { type WeatherObservation, WEATHER_SOURCE, fetchWeather } from './nws.ts'
 import type { SecretCache } from './secret.ts'
 
 export const BUDGET_SOURCE = 'sf511' // one budget per 511 key, shared by every endpoint
@@ -43,6 +49,7 @@ export interface Db {
   // false when another tick changed the row first (version mismatch)
   claimBudget(source: string, expectedVersion: number, next: BudgetClaim): Promise<boolean>
   recordObservations(rows: VehicleObservation[]): Promise<number>
+  recordWeather(rows: WeatherObservation[]): Promise<number>
   // Vault's poller_secret, or null if it doesn't exist
   pollerSecret(): Promise<string | null>
 }
@@ -65,6 +72,21 @@ function describeError(err: unknown): string {
   return `${err.message}${cause}`
 }
 
+// Which feed this tick is for: the 511 vehicles unless the body names 'nws'.
+// An empty or non-JSON body is the original 511 tick.
+async function requestedFeed(req: Request): Promise<'sf511' | 'nws' | null> {
+  const text = await req.text().catch(() => '')
+  if (!text.trim()) return 'sf511'
+  let feed: unknown
+  try {
+    feed = (JSON.parse(text) as { feed?: unknown } | null)?.feed
+  } catch {
+    return 'sf511'
+  }
+  if (feed === undefined) return 'sf511'
+  return feed === 'nws' ? 'nws' : null
+}
+
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   const key = deps.env.TRANSIT_511_API_KEY?.trim() || undefined
   const scrub = (err: unknown) => redact(describeError(err), key).slice(0, MAX_ERROR_CHARS)
@@ -84,6 +106,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (auth === 'misconfigured') return json(500, { status: 'misconfigured' })
   if (auth !== 'ok') return json(401, { status: 'unauthorized' })
   if (req.method !== 'POST') return json(405, { status: 'method_not_allowed' })
+  const feed = await requestedFeed(req)
+  if (feed === null) return json(400, { status: 'unknown_feed' })
+  if (feed === 'nws') return pollWeather(deps, scrub)
 
   let runId: number
   try {
@@ -126,6 +151,36 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   } catch (err) {
     const error = scrub(err)
     deps.log?.(`poller: ${error}`)
+    await finish({ status: 'error', ...stats, error }).catch((e: unknown) =>
+      deps.log?.(`poller: could not close ingest_runs row: ${scrub(e)}`),
+    )
+    return json(500, { status: 'error' })
+  }
+}
+
+// The weather tick. No budget: the cron job's schedule is the rate limit.
+async function pollWeather(deps: Deps, scrub: (err: unknown) => string): Promise<Response> {
+  let runId: number
+  try {
+    runId = await deps.db.startRun(WEATHER_SOURCE)
+  } catch (err) {
+    deps.log?.(`poller: could not open ingest_runs row: ${scrub(err)}`)
+    return json(500, { status: 'error' })
+  }
+  const finish = (fields: Omit<RunFields, 'finished_at'>) =>
+    deps.db.finishRun(runId, { ...fields, finished_at: deps.now().toISOString() })
+
+  const stats: Pick<RunFields, 'http_status' | 'feed_entities' | 'rows_written'> = {}
+  try {
+    const { rows, http_status, reports } = await fetchWeather(deps.fetch, deps.now())
+    stats.http_status = http_status
+    stats.feed_entities = reports
+    stats.rows_written = rows.length > 0 ? await deps.db.recordWeather(rows) : 0
+    await finish({ status: 'ok', ...stats })
+    return json(200, { status: 'ok', rows_written: stats.rows_written })
+  } catch (err) {
+    const error = scrub(err)
+    deps.log?.(`poller (weather): ${error}`)
     await finish({ status: 'error', ...stats, error }).catch((e: unknown) =>
       deps.log?.(`poller: could not close ingest_runs row: ${scrub(e)}`),
     )

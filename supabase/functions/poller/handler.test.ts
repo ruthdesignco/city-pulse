@@ -2,6 +2,7 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings'
 import { describe, expect, it } from 'vitest'
 import type { VehicleObservation } from './decode.ts'
 import type { BudgetRow } from './gate.ts'
+import type { WeatherObservation } from './nws.ts'
 import { type Db, type Deps, type RunFields, handle } from './handler.ts'
 import { RELOAD_MS, secretCache } from './secret.ts'
 
@@ -53,6 +54,7 @@ function setup(
     } as BudgetRow,
     runs: new Map<number, { source: string; fields?: RunFields }>(),
     observations: [] as VehicleObservation[],
+    weather: [] as WeatherObservation[],
     calls: [] as string[],
     urls: [] as string[],
     logs: [] as string[],
@@ -93,6 +95,11 @@ function setup(
       state.observations.push(...rows)
       return rows.length
     },
+    async recordWeather(rows) {
+      state.calls.push('recordWeather')
+      state.weather.push(...rows)
+      return rows.length
+    },
     async pollerSecret() {
       state.vaultReads++
       if (opts.vaultFails) throw new Error(`vault read failed; request was ?api_key=${KEY}`)
@@ -114,8 +121,8 @@ function setup(
   return { deps, state }
 }
 
-const post = (headers: Record<string, string> = { 'x-poller-secret': SECRET }, method = 'POST') =>
-  new Request('https://example.test/functions/v1/poller', { method, headers })
+const post = (headers: Record<string, string> = { 'x-poller-secret': SECRET }, method = 'POST', body?: string) =>
+  new Request('https://example.test/functions/v1/poller', { method, headers, body })
 
 async function run(s: ReturnType<typeof setup>, req = post()) {
   const res = await handle(req, s.deps)
@@ -296,5 +303,100 @@ describe('errors are logged, redacted, and still count against the budget', () =
     expect(r.status).toBe(500)
     expect(s.state.urls).toEqual([])
     expect(s.state.logs[0]).toContain('api_key=[redacted]')
+  })
+})
+
+// One NWS observation, shaped like api.weather.gov's GeoJSON.
+const nwsReport = (minutesAgo: number, visibility = 800) => ({
+  properties: {
+    timestamp: new Date(NOW.getTime() - minutesAgo * 60_000).toISOString(),
+    textDescription: 'Fog',
+    visibility: { unitCode: 'wmoUnit:m', value: visibility },
+    cloudLayers: [{ amount: 'OVC', base: { unitCode: 'wmoUnit:m', value: 60 } }],
+    windSpeed: { unitCode: 'wmoUnit:km_h-1', value: 18 },
+    windDirection: { unitCode: 'wmoUnit:degree_(angle)', value: 290 },
+    windGust: { unitCode: 'wmoUnit:km_h-1', value: null },
+  },
+})
+const nwsBody = (...minutesAgo: number[]) => JSON.stringify({ features: minutesAgo.map((m) => nwsReport(m)) })
+const weatherTick = () => post({ 'x-poller-secret': SECRET, 'content-type': 'application/json' }, 'POST', '{"feed":"nws"}')
+
+describe('weather tick ({"feed":"nws"})', () => {
+  it('fetches KSFO with the User-Agent, writes its reports and logs an nws run, without touching the 511 budget', async () => {
+    const seen: RequestInit[] = []
+    const s = setup({
+      fetch: async (_input, init) => {
+        seen.push(init ?? {})
+        return new Response(nwsBody(5, 10))
+      },
+    })
+    const r = await run(s, weatherTick())
+    expect(r).toEqual({ status: 200, body: { status: 'ok', rows_written: 2 } })
+    expect(s.state.urls).toEqual(['https://api.weather.gov/stations/KSFO/observations?limit=12'])
+    expect(new Headers(seen[0].headers).get('user-agent')).toBe('city-pulse (github.com/ruthdesignco/city-pulse)')
+    expect(s.state.calls).not.toContain('readBudget')
+    expect(s.state.calls).not.toContain('claimBudget')
+    expect(onlyRun(s)).toEqual({
+      source: 'nws',
+      fields: { status: 'ok', finished_at: NOW.toISOString(), http_status: 200, feed_entities: 2, rows_written: 2 },
+    })
+    expect(s.state.weather[0]).toEqual({
+      station: 'KSFO',
+      observed_at: new Date(NOW.getTime() - 5 * 60_000).toISOString(),
+      visibility_m: 800,
+      cloud_layers: [{ amount: 'OVC', base_m: 60 }],
+      wind_speed_ms: 5,
+      wind_dir_deg: 290,
+      wind_gust_ms: null,
+      description: 'Fog',
+    })
+  })
+
+  it('also fetches KOAK when KSFO has nothing in the last 90 minutes', async () => {
+    const s = setup({
+      fetch: async (input) => new Response(String(input).includes('KSFO') ? nwsBody(120) : nwsBody(10)),
+    })
+    expect((await run(s, weatherTick())).body).toEqual({ status: 'ok', rows_written: 2 })
+    expect(s.state.urls.map((u) => new URL(u).pathname)).toEqual([
+      '/stations/KSFO/observations',
+      '/stations/KOAK/observations',
+    ])
+    expect(s.state.weather.map((w) => w.station)).toEqual(['KSFO', 'KOAK'])
+  })
+
+  it('falls back to KOAK when KSFO errors, and keeps a stale KSFO when KOAK errors', async () => {
+    const down = setup({
+      fetch: async (input) => (String(input).includes('KSFO') ? new Response('busy', { status: 503 }) : new Response(nwsBody(10))),
+    })
+    expect((await run(down, weatherTick())).body.status).toBe('ok')
+    expect(down.state.weather.map((w) => w.station)).toEqual(['KOAK'])
+
+    const stale = setup({
+      fetch: async (input) => (String(input).includes('KSFO') ? new Response(nwsBody(200)) : new Response('busy', { status: 503 })),
+    })
+    expect((await run(stale, weatherTick())).body.status).toBe('ok')
+    expect(stale.state.weather.map((w) => w.station)).toEqual(['KSFO'])
+  })
+
+  it('logs an error run with KSFO\'s error when neither station answers', async () => {
+    const s = setup({ fetch: async (input) => new Response(`down ${new URL(String(input)).pathname}`, { status: 500 }) })
+    const r = await run(s, weatherTick())
+    expect(r).toEqual({ status: 500, body: { status: 'error' } })
+    expect(onlyRun(s).fields).toMatchObject({ status: 'error' })
+    expect(onlyRun(s).fields?.error).toMatch(/^NWS KSFO HTTP 500/)
+  })
+
+  it('still authenticates first, and rejects an unknown feed', async () => {
+    const s = setup()
+    expect((await run(s, post({}, 'POST', '{"feed":"nws"}'))).status).toBe(401)
+    expect((await run(s, post(undefined, 'POST', '{"feed":"ferries"}'))).body).toEqual({ status: 'unknown_feed' })
+    expect(s.state.calls).toEqual([])
+    expect(s.state.urls).toEqual([])
+  })
+
+  it('treats the existing poll-feeds body ({}) as the 511 tick', async () => {
+    const s = setup()
+    expect((await run(s, post(undefined, 'POST', '{}'))).body).toEqual({ status: 'ok', rows_written: 1 })
+    expect(new URL(s.state.urls[0]).hostname).toBe('api.511.org')
   })
 })

@@ -13,6 +13,7 @@ SKIP=(
   20261018210000_poller_cron.sql
   20261019040000_poller_secret_from_vault.sql
   20261019060000_revoke_rls_auto_enable.sql
+  20261020121000_weather_cron.sql
 )
 
 for f in supabase/migrations/*.sql; do

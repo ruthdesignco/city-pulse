@@ -19,7 +19,7 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { sceneUniforms } from '../scene/sceneUniforms.ts'
+import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { ringDim } from './ring.ts'
 import { RoofItem, type RoofPiece, generateRooftops } from './rooftops.ts'
@@ -105,6 +105,7 @@ const pxPerMeter = (camera: PerspectiveCamera, heightPx: number) => heightPx / (
 // of day's haze (sceneUniforms.ts), per instance (iRingFade).
 function withFade<M extends MeshStandardMaterial | MeshDepthMaterial>(material: M, uniforms: FadeUniforms, px: [number, number], key: string, ringFade = false): M {
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
+    registerHeightFog(shader)
     Object.assign(shader.uniforms, uniforms)
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${FADE_PARS}${ringFade ? 'attribute float iRingFade;\nvarying float vRingFade;\n' : ''}`)

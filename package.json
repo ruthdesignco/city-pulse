@@ -16,7 +16,8 @@
     "calibrate": "node --experimental-strip-types scripts/calibrate.ts",
     "bake:trees": "node --experimental-strip-types scripts/bake-trees.ts",
     "smoke": "node --experimental-strip-types scripts/smoke.ts",
-    "shots:time": "node --experimental-strip-types scripts/time-shots.ts"
+    "shots:time": "node --experimental-strip-types scripts/time-shots.ts",
+    "shots:weather": "node --experimental-strip-types scripts/weather-shots.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

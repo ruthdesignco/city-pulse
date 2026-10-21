@@ -9,6 +9,9 @@
 //                             (src/scene/shots.ts PRESETS, ?view=<name>)
 //   --time HH:MM              light the scene at that San Francisco time
 //                             today (?time=HH:MM); default: the real time
+//   --weather clear|fog|overcast
+//                             set the weather (?weather=); default: the live
+//                             NWS report
 //   --replay <name>           play public/recordings/<name>.json instead of
 //                             the live feed (?replay=<name>)
 //   --min-vehicles <n>        wait until at least n vehicles are in the
@@ -48,6 +51,7 @@ async function main() {
   const view = flag(args, 'view')
   const replay = flag(args, 'replay')
   const time = flag(args, 'time')
+  const weather = flag(args, 'weather')
   const minVehicles = Number(flag(args, 'min-vehicles') ?? 1)
   if (!Number.isInteger(minVehicles) || minVehicles < 0) throw new Error('shot: --min-vehicles must be a whole number')
   const name = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--')) ?? 'opening'
@@ -57,6 +61,7 @@ async function main() {
   if (view) query.view = view
   if (replay) query.replay = replay
   if (time) query.time = time
+  if (weather) query.weather = weather
   await withScenePage('shot', query, async (page) => {
     if (minVehicles > 0) {
       const started = Date.now()

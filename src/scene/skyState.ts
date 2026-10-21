@@ -9,12 +9,21 @@
 // night level, NIGHT_EXPOSURE, at which the moon and the sky fill light the
 // city: readable, clearly night. Every value moves continuously with the
 // sun's height, so nothing jumps at sunrise or sunset.
+//
+// Weather (weather.ts) comes in as cloud cover and visibility. Cloud moves
+// light from the sun to the soft sky fill and dims the whole a little, so
+// shadows fade and soften without the scene going muddy; the sky turns to a
+// flat overcast gradient (warm gray at night, lit by the city), and the
+// moon goes behind it. Low visibility becomes the height fog's density
+// (heightFog.ts), its color following the light. Clear weather changes
+// nothing: every weather term is exactly a no-op at zero.
 
 import * as SunCalc from 'suncalc'
 import { Color, Vector3 } from 'three'
 import { palette } from '../city/palette.ts'
 import { ORIGIN } from '../geo/projection.ts'
 import { sfHour } from './sfTime.ts'
+import { CLEAR_WEATHER, FOG_RAMP_M, FOG_SOFT_M, FOG_TOP_M, type Weather, fogDensity } from './weather.ts'
 import { SKY_EXPOSURE, type SkyLook, SUN_DIRECTION, hazeColor, rawHorizonLuminance } from './skyModel.ts'
 import { bearingToScene } from './sun.ts'
 
@@ -35,6 +44,18 @@ const SUN_SOLVE_MIN_DEG = 5
 const SUN_INTENSITY_MAX = 7.5
 // The moon's share of the night light when it's high and full.
 const MOON_SHARE = 0.45
+// Under full overcast: the whole light this much dimmer, and the sun (behind
+// the clouds) left with this share of its clear-sky strength; the fill makes
+// up the rest. By day the fill turns from sky blue to the cool white of
+// light through cloud, and the ground bounce from warm to neutral gray (with
+// the sun's warmth mostly gone, both left the scene sepia); at night the
+// fill keeps its cool gray (neutralized, it went brown under the
+// streetlights' warm white).
+const OVERCAST_DIM = 0.2
+const OVERCAST_SUN_CUT = 0.95
+// Through night fog, this much of a lit window's brightness over the fog's
+// shows through (heightFog.ts uFogGlow).
+const FOG_WINDOW_GLOW = 0.6
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
@@ -60,6 +81,11 @@ export interface SkyState {
   sky: SkyLook
   haze: Color // the horizon averaged around: what the context ring fades toward
   windowsOn: number // 0 by day, 1 from dusk: how much lit windows show
+  cloud: number // the weather's cloud cover, 0-1
+  // The height fog (heightFog.ts): extinction per meter, color, layer top
+  // and thinning band, the ramp in from the camera, and how much lit windows
+  // glow through. Density 0 is no fog.
+  fog: { density: number; color: Color; top: number; soft: number; ramp: number; glow: number }
 }
 
 // The sun's color by height (linear): sunLow at the horizon, palette.sun's
@@ -80,7 +106,7 @@ export function exposureAt(elevation: number): number {
 // whose exposure SKY_EXPOSURE was tuned for: the reference the sky is held to.
 const REFERENCE_HORIZON = rawHorizonLuminance(SUN_DIRECTION) * SKY_EXPOSURE
 
-export function computeSkyState(date: Date): SkyState {
+export function computeSkyState(date: Date, weather: Weather = CLEAR_WEATHER): SkyState {
   const sun = SunCalc.getPosition(date, ORIGIN.lat, ORIGIN.lng)
   const moon = SunCalc.getMoonPosition(date, ORIGIN.lat, ORIGIN.lng)
   const moonFraction = SunCalc.getMoonIllumination(date).fraction
@@ -88,7 +114,10 @@ export function computeSkyState(date: Date): SkyState {
   const sunDirection = dirFrom(sun.azimuth, sun.altitude)
   const moonDirection = dirFrom(moon.azimuth, moon.altitude)
   const exposure = exposureAt(elev)
-  const target = Math.PI * exposure // irradiance on lit horizontal ground
+  const cloud = Math.min(1, Math.max(0, weather.cloud))
+  // The light on the ground: the camera's exposure, a little dimmer under cloud.
+  const level = exposure * (1 - OVERCAST_DIM * cloud)
+  const target = Math.PI * level // irradiance on lit horizontal ground
   const dayness = smooth(-2, 8, elev)
   const nightness = 1 - smooth(-8, -1, elev)
 
@@ -97,13 +126,15 @@ export function computeSkyState(date: Date): SkyState {
   const share = SUN_SHARE_LOW + (SUN_SHARE_HIGH - SUN_SHARE_LOW) * smooth(16, 50, elev)
   const sunFade = smooth(-1, SUN_SOLVE_MIN_DEG, elev)
   const sunIntensity =
-    Math.min(SUN_INTENSITY_MAX * exposure, (share * target) / (Math.sin(Math.max(elev, SUN_SOLVE_MIN_DEG) * DEG) * lum(sunColor))) * sunFade
+    Math.min(SUN_INTENSITY_MAX * exposure, (share * target) / (Math.sin(Math.max(elev, SUN_SOLVE_MIN_DEG) * DEG) * lum(sunColor))) *
+    sunFade *
+    (1 - OVERCAST_SUN_CUT * cloud)
   const sunOnGround = sunColor.clone().multiplyScalar((sunIntensity * Math.sin(Math.max(elev, 0) * DEG)) / Math.PI)
 
   // The moon: from civil dusk, if it's up, scaled by its phase (with a floor,
   // so a new moon isn't pitch black).
   const moonColor = new Color(palette.moonlight)
-  const moonFade = nightness * smooth(-2, 8, moon.altitude) * (0.35 + 0.65 * moonFraction)
+  const moonFade = nightness * smooth(-2, 8, moon.altitude) * (0.35 + 0.65 * moonFraction) * (1 - cloud)
   const moonIntensity = ((MOON_SHARE * target) / (Math.sin(Math.max(moon.altitude, 10) * DEG) * lum(moonColor))) * moonFade
   const moonOnGround = moonColor.clone().multiplyScalar((moonIntensity * Math.sin(Math.max(moon.altitude, 0) * DEG)) / Math.PI)
 
@@ -111,11 +142,16 @@ export function computeSkyState(date: Date): SkyState {
   // sun + fill sum to neutral (lighting.ts); it turns cool through dusk and
   // a deeper blue at night.
   const direct = elev > -1 ? sunOnGround : moonOnGround
-  const needed = new Color(Math.max(0, exposure - direct.r), Math.max(0, exposure - direct.g), Math.max(0, exposure - direct.b))
+  const needed = new Color(Math.max(0, level - direct.r), Math.max(0, level - direct.g), Math.max(0, level - direct.b))
   const neutralFill = lum(needed) > 1e-6 ? needed.clone().multiplyScalar(1 / lum(needed)) : new Color(1, 1, 1)
-  const fillSky = neutralFill.lerp(new Color(palette.twilightFill), 1 - dayness).lerp(new Color(palette.nightFill), nightness)
-  const fillIntensity = (Math.max(0, exposure - lum(direct)) * Math.PI) / lum(fillSky)
-  const fillGround = new Color(palette.bounce).lerp(new Color(palette.nightBounce), nightness)
+  const fillSky = neutralFill
+    .lerp(new Color(palette.twilightFill), 1 - dayness)
+    .lerp(new Color(palette.nightFill), nightness)
+    .lerp(new Color(palette.overcastLight), cloud * dayness)
+  const fillIntensity = (Math.max(0, level - lum(direct)) * Math.PI) / lum(fillSky)
+  const fillGround = new Color(palette.bounce)
+    .lerp(new Color(palette.nightBounce), nightness)
+    .lerp(new Color(palette.overcastBounce), cloud * dayness)
 
   // The sky: Preetham held near the reference brightness at the horizon,
   // times the scene exposure, blending to the night gradient after sunset.
@@ -124,14 +160,18 @@ export function computeSkyState(date: Date): SkyState {
   const raw = rawHorizonLuminance(sunDirection)
   const skyExposure =
     raw > 1e-9 ? Math.min(SKY_EXPOSURE * 6, Math.max(SKY_EXPOSURE * 0.3, (REFERENCE_HORIZON * exposure) / raw)) : SKY_EXPOSURE
+  const night = 1 - smooth(-5, 1, elev)
   const sky: SkyLook = {
     sunDirection,
     exposure: skyExposure,
-    night: 1 - smooth(-5, 1, elev),
+    night,
     nightZenith: new Color(palette.twilightSkyZenith).lerp(new Color(palette.nightSkyZenith), nightness),
     nightHorizon: new Color(palette.twilightSkyHorizon).lerp(new Color(palette.nightSkyHorizon), nightness),
     glowColor: new Color(palette.twilightGlow),
     glow: 1 - nightness,
+    overcast: cloud,
+    overcastZenith: new Color(palette.overcastZenith).multiplyScalar(level).lerp(new Color(palette.overcastNightZenith), night),
+    overcastHorizon: new Color(palette.overcastHorizon).multiplyScalar(level).lerp(new Color(palette.overcastNightHorizon), night),
   }
 
   return {
@@ -151,5 +191,16 @@ export function computeSkyState(date: Date): SkyState {
     sky,
     haze: hazeColor(sky),
     windowsOn: 1 - smooth(-6, 3, elev),
+    cloud,
+    fog: {
+      density: fogDensity(weather.visibilityM),
+      // Day: the fog's gray-white, with the light. Night: lit from below by
+      // the city, a dim orange-gray glow.
+      color: new Color(palette.fogDay).multiplyScalar(level).lerp(new Color(palette.fogNight), night),
+      top: FOG_TOP_M,
+      soft: FOG_SOFT_M,
+      ramp: FOG_RAMP_M,
+      glow: FOG_WINDOW_GLOW * (1 - smooth(-6, 3, elev)),
+    },
   }
 }

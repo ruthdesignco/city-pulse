@@ -3,6 +3,7 @@
 // public anon key. Never 511 directly.
 
 import { toScene } from '../geo/projection.ts'
+import type { CloudLayer, WeatherFreshness, WeatherReport } from '../scene/weather.ts'
 import type { Fix, VehicleReport } from './motion.ts'
 
 export interface LayerFreshness {
@@ -17,6 +18,10 @@ export interface CurrentState {
   serverOffsetMs: number // add to Date.now() to get the database clock
   muni: LayerFreshness
   vehicles: VehicleReport[]
+  // The newest NWS report (null before the first one, or in a recording
+  // made before weather existed) and the weather poller's freshness.
+  weather: WeatherReport | null
+  weatherFreshness: WeatherFreshness
 }
 
 const ms = (v: unknown): number | null => {
@@ -35,6 +40,28 @@ function toFix(raw: unknown): Fix | null {
   return { t: time, x, z }
 }
 
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+function parseWeather(raw: unknown): WeatherReport | null {
+  if (!raw || typeof raw !== 'object') return null
+  const w = raw as Record<string, unknown>
+  const observedAt = ms(w.observed_at)
+  if (typeof w.station !== 'string' || observedAt === null) return null
+  const cloudLayers: CloudLayer[] = []
+  for (const l of Array.isArray(w.cloud_layers) ? w.cloud_layers : []) {
+    const layer = l as Record<string, unknown> | null
+    if (typeof layer?.amount === 'string') cloudLayers.push({ amount: layer.amount, baseM: num(layer.base_m) })
+  }
+  return {
+    station: w.station,
+    observedAt,
+    visibilityM: num(w.visibility_m),
+    cloudLayers,
+    windSpeedMs: num(w.wind_speed_ms),
+    windDirDeg: num(w.wind_dir_deg),
+  }
+}
+
 export function parseCurrentState(row: unknown, receivedAt: number): CurrentState {
   if (!row || typeof row !== 'object') throw new Error('current_state: empty response')
   const r = row as Record<string, unknown>
@@ -47,6 +74,15 @@ export function parseCurrentState(row: unknown, receivedAt: number): CurrentStat
     lastPollAt: ms(f.last_poll_at),
     lastPollOk: typeof f.last_poll_ok === 'boolean' ? f.last_poll_ok : null,
     newestFeedAt: ms(f.newest_feed_timestamp),
+  }
+
+  const wf = ((r.freshness as Record<string, unknown> | null)?.weather ?? {}) as Record<string, unknown>
+  const weatherFreshness: WeatherFreshness = {
+    lastSuccessAt: ms(wf.last_success_at),
+    lastPollAt: ms(wf.last_poll_at),
+    lastPollOk: typeof wf.last_poll_ok === 'boolean' ? wf.last_poll_ok : null,
+    newestObservedAt: ms(wf.newest_observed_at),
+    station: typeof wf.station === 'string' ? wf.station : null,
   }
 
   const vehicles: VehicleReport[] = []
@@ -64,7 +100,14 @@ export function parseCurrentState(row: unknown, receivedAt: number): CurrentStat
     })
   }
 
-  return { generatedAt, serverOffsetMs: generatedAt - receivedAt, muni, vehicles }
+  return {
+    generatedAt,
+    serverOffsetMs: generatedAt - receivedAt,
+    muni,
+    vehicles,
+    weather: parseWeather(r.weather),
+    weatherFreshness,
+  }
 }
 
 export async function fetchCurrentState(

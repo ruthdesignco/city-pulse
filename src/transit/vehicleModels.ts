@@ -15,7 +15,7 @@
 import { BoxGeometry, BufferAttribute, type BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { palette } from '../city/palette.ts'
-import { sceneUniforms } from '../scene/sceneUniforms.ts'
+import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import type { VehicleKind } from './fleet.ts'
 
 export const MODEL_LENGTH_M: Record<VehicleKind, number> = { bus40: 12.2, bus60: 18.3, rail: 23, cable: 8.3 }
@@ -195,6 +195,7 @@ export function buildVehicleGeometry(kind: VehicleKind): BufferGeometry {
 export function vehicleMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0, flatShading: true })
   material.onBeforeCompile = (shader) => {
+    registerHeightFog(shader)
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aStale;\nattribute float aGlow;\nvarying float vStale;\nvarying float vGlow;')
       .replace('#include <color_vertex>', '#include <color_vertex>\nvStale = aStale;\nvGlow = aGlow;')

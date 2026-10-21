@@ -37,6 +37,10 @@ export function supabaseDb(client: SupabaseClient): Db {
       return check('recordObservations', await client.rpc('record_vehicle_observations', { p_rows: rows })) as number
     },
 
+    async recordWeather(rows) {
+      return check('recordWeather', await client.rpc('record_weather_observations', { p_rows: rows })) as number
+    },
+
     async pollerSecret() {
       const data = check('pollerSecret', await client.rpc('poller_secret'))
       return typeof data === 'string' ? data : null

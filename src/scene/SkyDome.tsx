@@ -3,6 +3,8 @@ import { useEffect, useMemo } from 'react'
 import { Color, type Fog, type ShaderMaterial, Vector3 } from 'three'
 import { Sky } from 'three/examples/jsm/objects/Sky.js'
 import { useSkyState } from './skyClock.ts'
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from './heightFog.ts'
+import { registerHeightFog } from './sceneUniforms.ts'
 import { GLOW_BEARING_POWER, GLOW_HEIGHT_POWER, SKY_EXPOSURE, SKY_PARAMS, type SkyLook, horizonColorFor } from './skyModel.ts'
 
 // The sky: three's Sky (the Preetham daylight model) lit by the time of
@@ -12,7 +14,10 @@ import { GLOW_BEARING_POWER, GLOW_HEIGHT_POWER, SKY_EXPOSURE, SKY_PARAMS, type S
 // which this shader mirrors). Its look (SKY_PARAMS) and exposure live in
 // skyModel.ts, which also gives the fog its color: the sky's own horizon,
 // in whatever direction the camera faces, so fogged ground and water meet
-// the sky with no seam from any orbit angle.
+// the sky with no seam from any orbit angle. Cloud cover blends it to a flat
+// overcast gradient, and the height fog (heightFog.ts) covers it wherever the
+// line of sight runs through the marine layer: all of it from inside the
+// layer, none of it looking up from above.
 
 // The Sky box, centered on the camera every frame; well inside camera.far.
 const SKY_SIZE_M = 10000
@@ -26,6 +31,9 @@ function applySkyLook(material: ShaderMaterial, look: SkyLook) {
   u.uNightHorizon.value.copy(look.nightHorizon)
   u.uGlow.value = look.glow
   u.uGlowColor.value.copy(look.glowColor)
+  u.uOvercast.value = look.overcast
+  u.uOvercastZenith.value.copy(look.overcastZenith)
+  u.uOvercastHorizon.value.copy(look.overcastHorizon)
 }
 
 export function SkyDome() {
@@ -41,6 +49,10 @@ export function SkyDome() {
     u.uNightHorizon = { value: new Color() }
     u.uGlow = { value: 0 }
     u.uGlowColor = { value: new Color() }
+    u.uOvercast = { value: 0 }
+    u.uOvercastZenith = { value: new Color() }
+    u.uOvercastHorizon = { value: new Color() }
+    registerHeightFog(material)
     u.turbidity.value = SKY_PARAMS.turbidity
     u.rayleigh.value = SKY_PARAMS.rayleigh
     u.mieCoefficient.value = SKY_PARAMS.mieCoefficient
@@ -52,12 +64,18 @@ export function SkyDome() {
     if (!material.fragmentShader.includes(final)) throw new Error('SkyDome: Sky.js output line not found')
     material.fragmentShader =
       'uniform float uSkyExposure;\nuniform float uNight;\nuniform vec3 uNightZenith;\nuniform vec3 uNightHorizon;\nuniform float uGlow;\nuniform vec3 uGlowColor;\n' +
+      'uniform float uOvercast;\nuniform vec3 uOvercastZenith;\nuniform vec3 uOvercastHorizon;\n' +
+      HEIGHT_FOG_UNIFORMS +
+      HEIGHT_FOG_GLSL +
       material.fragmentShader.replace(
         final,
         `float up = sqrt( clamp( direction.y, 0.0, 1.0 ) );
         float toward = max( 0.0, dot( normalize( direction.xz + 1e-6 ), normalize( vSunDirection.xz + 1e-6 ) ) );
         vec3 nightSky = mix( uNightHorizon, uNightZenith, up ) + uGlowColor * uGlow * pow( toward, ${GLOW_BEARING_POWER.toFixed(1)} ) * pow( 1.0 - up, ${GLOW_HEIGHT_POWER.toFixed(1)} );
-        gl_FragColor = vec4( mix( texColor * uSkyExposure, nightSky, uNight ), 1.0 );`,
+        vec3 skyNow = mix( texColor * uSkyExposure, nightSky, uNight );
+        skyNow = mix( skyNow, mix( uOvercastHorizon, uOvercastZenith, up ), uOvercast );
+        skyNow = mix( skyNow, uFogColor, heightFogAmount( cameraPosition, vWorldPosition ) );
+        gl_FragColor = vec4( skyNow, 1.0 );`,
       )
     return s
   }, [])

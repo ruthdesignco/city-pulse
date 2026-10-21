@@ -17,8 +17,12 @@
 //   ?fps             show the frame-rate counter (also outside dev)
 //   ?time=HH:MM      pin the light to that San Francisco time today;
 //                    =live (the default) follows the real time (sfTime.ts)
+//   ?weather=clear|fog|overcast
+//                    set the weather instead of the live NWS report
+//                    (weather.ts), with a note on screen saying so
 
 import { parseTimeParam } from './scene/sfTime.ts'
+import { parseWeatherParam } from './scene/weather.ts'
 
 const params = new URLSearchParams(window.location.search)
 
@@ -45,3 +49,4 @@ const quality = params.get('quality')
 export const QUALITY: 'low' | 'high' | null = quality === 'low' || quality === 'high' ? quality : null
 export const SHOW_FPS = params.has('fps')
 export const TIME = parseTimeParam(params.get('time'))
+export const WEATHER = parseWeatherParam(params.get('weather'))

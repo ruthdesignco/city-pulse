@@ -8,3 +8,13 @@ export function LightNote({ label }: { label: string }) {
     </div>
   )
 }
+
+// The same for ?weather=: the fog or clouds on screen are set, not the
+// live NWS report.
+export function WeatherNote({ preset }: { preset: string }) {
+  return (
+    <div className="light-note" role="status">
+      Weather set to {preset}
+    </div>
+  )
+}

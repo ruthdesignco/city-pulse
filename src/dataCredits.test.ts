@@ -12,6 +12,10 @@ describe('data credits', () => {
     expect(new URL(credit!.href).hostname.replace(/^www\./, '')).toBe('511.org')
   })
 
+  it('credits the weather to the National Weather Service', () => {
+    expect(CREDITS).toContainEqual({ text: 'Weather: National Weather Service', href: 'https://www.weather.gov' })
+  })
+
   it('credits the street trees to SF Public Works via DataSF', () => {
     expect(CREDITS.some((c) => c.text.includes('SF Public Works') && c.text.includes('DataSF'))).toBe(true)
   })
@@ -20,7 +24,7 @@ describe('data credits', () => {
 describe('about this view', () => {
   it('says which parts are illustrative, and that the light follows the real time', () => {
     const text = ABOUT_VIEW.join(' ')
-    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'real time', 'windows are lit'])
+    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'real time', 'windows are lit', 'KSFO', 'Downtown can differ', 'How deep the fog is'])
       expect(text).toContain(word)
   })
 })

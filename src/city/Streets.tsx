@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { COORD_QUANTUM, StreetClass, type CityData } from './format.ts'
-import { sceneUniforms } from '../scene/sceneUniforms.ts'
+import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { ringDim, ringPosition } from './ring.ts'
 import { ROAD_CLASS, type Mesh, type Pt, dashes, emptyMesh, laneLineOffsets, ribbon } from './roads.ts'
@@ -116,6 +116,7 @@ function roadMaterial(layer: number, markings = false): MeshStandardMaterial {
   })
   const asphalt = new Color(palette.asphalt)
   material.onBeforeCompile = (shader) => {
+    registerHeightFog(shader)
     shader.uniforms.uAsphalt = { value: asphalt }
     shader.uniforms.uHaze = sceneUniforms.uHaze
     shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn

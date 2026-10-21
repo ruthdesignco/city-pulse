@@ -6,7 +6,9 @@
 //
 // The opening view at night is in it because pools that look fine at street
 // level read as polka dots from the drone camera, and windows that sparkle
-// up close vanished from it.
+// up close vanished from it. The weather is pinned clear (?weather=clear), so
+// the live NWS report never changes these; npm run shots:weather has the fog
+// and cloud set.
 
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -27,7 +29,7 @@ const SHOTS_DIR = join(ROOT, 'shots')
 mkdirSync(SHOTS_DIR, { recursive: true })
 for (const s of TIME_SHOTS) {
   const out = join(SHOTS_DIR, `tod-${s.view}-${s.time.replace(':', '')}.png`)
-  await withScenePage(`shots:time ${s.view} ${s.time}`, s, async (page, report) => {
+  await withScenePage(`shots:time ${s.view} ${s.time}`, { ...s, weather: 'clear' }, async (page, report) => {
     // A broken shader drops what it draws; don't save a picture of that.
     const shaderErrors = report.errors.filter((e) => /shader error|webglprogram|validate_status/i.test(e))
     if (shaderErrors.length) throw new Error(`shots:time: ${s.view} ${s.time}: ${shaderErrors.length} shader error(s); run npm run smoke`)

@@ -4,7 +4,7 @@ import { BufferAttribute, BufferGeometry, Color, type Material, type Mesh, MeshS
 import type { CityData } from './format.ts'
 import { extrudeBuildings } from './extrude.ts'
 import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
-import { sceneUniforms } from '../scene/sceneUniforms.ts'
+import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
 import { useCity } from './useCity.ts'
@@ -44,6 +44,7 @@ function buildGeometry(city: CityData): BufferGeometry {
 function buildMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: palette.building, roughness: 0.92, metalness: 0 })
   material.onBeforeCompile = (shader) => {
+    registerHeightFog(shader)
     shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
     shader.uniforms.uDim = sceneUniforms.uHaze
     shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
