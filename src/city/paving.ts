@@ -55,6 +55,11 @@ export function bareLand(city: CityData): (x: number, z: number) => number {
 }
 
 export interface PavingGrid {
+  // The grid: first sample at (x0, z0), nx by nz, CELL_M apart.
+  x0: number
+  z0: number
+  nx: number
+  nz: number
   position: Float32Array
   color: Float32Array
   index: Uint32Array
@@ -117,5 +122,5 @@ export function buildPaving(city: CityData, y: number): PavingGrid {
       index.set([a, a + nx + 1, a + 1, a, a + nx, a + nx + 1], t)
       t += 6
     }
-  return { position, color, index }
+  return { x0: minX, z0: minZ, nx, nz, position, color, index }
 }

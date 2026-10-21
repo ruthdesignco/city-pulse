@@ -9,7 +9,7 @@ const read = (f: string) => {
   const b = readFileSync(join(import.meta.dirname, '../../src/data', f))
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)
 }
-const terrain = decodeTerrain(read('terrain.bin'))
+const terrain = await decodeTerrain(read('terrain.bin'))
 const city = decodeCity(read('city.bin'))
 const at = (lat: number, lng: number) => {
   const p = toScene(lat, lng)

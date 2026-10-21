@@ -17,6 +17,9 @@ export type Vec3 = [number, number, number]
 export interface Pose {
   position: Vec3
   target: Vec3
+  // No idle drift (CameraRig.tsx) until the camera is moved: for views down
+  // a street, which the drift would swing into its walls.
+  still?: boolean
 }
 
 export interface Shot {
@@ -130,7 +133,22 @@ const COIT: Vec3 = [631, 32, -3815]
 // on California between Stockton and Powell.
 const NOB_HILL: Vec3 = [420, 0, -2695]
 
+// Down California Street from Nob Hill, the classic view: ~8 m over the
+// street at Powell (73 m up, terrain.ts; the cable car stop), looking east
+// down its 14% grade between the buildings, past the Financial District,
+// toward the Bay. Both points on the California cable car's line
+// (routes.json CA), so the street runs up the middle of the frame; the
+// target is the street at Battery, near enough that the view stays inside
+// the orbit's 86 deg limit (view.ts).
+const CALIFORNIA: Pose = { position: [339, 76, -2669.6], target: [1100, 0, -2791.5], still: true }
+
+// Toward Marin: from high over Russian Hill and Fort Mason, northwest
+// across the Golden Gate's mouth to the Marin Headlands.
+const MARIN: Pose = { position: [-1000, 450, -4300], target: [-5800, 0, -6200] }
+
 export const PRESETS: Record<string, Pose> = {
+  california: CALIFORNIA,
+  marin: MARIN,
   transamerica: poseAround(TRANSAMERICA, 430, 1.25, 0.35),
   coit: poseAround(COIT, 200, 1.2, 0.6),
   nobhill: poseAround(NOB_HILL, 300, 1.3, 0.55),

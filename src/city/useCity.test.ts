@@ -25,7 +25,7 @@ const bytes = encodeCity({
   boundary: { counts: new Uint16Array(), coords: new Int16Array() },
 } satisfies CityData)
 
-const terrainBytes = encodeTerrain(FLAT)
+const terrainBytes = await encodeTerrain(FLAT)
 // city.bin and terrain.bin, by URL (loadCity fetches both).
 const ok = (url: string) => ({ ok: true, arrayBuffer: () => Promise.resolve((url.includes('terrain') ? terrainBytes : bytes).buffer) })
 const fail = (status: number) => ({ ok: false, status })

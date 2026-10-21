@@ -9,7 +9,11 @@
 //   bytes 0-3   "CPH1"
 //   bytes 4-7   u32 LE: header JSON byte length
 //   then        header JSON (utf8), padded to a 4-byte boundary
-//   then        Int16[nx * nz] heights in `quantum` m, rows from minZ (north)
+//   then        gzip of Int16[nx * nz] LE: each row's heights in `quantum`
+//               m as differences from the sample before it (the row's first
+//               from 0), rows from minZ (north). Version 2: compressed in
+//               the file (a 5 m grid is 4.4 MB raw, ~1 MB so), so it's small
+//               however it's served; DecompressionStream unpacks it.
 //
 // Off the grid: the nearest edge's height (the bake tapers the edges to sea
 // level, where the flat land beyond takes over).
@@ -17,7 +21,7 @@
 export const TERRAIN_MAGIC = 'CPH1'
 
 export interface TerrainHeader {
-  version: 1
+  version: 2
   x0: number // scene m, the first column
   z0: number // scene m, the first row (north)
   cell: number // m between samples
@@ -103,30 +107,61 @@ export function densify(line: [number, number][], step: number): [number, number
 
 // Flat ground at sea level: for tests, and before there's a terrain.bin.
 export const FLAT: Terrain = new Terrain(
-  { version: 1, x0: 0, z0: 0, cell: 1, nx: 2, nz: 2, quantum: 0.1, source: 'flat', datum: '', bakedAt: '' },
+  { version: 2, x0: 0, z0: 0, cell: 1, nx: 2, nz: 2, quantum: 0.1, source: 'flat', datum: '', bakedAt: '' },
   new Int16Array(4),
 )
 
 const align4 = (n: number) => (n + 3) & ~3
 
-export function encodeTerrain(t: Terrain): Uint8Array {
-  const json = new TextEncoder().encode(JSON.stringify(t.header))
-  const base = align4(8 + json.length)
-  const out = new Uint8Array(base + t.heights.byteLength)
-  out.set(new TextEncoder().encode(TERRAIN_MAGIC), 0)
-  new DataView(out.buffer).setUint32(4, json.length, true)
-  out.set(json, 8)
-  out.set(new Uint8Array(t.heights.buffer, t.heights.byteOffset, t.heights.byteLength), base)
+async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
+  const out = new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream))
+  return new Uint8Array(await out.arrayBuffer())
+}
+
+// Each row as differences along it (smooth ground: small numbers, which
+// gzip packs well), and back.
+function toRowDeltas(h: Int16Array, nx: number): Int16Array {
+  const out = new Int16Array(h.length)
+  for (let r = 0; r < h.length; r += nx) {
+    let prev = 0
+    for (let i = r; i < r + nx; i++) {
+      out[i] = h[i] - prev
+      prev = h[i]
+    }
+  }
   return out
 }
 
-export function decodeTerrain(buffer: ArrayBuffer): Terrain {
+function fromRowDeltas(d: Int16Array, nx: number): Int16Array {
+  const out = new Int16Array(d.length)
+  for (let r = 0; r < d.length; r += nx) {
+    let prev = 0
+    for (let i = r; i < r + nx; i++) out[i] = prev = prev + d[i]
+  }
+  return out
+}
+
+export async function encodeTerrain(t: Terrain): Promise<Uint8Array> {
+  const json = new TextEncoder().encode(JSON.stringify(t.header))
+  const base = align4(8 + json.length)
+  const deltas = toRowDeltas(t.heights, t.header.nx)
+  const packed = await pipe(new Uint8Array(deltas.buffer), new CompressionStream('gzip'))
+  const out = new Uint8Array(base + packed.length)
+  out.set(new TextEncoder().encode(TERRAIN_MAGIC), 0)
+  new DataView(out.buffer).setUint32(4, json.length, true)
+  out.set(json, 8)
+  out.set(packed, base)
+  return out
+}
+
+export async function decodeTerrain(buffer: ArrayBuffer): Promise<Terrain> {
   const bytes = new Uint8Array(buffer)
   const magic = new TextDecoder().decode(bytes.subarray(0, 4))
   if (magic !== TERRAIN_MAGIC) throw new Error(`terrain.bin: bad magic ${JSON.stringify(magic)}`)
   const len = new DataView(buffer).getUint32(4, true)
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + len))) as TerrainHeader
-  if (header.version !== 1) throw new Error(`terrain.bin: unsupported version ${header.version}`)
-  const base = align4(8 + len)
-  return new Terrain(header, new Int16Array(buffer.slice(base, base + 2 * header.nx * header.nz)))
+  if (header.version !== 2) throw new Error(`terrain.bin: unsupported version ${header.version}`)
+  const raw = await pipe(bytes.subarray(align4(8 + len)), new DecompressionStream('gzip'))
+  if (raw.length !== 2 * header.nx * header.nz) throw new Error('terrain.bin: wrong number of heights')
+  return new Terrain(header, fromRowDeltas(new Int16Array(raw.buffer, raw.byteOffset, header.nx * header.nz), header.nx))
 }

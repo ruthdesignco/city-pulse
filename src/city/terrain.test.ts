@@ -3,7 +3,7 @@ import { FLAT, Terrain, decodeTerrain, encodeTerrain } from './terrain.ts'
 
 // A 3 x 3 grid, 10 m cells from (100, 200): a 30 m hill in the middle.
 const hill = new Terrain(
-  { version: 1, x0: 100, z0: 200, cell: 10, nx: 3, nz: 3, quantum: 0.1, source: 'test', datum: 'NAVD88', bakedAt: '' },
+  { version: 2, x0: 100, z0: 200, cell: 10, nx: 3, nz: 3, quantum: 0.1, source: 'test', datum: 'NAVD88', bakedAt: '' },
   Int16Array.from([0, 0, 0, 0, 300, 0, 0, 0, 0]),
 )
 
@@ -23,8 +23,9 @@ describe('Terrain', () => {
     expect(hill.heightAt(102, 208)).toBeCloseTo(6, 9)
   })
 
-  it('round-trips through terrain.bin bytes', () => {
-    const back = decodeTerrain(encodeTerrain(hill).buffer as ArrayBuffer)
+  it('round-trips through terrain.bin bytes', async () => {
+    const bytes = await encodeTerrain(hill)
+    const back = await decodeTerrain(bytes.buffer as ArrayBuffer)
     expect(back.header).toEqual(hill.header)
     expect(Array.from(back.heights)).toEqual(Array.from(hill.heights))
   })

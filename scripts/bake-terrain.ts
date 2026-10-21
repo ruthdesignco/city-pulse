@@ -20,7 +20,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { gzipSync } from 'node:zlib'
 import { bayOutline, inBay } from '../src/city/bay.ts'
 import { decodeCity } from '../src/city/format.ts'
 import { Terrain, encodeTerrain } from '../src/city/terrain.ts'
@@ -31,9 +30,9 @@ const CACHE_DIR = join(ROOT, 'scripts/.cache')
 const OUT = join(ROOT, 'src/data/terrain.bin')
 const ENDPOINT = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage'
 const SOURCE = 'USGS 3D Elevation Program (3DEP), The National Map, public domain'
-export const CELL_M = 20
-// ~10 m north-south, ~8 m east-west.
-const FETCH_DEG = 0.00009
+export const CELL_M = 5
+// ~5 m north-south, ~4 m east-west.
+const FETCH_DEG = 0.000045
 const MARGIN_M = 500
 const TAPER_M = 300
 const SEA_FLOOR_M = -1
@@ -136,16 +135,16 @@ async function main() {
     }
 
   const terrain = new Terrain(
-    { version: 1, x0, z0, cell: CELL_M, nx, nz, quantum: QUANTUM, source: SOURCE, datum: 'NAVD88 meters', bakedAt: new Date().toISOString() },
+    { version: 2, x0, z0, cell: CELL_M, nx, nz, quantum: QUANTUM, source: SOURCE, datum: 'NAVD88 meters', bakedAt: new Date().toISOString() },
     heights,
   )
-  const bytes = encodeTerrain(terrain)
+  const bytes = await encodeTerrain(terrain)
   writeFileSync(OUT, bytes)
   const probe = (name: string, x: number, z: number) => `${name} ${terrain.heightAt(x, z).toFixed(1)} m`
   const coit = city.header.landmarkModels?.find((m) => m.id === 'coit')
   console.log(`terrain: ${nx} x ${nz} at ${CELL_M} m from (${x0}, ${z0}); ${lo.toFixed(1)} to ${hi.toFixed(1)} m; ${noData} no-data samples`)
   console.log(`  ${[coit ? probe('Coit Tower', coit.x, coit.z) : '', probe('origin', 0, 0)].filter(Boolean).join(', ')}`)
-  console.log(`src/data/terrain.bin: ${(bytes.length / 1024).toFixed(0)} KB (${(gzipSync(bytes).length / 1024).toFixed(0)} KB gzipped)`)
+  console.log(`src/data/terrain.bin: ${(bytes.length / 1024).toFixed(0)} KB (gzipped inside; ${((2 * nx * nz) / 1024).toFixed(0)} KB of heights)`)
 }
 
 await main()

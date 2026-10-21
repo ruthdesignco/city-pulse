@@ -28,6 +28,7 @@ export function CameraRig({ start }: { start: Pose }) {
   // The walkthrough shot playing, if any (?demo, keys 1-7; Esc or a drag stops it).
   const playing = useRef<{ shot: Shot; startedAt: number } | null>(null)
   const terrain = useRef<Terrain | null>(null)
+  const moved = useRef(false)
 
   // Once the ground has loaded: lift the starting pose onto it.
   useEffect(() => {
@@ -105,6 +106,8 @@ export function CameraRig({ start }: { start: Pose }) {
       return
     }
     if (interacting.current || reducedMotion.current) return
+    // A still pose (down a street canyon) holds until someone moves the camera.
+    if (start.still && !moved.current) return
     const idle = performance.now() - lastInteraction.current - IDLE_BEFORE_DRIFT_MS
     if (idle <= 0) return
     const t = Math.min(1, idle / DRIFT_EASE_IN_MS)
@@ -128,6 +131,7 @@ export function CameraRig({ start }: { start: Pose }) {
       maxPolarAngle={ORBIT_LIMITS.maxPolar}
       onStart={() => {
         interacting.current = true
+        moved.current = true
         playing.current = null
       }}
       onEnd={() => {

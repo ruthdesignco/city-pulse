@@ -1,43 +1,180 @@
-import { useEffect, useMemo } from 'react'
-import { BufferAttribute, BufferGeometry, Color, DoubleSide } from 'three'
+import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import { BufferAttribute, BufferGeometry, Color, DataTexture, DoubleSide, LinearFilter, type Mesh, type MeshStandardMaterial, RGBAFormat, Vector3 } from 'three'
 import { registerHeightFog } from '../scene/sceneUniforms.ts'
 import { TARGET } from '../scene/view.ts'
 import { BayWater } from './BayWater.tsx'
+import { LOD_STEPS, buildTile, groundNormals, lodFor, tileRanges } from './groundTiles.ts'
 import { LAND_TILE_M, createLandMaterial, createLandTexture } from './landTexture.ts'
-import { bareLand, buildPaving } from './paving.ts'
+import { CELL_M as PAVING_CELL_M, bareLand, buildPaving } from './paving.ts'
 import { buildShoreFeather } from './shore.ts'
-import { type Terrain, drape, groundNormal } from './terrain.ts'
+import { type Terrain, drape } from './terrain.ts'
 import { type LoadedCity, useCity } from './useCity.ts'
 
-// Concrete paving over the whole bake area (paving.ts), between the ground
-// (the terrain mesh, TERRAIN_Y) and the sidewalks (Streets.tsx, 0.2), all on
-// the terrain (terrain.ts), polygon-offset just under the sidewalks so it
-// never z-fights them from far away.
-const PAVING_Y = 0.1
-// Steep ground isn't paved: Telegraph Hill's quarried east face, the
-// slopes under the Filbert and Greenwich steps. Paving turns to scrubby
-// earth from STEEP_FROM (the slope's normal's y: ~20 deg) to STEEP_FULL
-// (~35 deg).
+// The ground: the terrain (terrain.ts) in tiles that draw at the detail
+// their distance needs (groundTiles.ts), textured as distant city like the
+// land beyond it, under a cover of paving over the bake area: everything
+// between the roads and the buildings is concrete, the sidewalks' color,
+// fading toward the haze in the ring and into bare ground past its edge
+// (paving.ts, sampled every 20 m into a texture). Steep ground isn't paved:
+// Telegraph Hill's quarried east face, the slopes under the Filbert and
+// Greenwich steps turn to scrubby earth from STEEP_FROM (the slope's
+// normal's y: ~20 deg) to STEEP_FULL (~35 deg). Its shading comes from the
+// full 5 m grid's normals (groundNormals), whatever the tile's detail.
 const STEEP_FROM = 0.94
 const STEEP_FULL = 0.82
 const SLOPE_EARTH = new Color('#7a7c66')
 
-function buildPavingGeometry(city: LoadedCity): BufferGeometry {
-  const { position, color, index } = buildPaving(city, PAVING_Y)
-  const normal = new Float32Array(position.length)
-  drape(city.terrain, position, normal)
+// The land plane, in meters: its edge 20 km out, past the fog's full
+// distance (Atmosphere.tsx) from anywhere the orbit can take the camera.
+// Flat, LAND_Y down: past the terrain's grid, which eases to sea level at
+// its edges (bake-terrain.ts) and lies on top of it there.
+const LAND_M = 40000
+const LAND_Y = -0.6
+// The ground sits this far under the true terrain height; everything placed
+// on the terrain (streets 0.2 up, building bases) a little above it.
+const TERRAIN_Y = -0.2
+
+// The paving's colors as a texture over its grid, with a transparent texel
+// all round, so it ends where the grid does.
+interface PavingTexture {
+  texture: DataTexture
+  grid: [number, number, number, number] // x, z of the texture's corner; its width, depth (m)
+}
+
+function pavingTexture(city: LoadedCity): PavingTexture {
+  const p = buildPaving(city, 0)
+  const w = p.nx + 2
+  const h = p.nz + 2
+  const data = new Uint8Array(w * h * 4)
   const c = new Color()
-  for (let i = 0; i < normal.length; i += 3) {
-    const t = Math.min(1, Math.max(0, (STEEP_FROM - normal[i + 1]) / (STEEP_FROM - STEEP_FULL)))
-    if (t > 0) c.fromArray(color, i).lerp(SLOPE_EARTH, t * t * (3 - 2 * t)).toArray(color, i)
+  for (let j = 0; j < p.nz; j++)
+    for (let i = 0; i < p.nx; i++) {
+      const k = (j * p.nx + i) * 3
+      c.setRGB(p.color[k], p.color[k + 1], p.color[k + 2]).convertLinearToSRGB()
+      data.set([c.r * 255, c.g * 255, c.b * 255, 255], ((j + 1) * w + i + 1) * 4)
+    }
+  const texture = new DataTexture(data, w, h, RGBAFormat)
+  texture.magFilter = LinearFilter
+  texture.minFilter = LinearFilter
+  texture.needsUpdate = true
+  // The grid's sample (i, j) is texel (i + 1, j + 1), at that texel's center.
+  return { texture, grid: [p.x0 - 1.5 * PAVING_CELL_M, p.z0 - 1.5 * PAVING_CELL_M, w * PAVING_CELL_M, h * PAVING_CELL_M] }
+}
+
+function normalTexture(t: Terrain): DataTexture {
+  const texture = new DataTexture(groundNormals(t), t.header.nx, t.header.nz, RGBAFormat)
+  texture.magFilter = LinearFilter
+  texture.minFilter = LinearFilter
+  texture.needsUpdate = true
+  return texture
+}
+
+const f = (v: number) => v.toFixed(5)
+const vec3 = (c: Color) => `vec3(${f(c.r)}, ${f(c.g)}, ${f(c.b)})`
+
+function groundMaterial(land: MeshStandardMaterial, t: Terrain, paving: PavingTexture, normals: DataTexture): MeshStandardMaterial {
+  const material = land.clone()
+  material.side = DoubleSide // the tiles' skirts face either way
+  const { x0, z0, cell, nx, nz } = t.header
+  const [px, pz, pw, ph] = paving.grid
+  material.onBeforeCompile = (shader, renderer) => {
+    land.onBeforeCompile(shader, renderer)
+    shader.uniforms.uNormals = { value: normals }
+    shader.uniforms.uPaving = { value: paving.texture }
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vGround;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xz;')
+    // Sample (i, j) of the terrain is texel (i, j)'s center.
+    const normalUv = `( ( vGround - vec2( ${f(x0)}, ${f(z0)} ) ) / ${f(cell)} + 0.5 ) / vec2( ${f(nx)}, ${f(nz)} )`
+    const pavingUv = `( vGround - vec2( ${f(px)}, ${f(pz)} ) ) / vec2( ${f(pw)}, ${f(ph)} )`
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uNormals;\nuniform sampler2D uPaving;\nvarying vec2 vGround;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+vec3 groundN = texture2D( uNormals, ${normalUv} ).xyz * 2.0 - 1.0;
+groundN.y = groundN.y * 0.5 + 0.5;
+vec4 pave = texture2D( uPaving, ${pavingUv} );
+diffuseColor.rgb = mix( diffuseColor.rgb, pow( pave.rgb, vec3( 2.2 ) ), pave.a );
+float steep = smoothstep( ${f(STEEP_FROM)}, ${f(STEEP_FULL)}, groundN.y );
+diffuseColor.rgb = mix( diffuseColor.rgb, ${vec3(SLOPE_EARTH)}, steep * pave.a );`,
+      )
+      .replace(
+        '#include <normal_fragment_begin>',
+        `#include <normal_fragment_begin>
+normal = normalize( ( viewMatrix * vec4( normalize( vec3( groundN.x, max( groundN.y, 0.05 ), groundN.z ) ), 0.0 ) ).xyz );`,
+      )
   }
-  const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(position, 3))
-  g.setAttribute('normal', new BufferAttribute(normal, 3))
-  g.setAttribute('color', new BufferAttribute(color, 3))
-  g.setIndex(new BufferAttribute(index, 1))
-  g.computeBoundingSphere()
-  return g
+  material.customProgramCacheKey = () => 'city-ground-v1'
+  return material
+}
+
+// The land plane's UVs for a tile's vertices (centered on TARGET, rotated
+// -90 deg about x: its v runs to -z), so the two meet seamlessly.
+function withLandUv(g: BufferGeometry) {
+  const pos = g.getAttribute('position')
+  const uv = new Float32Array(pos.count * 2)
+  for (let i = 0; i < pos.count; i++) {
+    uv[2 * i] = (pos.getX(i) - TARGET[0] + LAND_M / 2) / LAND_M
+    uv[2 * i + 1] = (-pos.getZ(i) + TARGET[2] + LAND_M / 2) / LAND_M
+  }
+  g.setAttribute('uv', new BufferAttribute(uv, 2))
+}
+
+// The ground's tiles, each switching detail with the camera's distance.
+function GroundTiles({ terrain, material }: { terrain: Terrain; material: MeshStandardMaterial }) {
+  const tiles = useMemo(() => tileRanges(terrain), [terrain])
+  const cache = useMemo(() => tiles.map(() => new Map<number, BufferGeometry>()), [tiles])
+  const meshes = useRef<(Mesh | null)[]>([])
+  const shown = useRef<number[]>([])
+  const p = useMemo(() => new Vector3(), [])
+  useEffect(
+    () => () => {
+      for (const c of cache) for (const g of c.values()) g.dispose()
+    },
+    [cache],
+  )
+  const geometryFor = (k: number, lod: number) => {
+    let g = cache[k].get(lod)
+    if (!g) {
+      g = buildTile(terrain, tiles[k], LOD_STEPS[lod], TERRAIN_Y)
+      withLandUv(g)
+      cache[k].set(lod, g)
+    }
+    return g
+  }
+  useFrame(({ camera }) => {
+    const { x0, z0, cell } = terrain.header
+    tiles.forEach((r, k) => {
+      const mesh = meshes.current[k]
+      if (!mesh) return
+      // The camera's distance to the nearest point of the tile.
+      const cx = Math.min(Math.max(camera.position.x, x0 + r.i0 * cell), x0 + r.i1 * cell)
+      const cz = Math.min(Math.max(camera.position.z, z0 + r.j0 * cell), z0 + r.j1 * cell)
+      p.set(cx, terrain.heightAt(cx, cz), cz)
+      const lod = lodFor(p.distanceTo(camera.position))
+      if (shown.current[k] === lod) return
+      shown.current[k] = lod
+      mesh.geometry = geometryFor(k, lod)
+    })
+  })
+  return (
+    <>
+      {tiles.map((_, k) => (
+        <mesh
+          key={k}
+          ref={(el) => {
+            meshes.current[k] = el
+          }}
+          geometry={geometryFor(k, LOD_STEPS.length - 1)}
+          material={material}
+          receiveShadow
+          userData={{ noReflect: true }}
+        />
+      ))}
+    </>
+  )
 }
 
 // The soft shoreline over unbaked land (shore.ts): over the water, under
@@ -57,73 +194,27 @@ function buildShoreGeometry(city: LoadedCity): BufferGeometry {
   return g
 }
 
-// The land plane, in meters: its edge 20 km out, past the fog's full
-// distance (Atmosphere.tsx) from anywhere the orbit can take the camera.
-// Flat, LAND_Y down: past the terrain's grid, which eases to sea level at
-// its edges (bake-terrain.ts) and lies on top of it there.
-const LAND_M = 40000
-const LAND_Y = -0.6
-const TERRAIN_Y = -0.2
-
-// The ground over the terrain's grid (terrain.ts): one vertex per sample,
-// each cell split along the same diagonal heightAt uses, textured like the
-// land plane and lined up with it (its UVs are the plane's).
-function buildTerrainGeometry(t: Terrain): BufferGeometry {
-  const { x0, z0, cell, nx, nz } = t.header
-  const position = new Float32Array(nx * nz * 3)
-  const normal = new Float32Array(nx * nz * 3)
-  const uv = new Float32Array(nx * nz * 2)
-  const n: [number, number, number] = [0, 1, 0]
-  for (let j = 0; j < nz; j++)
-    for (let i = 0; i < nx; i++) {
-      const k = j * nx + i
-      const x = x0 + i * cell
-      const z = z0 + j * cell
-      position.set([x, t.at(i, j) + TERRAIN_Y, z], 3 * k)
-      normal.set(groundNormal(t, x, z, n), 3 * k)
-      // The land plane is centered on TARGET, rotated -90 deg about x: its v runs to -z.
-      uv[2 * k] = (x - TARGET[0] + LAND_M / 2) / LAND_M
-      uv[2 * k + 1] = (-z + TARGET[2] + LAND_M / 2) / LAND_M
-    }
-  const index = new Uint32Array((nx - 1) * (nz - 1) * 6)
-  let c = 0
-  for (let j = 0; j < nz - 1; j++)
-    for (let i = 0; i < nx - 1; i++) {
-      const a = j * nx + i
-      index.set([a, a + nx + 1, a + 1, a, a + nx, a + nx + 1], c)
-      c += 6
-    }
-  const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(position, 3))
-  g.setAttribute('normal', new BufferAttribute(normal, 3))
-  g.setAttribute('uv', new BufferAttribute(uv, 2))
-  g.setIndex(new BufferAttribute(index, 1))
-  g.computeBoundingSphere()
-  return g
-}
-
-// Shapes are built in (x, -z) and rotated -90° about X, which maps shape
-// (u, v) to scene (u, 0, -v); so v = -z lands the outline at scene z.
-
-// The Bay (bay.ts, BayWater.tsx): real waterfront, drawn over the ground and
-// the paving (the context ring reaches into the water at Mission Bay) but
-// under the sidewalks and roads, so the piers' streets and the Bay Bridge
-// approach stay on top.
+// The Bay (bay.ts, BayWater.tsx): real waterfront, drawn over the ground
+// (the context ring reaches into the water at Mission Bay) but under the
+// sidewalks and roads, so the piers' streets and the Bay Bridge approach
+// stay on top.
 const WATER_Y = 0.15
 
 export function Ground() {
   const city = useCity()
-  const paving = useMemo(() => buildPavingGeometry(city), [city])
   const shore = useMemo(() => buildShoreGeometry(city), [city])
-  const terrain = useMemo(() => buildTerrainGeometry(city.terrain), [city])
   const land = useMemo(() => {
     const t = createLandTexture()
     t.repeat.set(LAND_M / LAND_TILE_M, LAND_M / LAND_TILE_M)
     return createLandMaterial(t)
   }, [])
-  useEffect(() => () => paving.dispose(), [paving])
+  const paving = useMemo(() => pavingTexture(city), [city])
+  const normals = useMemo(() => normalTexture(city.terrain), [city])
+  const ground = useMemo(() => groundMaterial(land, city.terrain, paving, normals), [land, city, paving, normals])
   useEffect(() => () => shore.dispose(), [shore])
-  useEffect(() => () => terrain.dispose(), [terrain])
+  useEffect(() => () => paving.texture.dispose(), [paving])
+  useEffect(() => () => normals.dispose(), [normals])
+  useEffect(() => () => ground.dispose(), [ground])
   useEffect(
     () => () => {
       land.map?.dispose()
@@ -144,12 +235,9 @@ export function Ground() {
         </mesh>
         <BayWater y={WATER_Y} />
       </group>
-      <mesh geometry={terrain} material={land} receiveShadow userData={{ noReflect: true }} />
+      <GroundTiles terrain={city.terrain} material={ground} />
       <mesh geometry={shore} receiveShadow userData={{ noReflect: true }}>
         <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors transparent depthWrite={false} side={DoubleSide} roughness={0.95} polygonOffset polygonOffsetFactor={-0.9} polygonOffsetUnits={-3.5} />
-      </mesh>
-      <mesh geometry={paving} receiveShadow userData={{ noReflect: true }}>
-        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} polygonOffsetUnits={-2} />
       </mesh>
     </>
   )
