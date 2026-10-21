@@ -5,16 +5,25 @@
 // with the street trees (bake-trees.ts), standing in the park's OSM outline.
 //
 // Sizes from English Wikipedia (checked 2026-10-21): 64 m tall; the shaft
-// ~11 m across. The base is sized from the OSM footprint, which includes it.
+// ~11 m across. It stands on a low round plinth in the hilltop's paved
+// plaza (the parking circle), PLAZA_R in radius, leveled at the ground under
+// the tower (registry.ts stand: 'center'), with a stone retaining rim
+// where the hill drops away under it.
 
 import type { LandmarkPlacement } from './registry.ts'
-import { Glow, ModelBuilder, type V3, rect, ring } from './build.ts'
+import { Glow, ModelBuilder, type V3, ring } from './build.ts'
 
 const CONCRETE = '#efece5'
-const BASE = '#e7e3da'
+const PLINTH = '#e7e3da'
 const ROOF = '#cfcac0'
+const PLAZA = '#a29d92' // asphalt-gray paving, the parking circle
+const RIM = '#857f73' // its stone retaining wall
 const OPENING = '#33363a'
-const BASE_M = 9
+const BASE_M = 3 // the plinth's top: the shaft rises from here
+const PLINTH_R = 7.5
+const PLAZA_R = 21
+const PLAZA_Y = 0.25 // a little over the ground, which it levels
+const RIM_DROP_M = 4 // the retaining rim, down from the plaza's edge
 const SHAFT_R = 5.6
 const FLUTE_R = 5.2 // the flutes' inner radius
 const FLUTES = 16
@@ -33,13 +42,14 @@ const OPENING_W = 1.3
 const OPENING_FROM_M = 55
 const OPENING_TO_M = 58.8
 
-export function buildCoitTower(at: LandmarkPlacement): ModelBuilder {
+export function buildCoitTower(_at: LandmarkPlacement): ModelBuilder {
   const m = new ModelBuilder()
-  // The base: a low block, from the footprint, not wider than the hilltop plaza.
-  const hx = Math.min(13, Math.max(7, at.sizeX / 2))
-  const hz = Math.min(13, Math.max(7, at.sizeZ / 2))
-  m.loft(rect(hx, hz, 0), rect(hx, hz, BASE_M), BASE)
-  m.cap(rect(hx, hz, BASE_M), ROOF)
+  // The plaza: a flat paved circle, its rim walled down where the hill falls away.
+  m.cap(ring(48, PLAZA_R, PLAZA_Y), PLAZA)
+  m.loft(ring(48, PLAZA_R, PLAZA_Y - RIM_DROP_M), ring(48, PLAZA_R, PLAZA_Y), RIM)
+  // The plinth.
+  m.loft(ring(32, PLINTH_R, PLAZA_Y), ring(32, PLINTH_R, BASE_M), PLINTH)
+  m.cap(ring(32, PLINTH_R, BASE_M), ROOF)
 
   // The fluted shaft: 2 x FLUTES points alternating out and in.
   const shaftPhase = Math.PI / (2 * FLUTES)

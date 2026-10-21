@@ -7,7 +7,7 @@ import { Glow, place } from './landmarks/build.ts'
 import { LANDMARK_MODELS } from './landmarks/models.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
-import type { LandmarkPlacement } from './landmarks/registry.ts'
+import { LANDMARKS, type LandmarkPlacement } from './landmarks/registry.ts'
 import type { Terrain } from './terrain.ts'
 import { type LoadedCity, useCity } from './useCity.ts'
 import { LIT_SHARE_GLSL } from './windowLight.ts'
@@ -31,8 +31,10 @@ const FLOOD_RADIANCE = 0.42
 const OPENING_RADIANCE = 0.5
 const DETAIL_PX = [0.25, 0.6] // floors per pixel: full detail, then only the average
 
-// Each stands on the lowest ground under its footprint's rectangle (terrain.ts).
+// Each stands on the lowest ground under its footprint's rectangle, or the
+// ground under its center (registry.ts `stand`; terrain.ts).
 function groundUnder(at: LandmarkPlacement, t: Terrain): number {
+  if (LANDMARKS.find((l) => l.id === at.id)?.stand === 'center') return t.heightAt(at.x, at.z)
   const c = Math.cos(at.angle)
   const s = Math.sin(at.angle)
   let lo = t.heightAt(at.x, at.z)

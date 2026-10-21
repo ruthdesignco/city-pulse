@@ -53,16 +53,19 @@ describe('landmark models', () => {
   it('builds the Transamerica Pyramid to its 260 m spire, and Coit Tower to 64 m', () => {
     expect(bounds(at('transamerica')).maxY).toBeCloseTo(260, 3)
     expect(bounds(at('coit')).maxY).toBeCloseTo(64, 3)
-    for (const p of placements) expect(bounds(p).minY).toBeCloseTo(0, 6)
+    // On the ground; Coit Tower's plaza rim reaches a few meters down the hill.
+    expect(bounds(at('transamerica')).minY).toBeCloseTo(0, 6)
+    expect(bounds(at('coit')).minY).toBeGreaterThan(-5)
   })
 
   it('stands each model on its footprint, with finite geometry and outward faces', () => {
     for (const p of placements) {
       const { g, pos } = bounds(p)
       for (const v of pos) expect(Number.isFinite(v)).toBe(true)
-      // The model's footprint at ground level stays within the OSM one's rectangle (plus a meter).
-      const reach = Math.hypot(p.sizeX, p.sizeZ) / 2 + 1
-      for (let i = 0; i < pos.length; i += 3) if (pos[i + 1] < 1) expect(Math.hypot(pos[i] - p.x, pos[i + 2] - p.z)).toBeLessThan(reach)
+      // The model's footprint at ground level stays within the OSM one's
+      // rectangle (plus a meter), or Coit Tower's 21 m plaza.
+      const reach = Math.max(Math.hypot(p.sizeX, p.sizeZ) / 2 + 1, p.id === 'coit' ? 21.5 : 0)
+      for (let i = 0; i < pos.length; i += 3) if (pos[i + 1] < 1 && pos[i + 1] > -0.5) expect(Math.hypot(pos[i] - p.x, pos[i + 2] - p.z)).toBeLessThan(reach)
       // Side walls face away from the model's axis (below 200 m: above it
       // the pyramid's wings have inner faces toward the spire).
       const nor = g.getAttribute('normal').array as Float32Array

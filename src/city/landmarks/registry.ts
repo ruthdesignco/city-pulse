@@ -17,11 +17,15 @@ export interface LandmarkSpec {
   // An OSM area around it the model also uses (Coit Tower's trees stand in
   // Pioneer Park): its outline is baked with the placement.
   grounds?: string
+  // Where it stands on the terrain: on the lowest ground under its
+  // footprint (default; nothing floats) or the ground under its center
+  // (a hilltop with its own leveled plaza, which the model brings).
+  stand?: 'lowest' | 'center'
 }
 
 export const LANDMARKS: LandmarkSpec[] = [
   { id: 'transamerica', name: 'Transamerica Pyramid', replaces: ['way/24222973'] },
-  { id: 'coit', name: 'Coit Tower', replaces: ['way/28824850'], grounds: 'way/224941774' },
+  { id: 'coit', name: 'Coit Tower', replaces: ['way/28824850'], grounds: 'way/224941774', stand: 'center' },
 ]
 
 // Where a landmark stands, from its OSM footprint (the bake's
