@@ -13,11 +13,15 @@
 //
 // Both maps are on the terrain's grid, built once per loaded city: the
 // normals with the occlusion in alpha (normalsAo), and the cover's classes
-// in red (grass), green (wood) and blue (rock; sand is half of it).
+// in red (grass), green (wood) and blue (rock; sand is half of it). Past
+// the bake area the normals and occlusion come from ground smoothed over
+// SMOOTH_RADIUS_M: there the 1 m lidar's piers, pads and rubble only
+// mottled the land, which reads as distant city (landShading.ts).
 
-import { Color, DataTexture, LinearFilter, RGBAFormat } from 'three'
+import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat } from 'three'
 import { COORD_QUANTUM } from './format.ts'
-import type { Terrain } from './terrain.ts'
+import { EDGE_BLEND_M, bakeDistance } from './paving.ts'
+import { Terrain } from './terrain.ts'
 import type { LoadedCity } from './useCity.ts'
 
 export const AO_RADIUS_M = 40
@@ -25,6 +29,7 @@ const AO_DEPTH_M = 6 // this far below its surroundings is fully occluded
 export const AO_MAX = 0.35 // the most a hollow darkens
 // How strongly slope shading departs from flat ground's, at full sun.
 export const HILLSHADE = 0.4
+const SMOOTH_RADIUS_M = 60
 // With the sun low (light elevation sin from LOW_SUN_TO down to
 // LOW_SUN_FROM), slopes facing away shade by up to LOW_SUN_BOOST more, so
 // the hills read in long morning and evening light; slopes facing the sun
@@ -76,9 +81,54 @@ export function occlusion(t: Terrain): Float32Array {
   return out
 }
 
+// The terrain with each sample eased by `smooth` (0..1 per sample) toward
+// its surroundings over SMOOTH_RADIUS_M.
+function smoothed(t: Terrain, smooth: Float32Array): Terrain {
+  const { nx, nz, cell } = t.header
+  const h = new Float32Array(nx * nz)
+  for (let k = 0; k < h.length; k++) h[k] = t.heights[k]
+  const r = Math.max(1, Math.round(SMOOTH_RADIUS_M / cell / 2))
+  const around = blur(blur(h, nx, nz, r), nx, nz, r)
+  const out = new Int16Array(h.length)
+  for (let k = 0; k < h.length; k++) out[k] = Math.round(h[k] + smooth[k] * (around[k] - h[k]))
+  return new Terrain(t.header, out)
+}
+
+// How much to smooth each sample of the city's terrain: none over the bake
+// area, fully past the paving's outer blend (on a coarse lattice, eased
+// between).
+function smoothing(city: LoadedCity): Float32Array {
+  const { x0, z0, cell, nx, nz } = city.terrain.header
+  const distance = bakeDistance(city)
+  const ring = city.header.ringMeters
+  const step = 8
+  const cx = Math.ceil((nx - 1) / step) + 1
+  const cz = Math.ceil((nz - 1) / step) + 1
+  const coarse = new Float32Array(cx * cz)
+  for (let b = 0; b < cz; b++)
+    for (let a = 0; a < cx; a++) {
+      const t = Math.min(1, Math.max(0, (distance(x0 + a * step * cell, z0 + b * step * cell) - ring) / EDGE_BLEND_M))
+      coarse[b * cx + a] = t * t * (3 - 2 * t)
+    }
+  const out = new Float32Array(nx * nz)
+  for (let j = 0; j < nz; j++)
+    for (let i = 0; i < nx; i++) {
+      const a = Math.min(cx - 2, Math.floor(i / step))
+      const b = Math.min(cz - 2, Math.floor(j / step))
+      const u = i / step - a
+      const v = j / step - b
+      const top = coarse[b * cx + a] * (1 - u) + coarse[b * cx + a + 1] * u
+      const bottom = coarse[(b + 1) * cx + a] * (1 - u) + coarse[(b + 1) * cx + a + 1] * u
+      out[j * nx + i] = top * (1 - v) + bottom * v
+    }
+  return out
+}
+
 // The ground's normal at every sample, packed for a texture (x and z
 // centered on 128, y as 0..255), with 255 x (1 - occlusion) in alpha.
-export function normalsAo(t: Terrain): Uint8Array {
+// `smooth`: how much to smooth each sample first (smoothed), if at all.
+export function normalsAo(terrain: Terrain, smooth?: Float32Array): Uint8Array {
+  const t = smooth ? smoothed(terrain, smooth) : terrain
   const { nx, nz, cell } = t.header
   const ao = occlusion(t)
   const out = new Uint8Array(nx * nz * 4)
@@ -125,10 +175,13 @@ function coverPixels(city: LoadedCity): Uint8Array {
   return new Uint8Array(g.getImageData(0, 0, nx, nz).data.buffer)
 }
 
+// Mipmapped: without, the 5 m maps alias into a shimmering crosshatch on
+// ground a kilometer or more off.
 function texture(data: Uint8Array, w: number, h: number): DataTexture {
   const t = new DataTexture(data, w, h, RGBAFormat)
   t.magFilter = LinearFilter
-  t.minFilter = LinearFilter
+  t.minFilter = LinearMipmapLinearFilter
+  t.generateMipmaps = true
   t.needsUpdate = true
   return t
 }
@@ -148,7 +201,7 @@ export function groundShading(city: LoadedCity): GroundShading {
     const { x0, z0, cell, nx, nz } = city.terrain.header
     const f = (v: number) => v.toFixed(5)
     s = {
-      normals: texture(normalsAo(city.terrain), nx, nz),
+      normals: texture(normalsAo(city.terrain, smoothing(city)), nx, nz),
       cover: texture(coverPixels(city), nx, nz),
       // Sample (i, j) is texel (i, j)'s center.
       uv: (xz) => `( ( ${xz} - vec2( ${f(x0)}, ${f(z0)} ) ) / ${f(cell)} + 0.5 ) / vec2( ${f(nx)}, ${f(nz)} )`,

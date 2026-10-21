@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type CityData, encodeCity } from './format.ts'
+import { encodeLandCover } from './landCover.ts'
 import { FLAT, encodeTerrain } from './terrain.ts'
 
 // Minimal but valid city.bin bytes, so a successful fetch can actually decode.
@@ -27,8 +28,13 @@ const bytes = encodeCity({
 } satisfies CityData)
 
 const terrainBytes = await encodeTerrain(FLAT)
-// city.bin and terrain.bin, by URL (loadCity fetches both).
-const ok = (url: string) => ({ ok: true, arrayBuffer: () => Promise.resolve((url.includes('terrain') || url.includes('backdrop') ? terrainBytes : bytes).buffer) })
+const landCoverBytes = await encodeLandCover({
+  header: { version: 1, x0: 0, z0: 0, cell: 50, nx: 1, nz: 1, buildings: [], source: 'test', bakedAt: '' },
+  rgba: new Uint8Array(4),
+})
+// city.bin, terrain.bin, backdrop.bin and landcover.bin, by URL (loadCity fetches all four).
+const bytesFor = (url: string) => (url.includes('landcover') ? landCoverBytes : url.includes('terrain') || url.includes('backdrop') ? terrainBytes : bytes)
+const ok = (url: string) => ({ ok: true, arrayBuffer: () => Promise.resolve(bytesFor(url).buffer) })
 const fail = (status: number) => ({ ok: false, status })
 
 afterEach(() => {
@@ -45,7 +51,7 @@ describe('loadCity', () => {
     const [a, b] = await Promise.all([loadCity(), loadCity()])
     expect(a).toBe(b)
     expect(a.terrain.heightAt(0, 0)).toBe(0)
-    expect(fetchMock).toHaveBeenCalledTimes(3) // city.bin, terrain.bin and backdrop.bin, once each
+    expect(fetchMock).toHaveBeenCalledTimes(4) // city.bin, terrain.bin, backdrop.bin and landcover.bin, once each
   })
 
   it('clears the cache on failure, so a retry actually refetches instead of suspending on the dead promise', async () => {
@@ -62,6 +68,6 @@ describe('loadCity', () => {
 
     await expect(loadCity()).rejects.toThrow('city.bin: HTTP 500')
     await expect(loadCity()).resolves.toMatchObject({ header: { version: 3 } })
-    expect(fetchMock).toHaveBeenCalledTimes(6)
+    expect(fetchMock).toHaveBeenCalledTimes(8)
   })
 })

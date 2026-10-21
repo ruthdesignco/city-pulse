@@ -16,6 +16,7 @@
     "calibrate": "node --experimental-strip-types scripts/calibrate.ts",
     "bake:trees": "node --experimental-strip-types scripts/bake-trees.ts",
     "bake:terrain": "node --experimental-strip-types scripts/bake-terrain.ts",
+    "bake:landcover": "node --experimental-strip-types scripts/bake-landcover.ts",
     "bake:backdrop": "node --experimental-strip-types scripts/bake-backdrop.ts",
     "smoke": "node --experimental-strip-types scripts/smoke.ts",
     "shots:time": "node --experimental-strip-types scripts/time-shots.ts",

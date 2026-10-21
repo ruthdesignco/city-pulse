@@ -24,7 +24,7 @@ export const EDGE_BLEND_M = 300
 // ringMeters + EDGE_BLEND_M: within the waterfront extension, no further
 // than the ring's edge; past the baked data's extent (the ring is cut off
 // at its north edge), at least the ring's edge plus the distance past it.
-function bakeDistance(city: CityData): (x: number, z: number) => number {
+export function bakeDistance(city: CityData): (x: number, z: number) => number {
   const { boundary } = city
   const ringMeters = city.header.ringMeters
   const waterfront = city.header.waterfront ?? []

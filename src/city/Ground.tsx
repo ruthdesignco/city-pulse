@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { BufferAttribute, BufferGeometry, Color, DataTexture, DoubleSide, LinearFilter, type Mesh, type MeshStandardMaterial, RGBAFormat, Vector3 } from 'three'
+import { BackSide, BufferAttribute, BufferGeometry, Color, DataTexture, DoubleSide, LinearFilter, type Mesh, type MeshStandardMaterial, RGBAFormat, ShapeUtils, Vector2, Vector3 } from 'three'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { TARGET } from '../scene/view.ts'
 import { BayWater } from './BayWater.tsx'
@@ -8,7 +8,9 @@ import { palette } from './palette.ts'
 import { type GroundShading, SHADING_PARS, coverCode, groundShading, shadingCode } from './groundShading.ts'
 import { LOD_STEPS, buildTile, lodFor, tileRanges } from './groundTiles.ts'
 import { LAND_TILE_M, createLandMaterial, createLandTexture } from './landTexture.ts'
-import { CELL_M as PAVING_CELL_M, buildPaving } from './paving.ts'
+import { ModelBuilder, type V3 } from './landmarks/build.ts'
+import { landPars, landUniforms } from './landShading.ts'
+import { CELL_M as PAVING_CELL_M, EDGE_BLEND_M, bakeDistance, buildPaving } from './paving.ts'
 import type { Terrain } from './terrain.ts'
 import { type LoadedCity, useCity } from './useCity.ts'
 
@@ -40,7 +42,9 @@ const LAND_PLANE_Y = -2
 const TERRAIN_Y = -0.2
 
 // The paving's colors as a texture over its grid, with a transparent texel
-// all round, so it ends where the grid does.
+// all round, so it ends where the grid does; its alpha falls off with the
+// paving's own fade past the ring's edge (paving.ts), so the land beyond
+// (landShading.ts) shows through where the paving has gone to bare ground.
 interface PavingTexture {
   texture: DataTexture
   grid: [number, number, number, number] // x, z of the texture's corner; its width, depth (m)
@@ -52,11 +56,14 @@ function pavingTexture(city: LoadedCity): PavingTexture {
   const h = p.nz + 2
   const data = new Uint8Array(w * h * 4)
   const c = new Color()
+  const distance = bakeDistance(city)
+  const ring = city.header.ringMeters
   for (let j = 0; j < p.nz; j++)
     for (let i = 0; i < p.nx; i++) {
       const k = (j * p.nx + i) * 3
       c.setRGB(p.color[k], p.color[k + 1], p.color[k + 2]).convertLinearToSRGB()
-      data.set([c.r * 255, c.g * 255, c.b * 255, 255], ((j + 1) * w + i + 1) * 4)
+      const t = Math.min(1, Math.max(0, (distance(p.x0 + i * PAVING_CELL_M, p.z0 + j * PAVING_CELL_M) - ring) / EDGE_BLEND_M))
+      data.set([c.r * 255, c.g * 255, c.b * 255, 255 * (1 - t * t * (3 - 2 * t))], ((j + 1) * w + i + 1) * 4)
     }
   const texture = new DataTexture(data, w, h, RGBAFormat)
   texture.magFilter = LinearFilter
@@ -69,9 +76,13 @@ function pavingTexture(city: LoadedCity): PavingTexture {
 const f = (v: number) => v.toFixed(5)
 const vec3 = (c: Color) => `vec3(${f(c.r)}, ${f(c.g)}, ${f(c.b)})`
 
-function groundMaterial(land: MeshStandardMaterial, paving: PavingTexture, shading: GroundShading): MeshStandardMaterial {
+function groundMaterial(city: LoadedCity, land: MeshStandardMaterial, paving: PavingTexture, shading: GroundShading): MeshStandardMaterial {
   const material = land.clone()
   material.side = DoubleSide // the tiles' skirts face either way
+  // Only faces turned from the sun go into the shadow map: the ground can't
+  // shadow itself where lit (a fine crosshatch of acne over bare land), and
+  // the far side of a hill still casts its shadow down the slope beyond.
+  material.shadowSide = BackSide
   const [px, pz, pw, ph] = paving.grid
   material.onBeforeCompile = (shader, renderer) => {
     land.onBeforeCompile(shader, renderer)
@@ -80,17 +91,21 @@ function groundMaterial(land: MeshStandardMaterial, paving: PavingTexture, shadi
     shader.uniforms.uLightDir = sceneUniforms.uLightDir
     shader.uniforms.uHillshade = sceneUniforms.uHillshade
     shader.uniforms.uPaving = { value: paving.texture }
+    Object.assign(shader.uniforms, landUniforms(city))
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vGround;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xz;')
+      .replace('#include <common>', '#include <common>\nvarying vec2 vGround;\nvarying float vGroundY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xz;\nvGroundY = position.y;')
     const pavingUv = `( vGround - vec2( ${f(px)}, ${f(pz)} ) ) / vec2( ${f(pw)}, ${f(ph)} )`
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform sampler2D uPaving;\nvarying vec2 vGround;\n${SHADING_PARS}`)
+      .replace('#include <common>', `#include <common>\nuniform sampler2D uPaving;\nvarying vec2 vGround;\nvarying float vGroundY;\n${SHADING_PARS}\n${landPars(city)}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
 vec4 pave = texture2D( uPaving, ${pavingUv} );
 vec4 paved = vec4( pow( pave.rgb, vec3( 2.2 ) ), pave.a );
+vec4 landTexel = texture2D( uGroundNormals, ${shading.uv('vGround')} );
+vec3 landN = vec3( landTexel.x * 2.0 - 1.0, landTexel.y, landTexel.z * 2.0 - 1.0 );
+diffuseColor.rgb = landColor( vGround, vGroundY - ${f(TERRAIN_Y)}, landN, length( vViewPosition ) );
 diffuseColor.rgb = mix( diffuseColor.rgb, paved.rgb, paved.a );
 ${shadingCode(shading, 'vGround')}
 float steep = smoothstep( ${f(STEEP_FROM)}, ${f(STEEP_FULL)}, groundN.y );
@@ -103,7 +118,7 @@ ${coverCode(shading, 'vGround', new Color(palette.sidewalk), new Color(palette.g
 normal = normalize( ( viewMatrix * vec4( normalize( vec3( groundN.x, max( groundN.y, 0.05 ), groundN.z ) ), 0.0 ) ).xyz );`,
       )
   }
-  material.customProgramCacheKey = () => 'city-ground-v2'
+  material.customProgramCacheKey = () => 'city-ground-v3'
   return material
 }
 
@@ -175,22 +190,16 @@ function GroundTiles({ terrain, material }: { terrain: Terrain; material: MeshSt
   )
 }
 
-// The landforms around the city (bake-backdrop.ts; 100 m): the Marin
+// The landforms around the city (bake-backdrop.ts; 50 m): the Marin
 // Headlands, Angel Island, Alcatraz, Yerba Buena Island, Twin Peaks, the
-// East Bay hills. Context only, no buildings, fading into the haze with the
-// fog. Low urban flats (the rest of the peninsula, Oakland) take the
-// distant land's tone; slopes and heights are dry grass, greener where they
-// face north, as the Bay Area's hills are. Under the city's own terrain the
-// backdrop sinks out of sight (BACKDROP_UNDER_M), except along a cell's
-// width at the terrain's edge, so the two meet (the tiles' skirts hide the
-// step); over its outer BACKDROP_TAPER_M it eases to sea level, meeting the
-// flat land beyond.
+// East Bay hills, and the cities around the Bay. Colored by what's there
+// (landShading.ts), fading into the haze with the fog. Under the city's own
+// terrain the backdrop sinks out of sight (BACKDROP_UNDER_M), except along
+// a cell's width at the terrain's edge, so the two meet (the tiles' skirts
+// hide the step); over its outer BACKDROP_TAPER_M it eases to sea level,
+// meeting the flat land beyond.
 const BACKDROP_UNDER_M = 60
 const BACKDROP_TAPER_M = 2000
-const HILL_DRY = new Color('#9c8f66')
-const HILL_GREEN = new Color('#66724f')
-const URBAN_BELOW_M = 60
-const URBAN_SLOPE = 0.12
 
 function buildBackdropGeometry(city: LoadedCity): BufferGeometry {
   const b = city.backdrop
@@ -203,9 +212,6 @@ function buildBackdropGeometry(city: LoadedCity): BufferGeometry {
   const tz1 = t.z0 + (t.nz - 1) * t.cell - cell
   const position = new Float32Array(nx * nz * 3)
   const normal = new Float32Array(nx * nz * 3)
-  const color = new Float32Array(nx * nz * 3)
-  const flat = new Color(palette.ground)
-  const c = new Color()
   for (let j = 0; j < nz; j++)
     for (let i = 0; i < nx; i++) {
       const k = j * nx + i
@@ -220,11 +226,6 @@ function buildBackdropGeometry(city: LoadedCity): BufferGeometry {
       const sz = (b.at(i, j + 1) - b.at(i, j - 1)) / (2 * cell)
       const l = Math.hypot(sx, 1, sz)
       normal.set([-sx / l, 1 / l, -sz / l], 3 * k)
-      // North-facing: the slope's normal leans toward -z.
-      const north = Math.min(1, Math.max(0, (sz / l) * 4 + 0.3))
-      c.copy(HILL_DRY).lerp(HILL_GREEN, north)
-      const wild = Math.min(1, Math.max(Math.max(0, b.at(i, j) - URBAN_BELOW_M) / 40, (Math.hypot(sx, sz) - URBAN_SLOPE) / 0.1))
-      c.lerp(flat, 1 - Math.max(0, wild)).toArray(color, 3 * k)
     }
   const index = new Uint32Array((nx - 1) * (nz - 1) * 6)
   let n = 0
@@ -237,8 +238,62 @@ function buildBackdropGeometry(city: LoadedCity): BufferGeometry {
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(position, 3))
   g.setAttribute('normal', new BufferAttribute(normal, 3))
-  g.setAttribute('color', new BufferAttribute(color, 3))
   g.setIndex(new BufferAttribute(index, 1))
+  withLandUv(g)
+  g.computeBoundingSphere()
+  return g
+}
+
+// The backdrop's material: the land's, colored by landColor from the
+// backdrop's own (50 m) normals.
+function backdropMaterial(city: LoadedCity, land: MeshStandardMaterial): MeshStandardMaterial {
+  const material = land.clone()
+  material.roughness = 1
+  material.onBeforeCompile = (shader, renderer) => {
+    land.onBeforeCompile(shader, renderer)
+    Object.assign(shader.uniforms, landUniforms(city))
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLand;\nvarying vec3 vLandN;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvLand = vec3( position.xz, position.y - ${f(LAND_Y)} );\nvLandN = normal;`)
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec3 vLand;\nvarying vec3 vLandN;\n${landPars(city)}`)
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = landColor( vLand.xy, vLand.z, normalize( vLandN ), length( vViewPosition ) );')
+  }
+  material.customProgramCacheKey = () => 'backdrop-v1'
+  return material
+}
+
+// Buildings on the backdrop's islands (landCover.ts: Alcatraz's), as plain
+// prisms in weathered concrete: walls from just under the lowest ground
+// under each, roof its height above the ground's average there.
+const ISLAND_WALL = '#b3ac9d'
+const ISLAND_ROOF = '#958f84'
+
+function buildIslandBuildings(city: LoadedCity): BufferGeometry {
+  const m = new ModelBuilder()
+  for (const { ring, height } of city.landCover.header.buildings) {
+    const ground = ring.map(([x, z]) => city.backdrop.heightAt(x, z) + LAND_Y)
+    const base = Math.min(...ground) - 1
+    const top = ground.reduce((a, b) => a + b, 0) / ground.length + height
+    m.loft(
+      ring.map(([x, z]): V3 => [x, base, z]),
+      ring.map(([x, z]): V3 => [x, top, z]),
+      ISLAND_WALL,
+    )
+    // The roof, triangulated (footprints can be concave), facing up.
+    for (const [a, b, c] of ShapeUtils.triangulateShape(
+      ring.map(([x, z]) => new Vector2(x, z)),
+      [],
+    )) {
+      const tri: V3[] = [a, b, c].map((v): V3 => [ring[v][0], top, ring[v][1]])
+      const up = (tri[1][2] - tri[0][2]) * (tri[2][0] - tri[0][0]) - (tri[1][0] - tri[0][0]) * (tri[2][2] - tri[0][2])
+      m.face(up > 0 ? tri : [tri[0], tri[2], tri[1]], ISLAND_ROOF)
+    }
+  }
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(Float32Array.from(m.position), 3))
+  g.setAttribute('normal', new BufferAttribute(Float32Array.from(m.normal), 3))
+  g.setAttribute('color', new BufferAttribute(Float32Array.from(m.color), 3))
   g.computeBoundingSphere()
   return g
 }
@@ -273,8 +328,12 @@ export function Ground() {
   }, [])
   const paving = useMemo(() => pavingTexture(city), [city])
   const shading = useMemo(() => groundShading(city), [city])
-  const ground = useMemo(() => groundMaterial(land, paving, shading), [land, paving, shading])
+  const ground = useMemo(() => groundMaterial(city, land, paving, shading), [city, land, paving, shading])
+  const backdropLand = useMemo(() => backdropMaterial(city, land), [city, land])
+  const alcatraz = useMemo(() => buildIslandBuildings(city), [city])
   useEffect(() => () => backdrop.dispose(), [backdrop])
+  useEffect(() => () => backdropLand.dispose(), [backdropLand])
+  useEffect(() => () => alcatraz.dispose(), [alcatraz])
   useEffect(() => () => paving.texture.dispose(), [paving])
   useEffect(
     () => () => {
@@ -305,8 +364,9 @@ export function Ground() {
         <BayWater y={WATER_Y} outline={water} />
       </group>
       <GroundTiles terrain={city.terrain} material={ground} />
-      <mesh geometry={backdrop} receiveShadow userData={{ noReflect: true }}>
-        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors roughness={1} />
+      <mesh geometry={backdrop} material={backdropLand} receiveShadow userData={{ noReflect: true }} />
+      <mesh geometry={alcatraz} castShadow receiveShadow userData={{ noReflect: true }}>
+        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors roughness={0.9} />
       </mesh>
     </>
   )

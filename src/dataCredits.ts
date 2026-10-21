@@ -21,6 +21,7 @@ export const ABOUT_VIEW = [
   'Real data: building footprints, heights where OpenStreetMap has them, the street trees, and the Muni vehicles, live.',
   'Buildings without a recorded height are drawn 8 m tall.',
   'The ground rises and falls with the real hills, from the USGS 3D Elevation Program (public domain): on a 5 m grid under the city, and a 50 m one for the land around the Bay (the Marin Headlands, Mt Tamalpais, the islands, the East Bay hills), which is shown without buildings.',
+  "Around the Bay, what the land is comes from OpenStreetMap's land use and cover: city land shows a generic rooftop pattern, not its real buildings; hills, woods and rock are colored by that cover and their slope. Alcatraz's buildings are simple blocks on their OSM footprints.",
   'Illustrative: building materials, windows, storefronts, rooftop equipment, and vehicle size (enlarged at a distance so they stay visible).',
   "The Transamerica Pyramid and Coit Tower are hand-built models in their real places and heights, not the data's outlines; the trees in Pioneer Park around Coit Tower are illustrative.",
   'The light follows the real time in San Francisco: the sun, and the moon at night. Which windows are lit at night, on a weekday or weekend schedule, is illustrative.',

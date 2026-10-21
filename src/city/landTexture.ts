@@ -96,16 +96,22 @@ export function createLandTexture(): DataTexture {
 // rotated against each other, and averaged, so neither copy's repeat lines
 // up into a visible grid; then shaded by broad value noise in world meters
 // (BROAD_M and BROAD_M / 3, +-BROAD_AMOUNT), patches far larger than any
-// tile. Both keep the mean at palette.ground.
+// tile. Both keep the mean at palette.ground. Both fade out between
+// SMOOTH_FROM_M and SMOOTH_TO_M from the camera, so land far off reads
+// smooth through the haze rather than mottled.
 const SECOND_SCALE = 0.61
 const SECOND_ANGLE = 0.64 // radians, ~37 deg
 const BROAD_M = 2600
 const BROAD_AMOUNT = 0.12
+const SMOOTH_FROM_M = 2500
+const SMOOTH_TO_M = 6500
 
 export function createLandMaterial(map: DataTexture): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ map, roughness: 0.95 })
   const c = Math.cos(SECOND_ANGLE).toFixed(4)
   const sn = Math.sin(SECOND_ANGLE).toFixed(4)
+  const g = new Color(palette.ground)
+  const mean = `vec3( ${g.r.toFixed(5)}, ${g.g.toFixed(5)}, ${g.b.toFixed(5)} )`
   material.onBeforeCompile = (shader) => {
     registerHeightFog(shader)
     shader.fragmentShader = shader.fragmentShader
@@ -126,9 +132,10 @@ float landNoise( vec2 p ) {
 vec4 tileB = texture2D( map, mat2( ${c}, ${sn}, -${sn}, ${c} ) * vMapUv * ${SECOND_SCALE.toFixed(4)} + vec2( 0.37, 0.71 ) );
 vec2 meters = vMapUv * ${LAND_TILE_M.toFixed(1)};
 float broad = 0.65 * landNoise( meters / ${BROAD_M.toFixed(1)} ) + 0.35 * landNoise( meters / ${(BROAD_M / 3).toFixed(1)} + 17.0 );
-diffuseColor.rgb *= 0.5 * ( tileA.rgb + tileB.rgb ) * ( 1.0 + ${(2 * BROAD_AMOUNT).toFixed(3)} * ( broad - 0.5 ) );`,
+vec3 landTile = 0.5 * ( tileA.rgb + tileB.rgb ) * ( 1.0 + ${(2 * BROAD_AMOUNT).toFixed(3)} * ( broad - 0.5 ) );
+diffuseColor.rgb *= mix( landTile, ${mean}, smoothstep( ${SMOOTH_FROM_M.toFixed(1)}, ${SMOOTH_TO_M.toFixed(1)}, length( vViewPosition ) ) );`,
       )
   }
-  material.customProgramCacheKey = () => 'land-v1'
+  material.customProgramCacheKey = () => 'land-v2'
   return material
 }
