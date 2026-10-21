@@ -28,7 +28,7 @@ const bytes = encodeCity({
 
 const terrainBytes = await encodeTerrain(FLAT)
 // city.bin and terrain.bin, by URL (loadCity fetches both).
-const ok = (url: string) => ({ ok: true, arrayBuffer: () => Promise.resolve((url.includes('terrain') ? terrainBytes : bytes).buffer) })
+const ok = (url: string) => ({ ok: true, arrayBuffer: () => Promise.resolve((url.includes('terrain') || url.includes('backdrop') ? terrainBytes : bytes).buffer) })
 const fail = (status: number) => ({ ok: false, status })
 
 afterEach(() => {
@@ -45,13 +45,13 @@ describe('loadCity', () => {
     const [a, b] = await Promise.all([loadCity(), loadCity()])
     expect(a).toBe(b)
     expect(a.terrain.heightAt(0, 0)).toBe(0)
-    expect(fetchMock).toHaveBeenCalledTimes(2) // city.bin and terrain.bin, once each
+    expect(fetchMock).toHaveBeenCalledTimes(3) // city.bin, terrain.bin and backdrop.bin, once each
   })
 
   it('clears the cache on failure, so a retry actually refetches instead of suspending on the dead promise', async () => {
     let failNext = true
     const fetchMock = vi.fn((url: string) => {
-      if (failNext && !url.includes('terrain')) {
+      if (failNext && url.includes('city')) {
         failNext = false
         return Promise.resolve(fail(500))
       }
@@ -62,6 +62,6 @@ describe('loadCity', () => {
 
     await expect(loadCity()).rejects.toThrow('city.bin: HTTP 500')
     await expect(loadCity()).resolves.toMatchObject({ header: { version: 3 } })
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenCalledTimes(6)
   })
 })

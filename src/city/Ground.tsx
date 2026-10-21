@@ -8,9 +8,8 @@ import { palette } from './palette.ts'
 import { type GroundShading, SHADING_PARS, coverCode, groundShading, shadingCode } from './groundShading.ts'
 import { LOD_STEPS, buildTile, lodFor, tileRanges } from './groundTiles.ts'
 import { LAND_TILE_M, createLandMaterial, createLandTexture } from './landTexture.ts'
-import { CELL_M as PAVING_CELL_M, bareLand, buildPaving } from './paving.ts'
-import { buildShoreFeather } from './shore.ts'
-import { type Terrain, drape } from './terrain.ts'
+import { CELL_M as PAVING_CELL_M, buildPaving } from './paving.ts'
+import type { Terrain } from './terrain.ts'
 import { type LoadedCity, useCity } from './useCity.ts'
 
 // The ground: the terrain (terrain.ts) in tiles that draw at the detail
@@ -33,6 +32,9 @@ const SLOPE_EARTH = new Color('#7a7c66')
 // its edges (bake-terrain.ts) and lies on top of it there.
 const LAND_M = 40000
 const LAND_Y = -0.6
+// The flat land plane itself, under the backdrop where they meet at its
+// tapered edge (and under the water inside the backdrop's box).
+const LAND_PLANE_Y = -2
 // The ground sits this far under the true terrain height; everything placed
 // on the terrain (streets 0.2 up, building bases) a little above it.
 const TERRAIN_Y = -0.2
@@ -172,21 +174,85 @@ function GroundTiles({ terrain, material }: { terrain: Terrain; material: MeshSt
   )
 }
 
-// The soft shoreline over unbaked land (shore.ts): over the water, under
-// the sidewalks.
-const SHORE_Y = 0.17
+// The landforms around the city (bake-backdrop.ts; 100 m): the Marin
+// Headlands, Angel Island, Alcatraz, Yerba Buena Island, Twin Peaks, the
+// East Bay hills. Context only, no buildings, fading into the haze with the
+// fog. Low urban flats (the rest of the peninsula, Oakland) take the
+// distant land's tone; slopes and heights are dry grass, greener where they
+// face north, as the Bay Area's hills are. Under the city's own terrain the
+// backdrop sinks out of sight (BACKDROP_UNDER_M), except along a cell's
+// width at the terrain's edge, so the two meet (the tiles' skirts hide the
+// step); over its outer BACKDROP_TAPER_M it eases to sea level, meeting the
+// flat land beyond.
+const BACKDROP_UNDER_M = 60
+const BACKDROP_TAPER_M = 2000
+const HILL_DRY = new Color('#9c8f66')
+const HILL_GREEN = new Color('#66724f')
+const URBAN_BELOW_M = 60
+const URBAN_SLOPE = 0.12
 
-function buildShoreGeometry(city: LoadedCity): BufferGeometry {
-  const { position, color, index } = buildShoreFeather(bareLand(city), SHORE_Y)
-  const normal = new Float32Array(position.length)
-  drape(city.terrain, position, normal)
+function buildBackdropGeometry(city: LoadedCity): BufferGeometry {
+  const b = city.backdrop
+  const { x0, z0, cell, nx, nz } = b.header
+  const t = city.terrain.header
+  // Inside the city's terrain by at least a backdrop cell: hidden.
+  const tx0 = t.x0 + cell
+  const tz0 = t.z0 + cell
+  const tx1 = t.x0 + (t.nx - 1) * t.cell - cell
+  const tz1 = t.z0 + (t.nz - 1) * t.cell - cell
+  const position = new Float32Array(nx * nz * 3)
+  const normal = new Float32Array(nx * nz * 3)
+  const color = new Float32Array(nx * nz * 3)
+  const flat = new Color(palette.ground)
+  const c = new Color()
+  for (let j = 0; j < nz; j++)
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i
+      const x = x0 + i * cell
+      const z = z0 + j * cell
+      const edge = Math.min(i, j, nx - 1 - i, nz - 1 - j) * cell
+      const taper = Math.min(1, edge / BACKDROP_TAPER_M)
+      let h = b.at(i, j) * taper * taper * (3 - 2 * taper)
+      if (x > tx0 && x < tx1 && z > tz0 && z < tz1) h -= BACKDROP_UNDER_M
+      position.set([x, h + LAND_Y, z], 3 * k)
+      const sx = (b.at(i + 1, j) - b.at(i - 1, j)) / (2 * cell)
+      const sz = (b.at(i, j + 1) - b.at(i, j - 1)) / (2 * cell)
+      const l = Math.hypot(sx, 1, sz)
+      normal.set([-sx / l, 1 / l, -sz / l], 3 * k)
+      // North-facing: the slope's normal leans toward -z.
+      const north = Math.min(1, Math.max(0, (sz / l) * 4 + 0.3))
+      c.copy(HILL_DRY).lerp(HILL_GREEN, north)
+      const wild = Math.min(1, Math.max(Math.max(0, b.at(i, j) - URBAN_BELOW_M) / 40, (Math.hypot(sx, sz) - URBAN_SLOPE) / 0.1))
+      c.lerp(flat, 1 - Math.max(0, wild)).toArray(color, 3 * k)
+    }
+  const index = new Uint32Array((nx - 1) * (nz - 1) * 6)
+  let n = 0
+  for (let j = 0; j < nz - 1; j++)
+    for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i
+      index.set([a, a + nx + 1, a + 1, a, a + nx, a + nx + 1], n)
+      n += 6
+    }
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(position, 3))
   g.setAttribute('normal', new BufferAttribute(normal, 3))
-  g.setAttribute('color', new BufferAttribute(color, 4))
+  g.setAttribute('color', new BufferAttribute(color, 3))
   g.setIndex(new BufferAttribute(index, 1))
   g.computeBoundingSphere()
   return g
+}
+
+// The water's outline: the backdrop's box (BayWater.tsx).
+function waterOutline(b: Terrain): [number, number][] {
+  const { x0, z0, cell, nx, nz } = b.header
+  const x1 = x0 + (nx - 1) * cell
+  const z1 = z0 + (nz - 1) * cell
+  return [
+    [x0, z0],
+    [x0, z1],
+    [x1, z1],
+    [x1, z0],
+  ]
 }
 
 // The Bay (bay.ts, BayWater.tsx): real waterfront, drawn over the ground
@@ -197,7 +263,8 @@ const WATER_Y = 0.15
 
 export function Ground() {
   const city = useCity()
-  const shore = useMemo(() => buildShoreGeometry(city), [city])
+  const backdrop = useMemo(() => buildBackdropGeometry(city), [city])
+  const water = useMemo(() => waterOutline(city.backdrop), [city])
   const land = useMemo(() => {
     const t = createLandTexture()
     t.repeat.set(LAND_M / LAND_TILE_M, LAND_M / LAND_TILE_M)
@@ -206,7 +273,7 @@ export function Ground() {
   const paving = useMemo(() => pavingTexture(city), [city])
   const shading = useMemo(() => groundShading(city), [city])
   const ground = useMemo(() => groundMaterial(land, paving, shading), [land, paving, shading])
-  useEffect(() => () => shore.dispose(), [shore])
+  useEffect(() => () => backdrop.dispose(), [backdrop])
   useEffect(() => () => paving.texture.dispose(), [paving])
   useEffect(
     () => () => {
@@ -231,14 +298,14 @@ export function Ground() {
             carry on to the south and west -- textured as distant city blocks
             (landTexture.ts) that the fog (Atmosphere.tsx) fades into the
             sky's haze with distance. Centered on TARGET. */}
-        <mesh position={[TARGET[0], -TARGET[2], LAND_Y]} material={land} receiveShadow userData={{ noReflect: true }}>
+        <mesh position={[TARGET[0], -TARGET[2], LAND_PLANE_Y]} material={land} receiveShadow userData={{ noReflect: true }}>
           <planeGeometry args={[LAND_M, LAND_M]} />
         </mesh>
-        <BayWater y={WATER_Y} />
+        <BayWater y={WATER_Y} outline={water} />
       </group>
       <GroundTiles terrain={city.terrain} material={ground} />
-      <mesh geometry={shore} receiveShadow userData={{ noReflect: true }}>
-        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors transparent depthWrite={false} side={DoubleSide} roughness={0.95} polygonOffset polygonOffsetFactor={-0.9} polygonOffsetUnits={-3.5} />
+      <mesh geometry={backdrop} receiveShadow userData={{ noReflect: true }}>
+        <meshStandardMaterial onBeforeCompile={registerHeightFog} vertexColors roughness={1} />
       </mesh>
     </>
   )

@@ -41,19 +41,6 @@ function bakeDistance(city: CityData): (x: number, z: number) => number {
   }
 }
 
-// How bare the land is at (x, z), 0..1: 0 over the bake area (neighborhoods,
-// ring, waterfront extension), easing to 1 over EDGE_BLEND_M past its edge.
-// Also used to keep the shoreline's feather off the baked waterfront (Ground.tsx).
-export function bareLand(city: CityData): (x: number, z: number) => number {
-  const ringMeters = city.header.ringMeters
-  const distance = bakeDistance(city)
-  return (x, z) => {
-    const d = distance(x, z)
-    const t = Math.min(1, Math.max(0, (d - ringMeters) / EDGE_BLEND_M))
-    return t * t * (3 - 2 * t)
-  }
-}
-
 export interface PavingGrid {
   // The grid: first sample at (x0, z0), nx by nz, CELL_M apart.
   x0: number

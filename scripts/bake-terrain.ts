@@ -13,9 +13,12 @@
 // they weren't), cached in scripts/.cache/; then each CELL_M grid point
 // averages four bilinear samples of it, a quarter cell either side. Heights are meters above
 // NAVD88 (about mean sea level). Inside the Bay (bay.ts) the ground is
-// held at SEA_FLOOR_M, under the water; over the outer TAPER_M of the grid
-// the heights ease down to sea level, where the flat land beyond takes over
-// (Ground.tsx).
+// held at SEA_FLOOR_M, under the water, and so is anything the DEM puts at
+// or below WATER_M (the Marina, the coves past the Bay's hand-drawn edge);
+// everything else at least LAND_MIN_M, so
+// the water (which now runs under the whole region, the backdrop's land
+// standing out of it: bake-backdrop.ts) never floods low ground. Past the
+// grid the backdrop carries on.
 
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -34,7 +37,8 @@ export const CELL_M = 5
 // ~5 m north-south, ~4 m east-west.
 const FETCH_DEG = 0.000045
 const MARGIN_M = 500
-const TAPER_M = 300
+const LAND_MIN_M = 0.6
+const WATER_M = 0.3
 const SEA_FLOOR_M = -1
 const QUANTUM = 0.1
 
@@ -124,11 +128,7 @@ async function main() {
         }
       }
       let h = n ? sum / n : 0
-      if (inBay(x, z, bay)) h = SEA_FLOOR_M
-      // Ease to sea level over the grid's outer TAPER_M.
-      const edge = Math.min(x - x0, z - z0, x0 + (nx - 1) * CELL_M - x, z0 + (nz - 1) * CELL_M - z)
-      const t = Math.min(1, edge / TAPER_M)
-      h *= t * t * (3 - 2 * t)
+      h = inBay(x, z, bay) || (n > 0 && h <= WATER_M) ? SEA_FLOOR_M : Math.max(LAND_MIN_M, h)
       heights[j * nx + i] = Math.round(h / QUANTUM)
       lo = Math.min(lo, h)
       hi = Math.max(hi, h)

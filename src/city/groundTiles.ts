@@ -18,7 +18,9 @@ export const LOD_STEPS = [1, 2, 4, 8] as const
 // A tile takes the first step whose distance (m, from the camera to the
 // tile's nearest point) it's within; past the last, the coarsest.
 export const LOD_DISTANCE_M = [700, 1600, 3500]
-const SKIRT_M = 6
+// Deep enough to also hide the step where the city's terrain meets the
+// backdrop's coarser hills at its edge (Ground.tsx).
+const SKIRT_M = 30
 
 export interface TileRange {
   i0: number

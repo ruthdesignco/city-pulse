@@ -150,13 +150,17 @@ function patch(source: string, from: string | RegExp, to: string): string {
 }
 
 // Shapes are built in (x, -z) inside a group rotated -90 deg about X
-// (Ground.tsx), so the outline lands at scene z.
-function buildBayGeometry(): ShapeGeometry {
-  return new ShapeGeometry(new Shape(bayOutline().map(([x, z]) => new Vector2(x, -z))))
+// (Ground.tsx), so the outline lands at scene z. The water runs under the
+// whole of `outline` (the backdrop's box, Ground.tsx): wherever the land
+// (the city's terrain, the backdrop's hills) stands above it, it's land;
+// the city's own shoreline is bay.ts's, which the terrain bake holds under
+// the water (bake-terrain.ts). Without an outline, bay.ts's polygon.
+function buildBayGeometry(outline: [number, number][]): ShapeGeometry {
+  return new ShapeGeometry(new Shape(outline.map(([x, z]) => new Vector2(x, -z))))
 }
 
-function createBayWater() {
-  const mesh = new Water(buildBayGeometry(), {
+function createBayWater(outline: [number, number][]) {
+  const mesh = new Water(buildBayGeometry(outline), {
     textureWidth: REFLECTION_SIZE,
     textureHeight: REFLECTION_SIZE,
     waterNormals: createWaterNormals(),
@@ -260,8 +264,8 @@ function createBayWater() {
   }
 }
 
-export function BayWater({ y }: { y: number }) {
-  const water = useMemo(() => createBayWater(), [])
+export function BayWater({ y, outline }: { y: number; outline?: [number, number][] }) {
+  const water = useMemo(() => createBayWater(outline ?? bayOutline()), [outline])
   useEffect(() => () => water.dispose(), [water])
   const sky = useSkyState()
   useEffect(() => water.setSky(sky), [water, sky])
