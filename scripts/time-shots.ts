@@ -6,7 +6,8 @@
 //
 // The opening view at night is in it because pools that look fine at street
 // level read as polka dots from the drone camera, and windows that sparkle
-// up close vanished from it. The weather is pinned clear (?weather=clear), so
+// up close vanished from it; at 07:00 because a coarse lit-window table lit
+// towers thicker before dawn than at 22:00. The weather is pinned clear (?weather=clear), so
 // the live NWS report never changes these; npm run shots:weather has the fog
 // and cloud set.
 
@@ -20,6 +21,7 @@ export const TIME_SHOTS = [
   { view: 'cinematic', time: '16:50' },
   { view: 'cinematic', time: '18:30' },
   { view: 'cinematic', time: '22:00' },
+  { view: 'opening', time: '07:00' },
   { view: 'opening', time: '18:30' },
   { view: 'opening', time: '22:00' },
   { view: 'street', time: '22:00' },

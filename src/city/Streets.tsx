@@ -141,10 +141,11 @@ function roadMaterial(layer: number, markings = false): MeshStandardMaterial {
   float across = exp( -dl * dl / ${(2 * POOL_ACROSS_M * POOL_ACROSS_M).toFixed(1)} );
   float near = exp( -da * da / ${(2 * POOL_ALONG_M * POOL_ALONG_M).toFixed(1)} );
   float average = ${((POOL_ALONG_M * Math.sqrt(2 * Math.PI)) / POOL_SPACING_M).toFixed(4)};
-  // Single pools only up close (spaced 25+ px apart); from there out a soft,
+  // Single pools only up close (spaced 90+ px apart); by 40 px a soft,
   // continuous line along each curb, dimmer, so a street seen from the air
-  // never outshines the buildings.
-  float poolDetail = 1.0 - smoothstep( ${(1 / 40).toFixed(4)}, ${(1 / 15).toFixed(4)}, fwidth( pu ) );
+  // never outshines the buildings. (Fading by 15 px left beads on a string
+  // at mid distance in the opening view.)
+  float poolDetail = 1.0 - smoothstep( ${(1 / 90).toFixed(4)}, ${(1 / 40).toFixed(4)}, fwidth( pu ) );
   float pool = across * mix( ${POOL_FAR.toFixed(3)} * average, ${POOL_BASE.toFixed(3)} + ${(1 - POOL_BASE).toFixed(3)} * near, poolDetail );
   totalEmissiveRadiance += uWindowsOn * vLit * pool * ${POOL_LIGHT.toFixed(3)} * uPoolColor;
 }`

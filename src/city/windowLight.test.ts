@@ -10,11 +10,26 @@ describe('lit window shares', () => {
     expect(litShare(WindowUse.Storefront, 19)).toBeGreaterThan(litShare(WindowUse.Storefront, 23))
   })
 
+  it('keeps the city dark before dawn and lets offices fill in through 09:00', () => {
+    // Before dawn, offices are no more lit than late in the evening.
+    expect(litShare(WindowUse.Office, 7)).toBeLessThanOrEqual(litShare(WindowUse.Office, 22))
+    expect(litShare(WindowUse.Office, 6.5)).toBeLessThan(0.1)
+    expect(litShare(WindowUse.Office, 9)).toBeGreaterThan(0.5)
+    for (let h = 5; h < 10; h += 0.25) expect(litShare(WindowUse.Office, h + 0.25)).toBeGreaterThanOrEqual(litShare(WindowUse.Office, h))
+    // A modest residential bump at breakfast, well under the evening.
+    expect(litShare(WindowUse.Residential, 7)).toBeGreaterThan(litShare(WindowUse.Residential, 4))
+    expect(litShare(WindowUse.Residential, 7)).toBeGreaterThan(litShare(WindowUse.Residential, 10))
+    expect(litShare(WindowUse.Residential, 7)).toBeLessThan(litShare(WindowUse.Residential, 21) / 2)
+    // Shops shut before 08:00.
+    expect(litShare(WindowUse.Storefront, 7)).toBeLessThan(0.15)
+  })
+
   it('wraps at midnight and interpolates between table hours', () => {
     for (const use of [WindowUse.Office, WindowUse.Residential, WindowUse.Storefront]) {
-      expect(LIT_SHARE[use][0]).toBe(LIT_SHARE[use][8])
+      expect(LIT_SHARE[use][0]).toBe(LIT_SHARE[use][24])
       expect(litShare(use, 24)).toBeCloseTo(litShare(use, 0), 6)
-      expect(litShare(use, 19.5)).toBeCloseTo((LIT_SHARE[use][6] + LIT_SHARE[use][7]) / 2, 6)
+      expect(LIT_SHARE[use]).toHaveLength(25)
+      expect(litShare(use, 19.5)).toBeCloseTo((LIT_SHARE[use][19] + LIT_SHARE[use][20]) / 2, 6)
     }
   })
 
