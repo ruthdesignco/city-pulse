@@ -10,10 +10,11 @@
 //   Millennium Tower        "blue-gray glass"
 //   One Rincon Hill         "a linear glass curtainwall" (South Tower)
 //   555 California Street   "clad in ... carnelian granite": dark red-brown
-//   Transamerica Pyramid    "façade is covered in crushed quartz, giving the
-//                           building its light color"
 //   181 Fremont Tower       glass, by the project owner's direction; its
 //                           Wikipedia article doesn't state the facade
+//
+// (The Transamerica Pyramid was pinned pale stone; it's a model now,
+// src/city/landmarks/transamerica.ts.)
 
 import { PinnedMaterial } from '../../src/city/facade.ts'
 
@@ -23,5 +24,4 @@ export const LANDMARK_MATERIALS: Record<string, PinnedMaterial> = {
   'Millennium Tower': PinnedMaterial.Glass,
   'One Rincon Hill': PinnedMaterial.Glass,
   '555 California Street': PinnedMaterial.Granite,
-  'Transamerica Pyramid': PinnedMaterial.PaleStone,
 }

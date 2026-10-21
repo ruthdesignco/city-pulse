@@ -21,7 +21,9 @@ const isMultipolygonBuilding = (t: Record<string, string>) => t.type === 'multip
 
 // Also returns the extract's OSM data date (its header's replication
 // timestamp), as an ISO string, or null if the file has none.
-export function loadFromPbf(pbfPath: string, b: Bbox): { elements: OsmElement[]; osmTimestamp: string | null } {
+// `keepWays`: way IDs kept with their geometry whatever their tags (landmark
+// grounds, landmarks/registry.ts).
+export function loadFromPbf(pbfPath: string, b: Bbox, keepWays: Set<number> = new Set()): { elements: OsmElement[]; osmTimestamp: string | null } {
   const started = Date.now()
   const s = b.south - NODE_MARGIN_DEG
   const n = b.north + NODE_MARGIN_DEG
@@ -69,6 +71,9 @@ export function loadFromPbf(pbfPath: string, b: Bbox): { elements: OsmElement[];
       const geometry = geometryOf(way)
       if (geometry) out.push({ type: 'way', id: way.id, tags: way.tags, geometry })
       else incompleteBuildings++
+    } else if (keepWays.has(way.id)) {
+      const geometry = geometryOf(way)
+      if (geometry) out.push({ type: 'way', id: way.id, tags: way.tags, geometry })
     } else if (HIGHWAYS.has(way.tags.highway)) {
       // Streets may run past the captured area: keep each contiguous run of
       // known nodes as its own line rather than bridging the gap.

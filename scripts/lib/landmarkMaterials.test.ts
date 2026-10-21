@@ -13,14 +13,13 @@ const luminance = (hex: string) => {
 }
 
 describe('landmark materials', () => {
-  it('pins the glass towers as glass, 555 California as granite, Transamerica as pale stone', () => {
+  it('pins the glass towers as glass and 555 California as granite', () => {
     expect(LANDMARK_MATERIALS).toEqual({
       'Salesforce Tower': PinnedMaterial.Glass,
       '181 Fremont Tower': PinnedMaterial.Glass,
       'Millennium Tower': PinnedMaterial.Glass,
       'One Rincon Hill': PinnedMaterial.Glass,
       '555 California Street': PinnedMaterial.Granite,
-      'Transamerica Pyramid': PinnedMaterial.PaleStone,
     })
   })
 

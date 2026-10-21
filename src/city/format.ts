@@ -17,6 +17,7 @@
 // since it hashed the first vertex in 0.1 m units and must not change.
 
 import type { LatLng } from '../geo/projection.ts'
+import type { LandmarkPlacement } from './landmarks/registry.ts'
 
 export const MAGIC = 'CPB1'
 export const COORD_QUANTUM = 0.15 // meters per Int16 unit: +-4915 m range
@@ -44,6 +45,8 @@ export interface CityHeader {
   // Landmark facades pinned by name (scripts/lib/landmarkMaterials.ts):
   // building index, facade.ts PinnedMaterial code, and the OSM name.
   pinnedMaterials?: { building: number; material: number; name: string }[]
+  // Landmarks drawn as models instead of their footprints (landmarks/registry.ts).
+  landmarkModels?: LandmarkPlacement[]
   attribution: string
   // Provenance: the date the OSM data is current to (the extract's header,
   // or Overpass's timestamp_osm_base), and a sha256 of the OSM elements the

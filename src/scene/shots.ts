@@ -117,7 +117,16 @@ const STREET: Pose = {
 // looked at nearly straight down.
 export const CALIBRATION_CENTER: Vec3 = [TARGET[0], 500, TARGET[2]]
 
+// Close looks at the landmark models (src/city/landmarks/): the
+// Transamerica Pyramid from the south-southeast, both wings in profile at
+// its sides; Coit Tower from the southeast, over North Beach's roofs.
+// Centers from the bake (city.bin landmarkModels).
+const TRANSAMERICA: Vec3 = [900, 130, -3015]
+const COIT: Vec3 = [631, 32, -3815]
+
 export const PRESETS: Record<string, Pose> = {
+  transamerica: poseAround(TRANSAMERICA, 430, 1.25, 0.35),
+  coit: poseAround(COIT, 200, 1.2, 0.6),
   opening: OPENING,
   calibrate: poseAround(CALIBRATION_CENTER, 400, 0.15, -0.47),
   market: poseAround(ON_MARKET_3RD, 380, 0.75, UP_MARKET),

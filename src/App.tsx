@@ -4,6 +4,7 @@ import { Stats } from '@react-three/drei'
 import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { Buildings } from './city/Buildings.tsx'
+import { Landmarks } from './city/Landmarks.tsx'
 import { Credits } from './Credits.tsx'
 import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER, WIND } from './params.ts'
 import { Ground } from './city/Ground.tsx'
@@ -168,6 +169,7 @@ export default function App() {
           <Ground />
           <Streets />
           <Buildings />
+          <Landmarks />
           <Rooftops />
         </Suspense>
         <Suspense fallback={null}>

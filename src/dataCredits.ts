@@ -21,6 +21,7 @@ export const ABOUT_VIEW = [
   'Real data: building footprints, heights where OpenStreetMap has them, the street trees, and the Muni vehicles, live.',
   'Buildings without a recorded height are drawn 8 m tall.',
   'Illustrative: building materials, windows, storefronts, rooftop equipment, and vehicle size (enlarged at a distance so they stay visible).',
+  "The Transamerica Pyramid and Coit Tower are hand-built models in their real places and heights, not the data's outlines; the trees in Pioneer Park around Coit Tower are illustrative.",
   'The light follows the real time in San Francisco: the sun, and the moon at night. Which windows are lit at night, on a weekday or weekend schedule, is illustrative.',
   "Fog and cloud cover come from the National Weather Service's observations at San Francisco International Airport (KSFO), 18 km south, or Oakland airport (KOAK) when SFO's are missing. Downtown can differ. How deep the fog is, is illustrative.",
   "The Bay's ripples and the trees' sway follow the wind from the same reports; how they move is illustrative.",

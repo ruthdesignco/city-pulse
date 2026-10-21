@@ -3,6 +3,7 @@ import {
   type Pt,
   centroid,
   clipPolylineToRect,
+  minAreaRect,
   distToRing,
   inBakeArea,
   openRing,
@@ -234,5 +235,27 @@ describe('clipPolylineToRect', () => {
         { minX: 0, minZ: 0, maxX: 10, maxZ: 10 },
       ),
     ).toEqual([])
+  })
+})
+
+describe('minAreaRect', () => {
+  it('finds a turned rectangle, with local x the side nearest the x axis', () => {
+    const a = (10 * Math.PI) / 180
+    const c = Math.cos(a)
+    const s = Math.sin(a)
+    // 40 (along x) by 20, turned 10 deg, centered at (100, 50).
+    const corners: [number, number][] = [
+      [-20, -10],
+      [20, -10],
+      [20, 10],
+      [-20, 10],
+    ]
+    const ring = corners.map(([x, z]) => [100 + x * c - z * s, 50 + x * s + z * c] as [number, number])
+    const r = minAreaRect(ring)
+    expect(r.center[0]).toBeCloseTo(100, 6)
+    expect(r.center[1]).toBeCloseTo(50, 6)
+    expect(r.angle).toBeCloseTo(a, 6)
+    expect(r.sizeX).toBeCloseTo(40, 6)
+    expect(r.sizeZ).toBeCloseTo(20, 6)
   })
 })

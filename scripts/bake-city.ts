@@ -52,6 +52,8 @@ import { compareCities, describeCityChange } from './lib/bakeSummary.ts'
 import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
+import { LANDMARKS, type LandmarkPlacement } from '../src/city/landmarks/registry.ts'
+import { minAreaRect } from './lib/geometry.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
@@ -129,6 +131,7 @@ const stats = {
   outsideRing: 0,
   waterfront: 0,
   pastInt16: 0,
+  landmarkModels: 0,
   heightFrom: { height: 0, levels: 0, parts: 0, default: 0 },
   badHeightValues: new Map<string, number>(),
 }
@@ -199,6 +202,17 @@ interface BakedBuilding {
   center: Pt
 }
 
+// Landmarks drawn as models (src/city/landmarks/registry.ts): their
+// footprints are left out of the extrusion, and each one's placement is
+// worked out from its footprint instead.
+const LANDMARK_BY_OSM = new Map(LANDMARKS.flatMap((l) => l.replaces.map((osm) => [osm, l] as const)))
+const landmarkFootprints = new Map<string, Footprint>()
+
+function ringBandOf(center: Pt, boundary: Pt[][]): number {
+  if (boundary.some((b) => pointInRing(center, b))) return 0
+  return Math.max(1, Math.ceil(Math.min(...boundary.map((b) => distToRing(center, b))) / RING_BAND_METERS))
+}
+
 function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[] {
   const outlines: Footprint[] = []
   const partGrid = new Grid<{ center: Pt; height: number }>(100)
@@ -232,6 +246,11 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
 
   const baked: BakedBuilding[] = []
   for (const f of outlines) {
+    if (LANDMARK_BY_OSM.has(f.osm)) {
+      landmarkFootprints.set(f.osm, f)
+      stats.landmarkModels++
+      continue
+    }
     const center = centroid(f.ring)
     let ringBand = 0
     if (!boundary.some((b) => pointInRing(center, b))) {
@@ -352,6 +371,9 @@ function bboxExtent(b: Bbox): [number, number, number, number] {
 
 // ----------------------------------------------------------------- main
 
+// Landmark grounds' OSM ways (registry.ts), fetched by ID with the rest.
+const LANDMARK_GROUNDS = new Set(LANDMARKS.flatMap((l) => (l.grounds ? [Number(l.grounds.split('/')[1])] : [])))
+
 async function loadFromOverpass(): Promise<OsmElement[]> {
   const cachedOnly = process.argv.includes('--cached-only')
   if (cachedOnly) console.warn('bake: --cached-only. Output may be PARTIAL; do not commit it.')
@@ -366,6 +388,10 @@ async function loadFromOverpass(): Promise<OsmElement[]> {
   // Full-geometry relations replace the tag-only copies from the tiles.
   const byId = new Map(tiled.map((e) => [`${e.type}/${e.id}`, e]))
   for (const r of relations) byId.set(`${r.type}/${r.id}`, r)
+  if (LANDMARK_GROUNDS.size) {
+    const grounds = await fetchOverpass(`[out:json][timeout:60];\nway(id:${[...LANDMARK_GROUNDS].join(',')});\nout tags geom;`, undefined, { cachedOnly })
+    for (const g of grounds) byId.set(`${g.type}/${g.id}`, g)
+  }
   return [...byId.values()]
 }
 
@@ -378,7 +404,7 @@ async function main() {
   let elements: OsmElement[]
   let osmTimestamp: string | null
   if (pbfIdx !== -1) {
-    ;({ elements, osmTimestamp } = loadFromPbf(process.argv[pbfIdx + 1] ?? '', QUERY_BBOX))
+    ;({ elements, osmTimestamp } = loadFromPbf(process.argv[pbfIdx + 1] ?? '', QUERY_BBOX, LANDMARK_GROUNDS))
   } else {
     elements = await loadFromOverpass()
     // The oldest response: the whole bake is at least that current.
@@ -413,6 +439,31 @@ async function main() {
   const unmatched = Object.keys(LANDMARK_MATERIALS).filter((name) => !pinnedMaterials.some((p) => p.name === name))
   if (unmatched.length) throw new Error(`bake: landmark material names match no building: ${unmatched.join(', ')}`)
 
+  // Each landmark's placement, from the first of its footprints; its grounds' outline.
+  const r1 = (v: number) => Math.round(v * 10) / 10
+  const landmarkModels: LandmarkPlacement[] = LANDMARKS.map((l) => {
+    const missing = l.replaces.filter((osm) => !landmarkFootprints.has(osm))
+    if (missing.length) throw new Error(`bake: landmark ${l.id}: no building footprint for ${missing.join(', ')}`)
+    const ring = landmarkFootprints.get(l.replaces[0])!.ring
+    const rect = minAreaRect(ring)
+    const center = centroid(ring)
+    const placement: LandmarkPlacement = {
+      id: l.id,
+      x: r1(rect.center[0]),
+      z: r1(rect.center[1]),
+      angle: Math.round(rect.angle * 1e4) / 1e4,
+      sizeX: r1(rect.sizeX),
+      sizeZ: r1(rect.sizeZ),
+      ring: Math.min(1, (ringBandOf(center, boundary) * RING_BAND_METERS) / RING_METERS),
+    }
+    if (l.grounds) {
+      const g = elements.find((e) => `${e.type}/${e.id}` === l.grounds)
+      if (!g || g.type !== 'way' || !g.geometry) throw new Error(`bake: landmark ${l.id}: grounds ${l.grounds} not found`)
+      placement.grounds = simplifyRing(openRing(g.geometry.map(project)), 1).flatMap(([x, z]) => [r1(x), r1(z)])
+    }
+    return placement
+  })
+
   const b = packLines(buildings.map((x) => x.ring))
   const s = packLines(streets.map((x) => x.line))
   const n = packLines(boundary)
@@ -424,6 +475,7 @@ async function main() {
       waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
       extent: bboxExtent(QUERY_BBOX),
       pinnedMaterials,
+      landmarkModels,
       attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
       osmTimestamp,
       osmElementsSha256,
@@ -467,6 +519,7 @@ async function main() {
     const top = [...stats.badHeightValues].sort((a, b) => b[1] - a[1]).slice(0, 8)
     console.log(`  unparseable height values (${stats.badHeightValues.size} distinct): ${top.map(([v, c]) => `${JSON.stringify(v)}×${c}`).join(', ')}`)
   }
+  console.log(`landmark models: ${landmarkModels.map((m) => `${m.id} (${m.sizeX.toFixed(0)} x ${m.sizeZ.toFixed(0)} m at ${m.x.toFixed(0)}, ${m.z.toFixed(0)}, ${((m.angle * 180) / Math.PI).toFixed(1)} deg${m.grounds ? `, grounds ${m.grounds.length / 2} pts` : ''})`).join(', ')}`)
   console.log(`landmark materials: ${pinnedMaterials.map((p) => `${p.name} (#${p.building}, ${buildings[p.building].height.toFixed(0)} m)`).join(', ')}`)
   console.log(`streets: ${streets.length} runs`)
   console.log(`\ntallest:`)

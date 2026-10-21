@@ -8,6 +8,11 @@
 //         inside city.bin's data extent, cached in scripts/.cache/
 // Output: src/data/trees.bin (see src/city/treeFormat.ts)
 //
+// Plus illustrative trees in landmark grounds (city.bin landmarkModels:
+// Coit Tower's Pioneer Park), which no tree inventory covers: scattered on
+// a jittered PARK_SPACING_M grid inside the grounds' OSM outline, clear of
+// the landmark itself, Monterey pines and cypresses (broad and columnar).
+//
 // Skipped: planting sites and stumps, median trees (our streets have no
 // medians, so they'd stand on the asphalt), trunks inside a building
 // footprint, and anything outside the bake area. Trunks on the drawn roadway
@@ -21,13 +26,21 @@ import { join } from 'node:path'
 import { COORD_QUANTUM, decodeCity } from '../src/city/format.ts'
 import { ringPosition } from '../src/city/ring.ts'
 import { decodeTrees, encodeTrees } from '../src/city/treeFormat.ts'
-import { TREE_KINDS, classifySpecies, isNotATree, parseDbh } from '../src/city/treeSpecies.ts'
+import { TREE_KINDS, TreeKind, TreeTone, classifySpecies, isNotATree, parseDbh } from '../src/city/treeSpecies.ts'
 import { distToOutline } from '../src/city/waterfront.ts'
 import { toLatLng, toScene } from '../src/geo/projection.ts'
 import { CURB_INSET_M, CURB_PUSH_MAX_M, FootprintIndex, RoadwayIndex } from './lib/treeSites.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE_DIR = join(ROOT, 'scripts/.cache')
+// Landmark grounds' trees (illustrative): one per PARK_SPACING_M cell where
+// a hash falls under PARK_FILL, none within PARK_CLEAR_M of the landmark's
+// center (Coit Tower's plaza), PARK_COLUMNAR of them cypresses.
+const PARK_SPACING_M = 8
+const PARK_FILL = 0.75
+const PARK_CLEAR_M = 30
+const PARK_COLUMNAR = 0.35
+const PARK_DBH = [14, 30] // inches
 const DATASET = 'tkzw-k3nq'
 // DataSF moved from data.sfgov.org (now a 301 here) in 2026.
 const ENDPOINT = `https://data.sf.gov/resource/${DATASET}.json`
@@ -153,6 +166,43 @@ async function main() {
 
   if (kept.length === 0) throw new Error(`trees: 0 trees kept from ${rows.length} rows -- refusing to write src/data/trees.bin`)
 
+  // Landmark grounds: the street trees first, so these never shift them.
+  let parkTrees = 0
+  for (const lm of city.header.landmarkModels ?? []) {
+    if (!lm.grounds) continue
+    const outline: [number, number][] = []
+    for (let i = 0; i < lm.grounds.length; i += 2) outline.push([lm.grounds[i], lm.grounds[i + 1]])
+    const xs = outline.map((p) => p[0])
+    const zs = outline.map((p) => p[1])
+    const h = (a: number, b: number, salt: number) => {
+      let v = Math.imul(a ^ Math.imul(salt, 0x9e3779b9), 0x85ebca6b) ^ Math.imul(b, 0xc2b2ae35)
+      v ^= v >>> 15
+      v = Math.imul(v, 0x2c1b3c6d)
+      v ^= v >>> 13
+      return (v >>> 0) / 4294967296
+    }
+    for (let gx = Math.floor(Math.min(...xs) / PARK_SPACING_M); gx <= Math.ceil(Math.max(...xs) / PARK_SPACING_M); gx++)
+      for (let gz = Math.floor(Math.min(...zs) / PARK_SPACING_M); gz <= Math.ceil(Math.max(...zs) / PARK_SPACING_M); gz++) {
+        if (h(gx, gz, 1) > PARK_FILL) continue
+        const x = (gx + 0.15 + 0.7 * h(gx, gz, 2)) * PARK_SPACING_M
+        const z = (gz + 0.15 + 0.7 * h(gx, gz, 3)) * PARK_SPACING_M
+        if (distToOutline(x, z, outline) > 0 || Math.hypot(x - lm.x, z - lm.z) < PARK_CLEAR_M) continue
+        if (footprints.contains(x, z) || roads.onRoadway(x, z)) continue
+        const columnar = h(gx, gz, 4) < PARK_COLUMNAR
+        const ring = ringPosition(city.boundary, ringMeters, x, z)
+        kept.push({
+          x,
+          z,
+          kind: columnar ? TreeKind.Columnar : TreeKind.Broad,
+          tone: h(gx, gz, 5) < 0.6 ? TreeTone.Deep : TreeTone.Gray,
+          dbh: Math.round(PARK_DBH[0] + (PARK_DBH[1] - PARK_DBH[0]) * h(gx, gz, 6)),
+          ring: Math.round(ring * 255),
+        })
+        byKind[columnar ? TreeKind.Columnar : TreeKind.Broad]++
+        parkTrees++
+      }
+  }
+
   const n = kept.length
   const coords = new Int16Array(2 * n)
   kept.forEach((t, i) => {
@@ -194,7 +244,7 @@ async function main() {
   const inArea = rows.length - drop.notATree - drop.noLocation - drop.outsideArea
   const pct = (v: number, of: number) => `${((100 * v) / of).toFixed(1)}%`
   console.log(`\nrows: ${rows.length} in the data extent (data as of ${dataAsOf})`)
-  console.log(`trees: ${n} kept (${core} in the three neighborhoods, ${n - core} in the ring; ${yard} yard trees)`)
+  console.log(`trees: ${n} kept (${core} in the three neighborhoods, ${n - core} in the ring; ${yard} yard trees; ${parkTrees} illustrative in landmark grounds)`)
   console.log(`  dropped before the bake area: ${drop.notATree} planting sites/stumps, ${drop.noLocation} without a location, ${drop.outsideArea} outside it`)
   console.log(
     `  of the ${inArea} trees in the bake area: ${drop.median} median trees (${pct(drop.median, inArea)}), ` +

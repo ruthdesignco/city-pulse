@@ -223,3 +223,67 @@ export function parseHeight(raw: string | undefined): number | undefined {
   if (meters === undefined || !(meters > 0) || meters > MAX_PLAUSIBLE_HEIGHT_M) return undefined
   return meters
 }
+
+// Convex hull (Andrew's monotone chain), counterclockwise in (x, z).
+export function convexHull(points: Pt[]): Pt[] {
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  if (p.length < 3) return p
+  const cross = (o: Pt, a: Pt, b: Pt) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+  const lower: Pt[] = []
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop()
+    lower.push(q)
+  }
+  const upper: Pt[] = []
+  for (let i = p.length - 1; i >= 0; i--) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p[i]) <= 0) upper.pop()
+    upper.push(p[i])
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)]
+}
+
+// The smallest-area rectangle around a ring (one side lies along a hull
+// edge): its center, its axes turned `angle` radians from +x, normalized to
+// within +-45 deg so local x stays the side nearest the scene's x axis, and
+// its size along each.
+export function minAreaRect(ring: Pt[]): { center: Pt; angle: number; sizeX: number; sizeZ: number } {
+  const hull = convexHull(ring)
+  let best = { area: Infinity, center: [0, 0] as Pt, angle: 0, sizeX: 0, sizeZ: 0 }
+  for (let i = 0; i < hull.length; i++) {
+    const [ax, az] = hull[i]
+    const [bx, bz] = hull[(i + 1) % hull.length]
+    const len = Math.hypot(bx - ax, bz - az)
+    if (len < 1e-9) continue
+    const ux = (bx - ax) / len
+    const uz = (bz - az) / len
+    let minU = Infinity
+    let maxU = -Infinity
+    let minV = Infinity
+    let maxV = -Infinity
+    for (const [x, z] of hull) {
+      const u = x * ux + z * uz
+      const v = -x * uz + z * ux
+      minU = Math.min(minU, u)
+      maxU = Math.max(maxU, u)
+      minV = Math.min(minV, v)
+      maxV = Math.max(maxV, v)
+    }
+    const area = (maxU - minU) * (maxV - minV)
+    if (area < best.area) {
+      const cu = (minU + maxU) / 2
+      const cv = (minV + maxV) / 2
+      best = { area, center: [cu * ux - cv * uz, cu * uz + cv * ux], angle: Math.atan2(uz, ux), sizeX: maxU - minU, sizeZ: maxV - minV }
+    }
+  }
+  // Turn by quarter turns into (-45, 45] deg, swapping the sizes each time.
+  let { angle, sizeX, sizeZ } = best
+  while (angle > Math.PI / 4) {
+    angle -= Math.PI / 2
+    ;[sizeX, sizeZ] = [sizeZ, sizeX]
+  }
+  while (angle <= -Math.PI / 4) {
+    angle += Math.PI / 2
+    ;[sizeX, sizeZ] = [sizeZ, sizeX]
+  }
+  return { center: best.center, angle, sizeX, sizeZ }
+}
