@@ -24,7 +24,7 @@ describe('data credits', () => {
 describe('about this view', () => {
   it('says which parts are illustrative, and that the light follows the real time', () => {
     const text = ABOUT_VIEW.join(' ')
-    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'real time', 'windows are lit', 'KSFO', 'Downtown can differ', 'How deep the fog is', 'Sutro Tower', "city's woods", 'less detail with distance'])
+    for (const word of ['Illustrative', 'storefronts', 'rooftop', 'materials', '8 m', 'real time', 'windows are lit', 'KSFO', 'Downtown can differ', 'How deep the fog is', 'Sutro Tower', "city's woods", 'less detail with distance', 'not its reported position', 'up to 30 m', 'subway'])
       expect(text).toContain(word)
   })
 })
