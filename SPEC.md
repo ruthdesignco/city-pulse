@@ -80,7 +80,7 @@ DataSF moved from data.sfgov.org to data.sf.gov in 2026; the old host answers wi
 ## Honest about what's hard
 - **Muni carries the live feel.** Police data is ~20 minutes behind at best; the field should read as "recent rhythm," not "happening now."
 - **Interpolation is the trickiest Weekend 1 code.** Projecting positions onto route shapes and easing between two observations without buses jumping backward.
-- **The 511 cap is tight.** About one call per 75 seconds leaves little room for retries or extra endpoints. Email transitdata@511.org early for a higher limit.
+- **The 511 cap is tight.** About one call per 75 seconds leaves little room for retries or extra endpoints. A higher limit was requested from transitdata@511.org on 2026-10-22, with the §2.g product notice; no reply yet.
 - **Interpolation hides dead feeds.** That's why freshness dimming ships in Weekend 1.
 - **The OSM bake will take longer than expected.** Timebox it.
 
