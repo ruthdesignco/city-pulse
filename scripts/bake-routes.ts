@@ -24,7 +24,7 @@ import { ORIGIN, createProjection, toLatLng, toScene } from '../src/geo/projecti
 import type { Route, RouteShape, RoutesFile } from '../src/transit/routes-format.ts'
 import { parseCsv } from './lib/csv.ts'
 import { type Pt, type Rect, clipPolylineToRect, inBakeArea, simplifyLine } from './lib/geometry.ts'
-import { fetchOverpass } from './lib/overpass.ts'
+import { fetchOverpass, overpassDataTimestamps } from './lib/overpass.ts'
 import { type Street, StreetIndex, snapRoute } from './lib/snapRoute.ts'
 import { TunnelIndex, markTunnels, tunnelQuery } from './lib/tunnels.ts'
 import { ensureGtfsZip, listZip, readZipText } from './lib/gtfs511.ts'
@@ -51,7 +51,7 @@ const naturalCompare = (a: string, b: string) => a.localeCompare(b, 'en', { nume
 
 // ---------------------------------------------------------------- area
 
-async function loadBakeArea(): Promise<{ rings: Pt[][]; ringMeters: number; streets: Street[] }> {
+async function loadBakeArea(): Promise<{ rings: Pt[][]; ringMeters: number; streets: Street[]; streetsSource: string }> {
   const index = readIndex()
   const { lat, lng } = index.origin
   if (lat !== ORIGIN.lat || lng !== ORIGIN.lng) throw new Error('area: the city was baked around a different ORIGIN; rebake it first')
@@ -67,7 +67,7 @@ async function loadBakeArea(): Promise<{ rings: Pt[][]; ringMeters: number; stre
       streets.push({ line, cls: s.classes[k] })
     })
   }
-  return { rings, ringMeters: index.ringMeters, streets }
+  return { rings, ringMeters: index.ringMeters, streets, streetsSource: index.sources.city ?? 'OpenStreetMap contributors (ODbL), extract of unknown date' }
 }
 
 function shapeExtent(rings: Pt[][], pad: number): Rect {
@@ -123,7 +123,7 @@ function loadGtfs(zip: string) {
 // ---------------------------------------------------------------- main
 
 async function main() {
-  const { rings, ringMeters, streets } = await loadBakeArea()
+  const { rings, ringMeters, streets, streetsSource } = await loadBakeArea()
   const streetIndex = new StreetIndex(streets)
   const extent = shapeExtent(rings, ringMeters + SHAPE_MARGIN_M)
   console.log(`area: ${rings.length} rings + ${ringMeters} m; shape extent ${(extent.maxX - extent.minX).toFixed(0)} x ${(extent.maxZ - extent.minZ).toFixed(0)} m`)
@@ -202,7 +202,12 @@ async function main() {
 
   const file: RoutesFile = {
     version: 2,
-    source: '511.org static GTFS, operator SF (SFMTA Muni)',
+    source: '511.org static GTFS, operator SF (SFMTA Muni), under the 511 Data Disseminator Agreement',
+    osm: {
+      license: 'Shapes snapped onto OpenStreetMap streets, with OSM street classes and tunnels: that geometry is ODbL 1.0 (scripts/bake-routes.ts is the method)',
+      streets: streetsSource,
+      tunnels: `OpenStreetMap contributors (ODbL), Overpass ${[...overpassDataTimestamps].sort()[0] ?? 'unknown'}`,
+    },
     feed: {
       version: gtfs.feedInfo?.feed_version || null,
       startDate: gtfs.feedInfo?.feed_start_date || null,

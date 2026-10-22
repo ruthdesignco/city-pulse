@@ -314,7 +314,10 @@ async function main() {
       }),
     )
   }
-  index.sources.trees = `Street trees: San Francisco Public Works via DataSF (PDDL 1.0), ${SOURCE_URL}, data as of ${dataAsOf ?? 'unknown'}; rows sha256 ${inputSha256.slice(0, 12)}`
+  // The illustrative trees stand in the tiles' OSM woods and wooded parks,
+  // and curbside trees move by the OSM streets' widths, so the tree tiles
+  // are OSM-derived: ODbL as a whole (the PDDL inventory can go in one).
+  index.sources.trees = `ODbL 1.0 as a whole. Street trees: San Francisco Public Works via DataSF (PDDL 1.0), ${SOURCE_URL}, data as of ${dataAsOf ?? 'unknown'}; rows sha256 ${inputSha256.slice(0, 12)}. Illustrative trees in the woods and wooded parks, and curbside trees' moves, from ${index.sources.city ?? 'OpenStreetMap contributors (ODbL)'}`
   writeIndex(index)
   const removed = pruneLayer(index, 'trees')
   if (before) console.log(`change vs the trees before: ${before} -> ${n} (${n - before >= 0 ? '+' : ''}${n - before})`)

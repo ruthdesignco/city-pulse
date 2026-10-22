@@ -49,6 +49,7 @@ describe('buildShapeIndex', () => {
     const file: RoutesFile = {
       version: 2,
       source: 'test',
+      osm: { license: '', streets: '', tunnels: '' },
       feed: { version: null, startDate: null, endDate: null },
       coordQuantum: 0.1,
       routes: [

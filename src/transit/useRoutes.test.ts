@@ -4,6 +4,7 @@ import type { RoutesFile } from './routes-format.ts'
 const file: RoutesFile = {
   version: 2,
   source: '511',
+  osm: { license: '', streets: '', tunnels: '' },
   feed: { version: null, startDate: null, endDate: null },
   coordQuantum: 0.1,
   routes: [],

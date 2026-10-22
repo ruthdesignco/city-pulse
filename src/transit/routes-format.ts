@@ -32,6 +32,9 @@ export interface Route {
 export interface RoutesFile {
   version: 2
   source: string
+  // Where the OSM-derived parts came from (ODbL 1.0, README "Data and
+  // licenses"): the streets the shapes are snapped to, and the Metro tunnels.
+  osm: { license: string; streets: string; tunnels: string }
   feed: { version: string | null; startDate: string | null; endDate: string | null }
   coordQuantum: number
   routes: Route[]
