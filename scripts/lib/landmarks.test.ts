@@ -1,14 +1,13 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { COORD_QUANTUM, HEIGHT_QUANTUM, decodeCity } from '../../src/city/format.ts'
+import { HEIGHT_QUANTUM } from '../../src/city/format.ts'
 import { Glow, place } from '../../src/city/landmarks/build.ts'
 import { LANDMARK_MODELS } from '../../src/city/landmarks/models.ts'
 import { LANDMARKS, type LandmarkPlacement } from '../../src/city/landmarks/registry.ts'
 
-const buf = readFileSync(join(import.meta.dirname, '../../src/data/city.bin'))
-const city = decodeCity(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
-const placements = city.header.landmarkModels ?? []
+import { loadShippedCity } from './shippedCity.ts'
+
+const { index, city } = await loadShippedCity()
+const placements = index.landmarkModels
 const at = (id: string) => placements.find((p) => p.id === id)!
 
 function bounds(p: LandmarkPlacement) {
@@ -40,8 +39,8 @@ describe('landmark models', () => {
         let sx = 0
         let sz = 0
         for (let i = 0; i < n; i++) {
-          sx += city.buildings.coords[c + 2 * i] * COORD_QUANTUM
-          sz += city.buildings.coords[c + 2 * i + 1] * COORD_QUANTUM
+          sx += city.buildings.coords[c + 2 * i]
+          sz += city.buildings.coords[c + 2 * i + 1]
         }
         const d = Math.hypot(sx / n - p.x, sz / n - p.z)
         if (d < 4) expect(city.buildings.heights[k] * HEIGHT_QUANTUM).toBeLessThan(20)

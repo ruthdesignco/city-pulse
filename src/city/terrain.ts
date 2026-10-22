@@ -1,5 +1,5 @@
 // The ground's height: USGS 3DEP elevations baked onto a grid
-// (scripts/bake-terrain.ts, src/data/terrain.bin). Everything that stands on
+// (scripts/bake-terrain.ts: a file per tile of the city). Everything that stands on
 // the ground asks heightAt(x, z) (buildings, streets, paving, trees,
 // vehicles, landmarks, the camera), and the ground mesh is the same grid
 // (Ground.tsx), each cell split into two triangles along the same diagonal
@@ -105,7 +105,28 @@ export function densify(line: [number, number][], step: number): [number, number
   return out
 }
 
-// Flat ground at sea level: for tests, and before there's a terrain.bin.
+// Tiles' grids (bake-terrain.ts: each TILE_M square from its corner, edges
+// shared) as one grid over columns i0..i1 and rows j0..j1 of tiles, `fill`
+// (m) where a tile has none (open water).
+export function stitchTerrain(tiles: Map<string, Terrain>, i0: number, j0: number, i1: number, j1: number, tileM: number, fill: number): Terrain {
+  const first = tiles.values().next().value
+  if (!first) throw new Error('terrain: no tiles to stitch')
+  const { cell, quantum, source, datum, bakedAt } = first.header
+  const per = Math.round(tileM / cell)
+  const nx = (i1 - i0 + 1) * per + 1
+  const nz = (j1 - j0 + 1) * per + 1
+  const heights = new Int16Array(nx * nz).fill(Math.round(fill / quantum))
+  for (let tj = j0; tj <= j1; tj++)
+    for (let ti = i0; ti <= i1; ti++) {
+      const t = tiles.get(`${ti},${tj}`)
+      if (!t) continue
+      if (t.header.cell !== cell || t.header.nx !== per + 1 || t.header.nz !== per + 1) throw new Error(`terrain: tile ${ti},${tj} is not a ${per + 1}-sample square`)
+      for (let j = 0; j <= per; j++) heights.set(t.heights.subarray(j * (per + 1), (j + 1) * (per + 1)), ((tj - j0) * per + j) * nx + (ti - i0) * per)
+    }
+  return new Terrain({ version: 2, x0: i0 * tileM, z0: j0 * tileM, cell, nx, nz, quantum, source, datum, bakedAt }, heights)
+}
+
+// Flat ground at sea level: for tests, and before there's any terrain.
 export const FLAT: Terrain = new Terrain(
   { version: 2, x0: 0, z0: 0, cell: 1, nx: 2, nz: 2, quantum: 0.1, source: 'flat', datum: '', bakedAt: '' },
   new Int16Array(4),
@@ -157,11 +178,11 @@ export async function encodeTerrain(t: Terrain): Promise<Uint8Array> {
 export async function decodeTerrain(buffer: ArrayBuffer): Promise<Terrain> {
   const bytes = new Uint8Array(buffer)
   const magic = new TextDecoder().decode(bytes.subarray(0, 4))
-  if (magic !== TERRAIN_MAGIC) throw new Error(`terrain.bin: bad magic ${JSON.stringify(magic)}`)
+  if (magic !== TERRAIN_MAGIC) throw new Error(`terrain: bad magic ${JSON.stringify(magic)}`)
   const len = new DataView(buffer).getUint32(4, true)
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + len))) as TerrainHeader
-  if (header.version !== 2) throw new Error(`terrain.bin: unsupported version ${header.version}`)
+  if (header.version !== 2) throw new Error(`terrain: unsupported version ${header.version}`)
   const raw = await pipe(bytes.subarray(align4(8 + len)), new DecompressionStream('gzip'))
-  if (raw.length !== 2 * header.nx * header.nz) throw new Error('terrain.bin: wrong number of heights')
+  if (raw.length !== 2 * header.nx * header.nz) throw new Error('terrain: wrong number of heights')
   return new Terrain(header, fromRowDeltas(new Int16Array(raw.buffer, raw.byteOffset, header.nx * header.nz), header.nx))
 }

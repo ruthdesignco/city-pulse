@@ -1,7 +1,7 @@
 // Street trees by species group: which low poly shape each tree gets
 // (treeModels.ts), which family of greens, and how big it's drawn. The bake
 // (scripts/bake-trees.ts) stores each tree's kind, tone and trunk diameter
-// (DBH) in trees.bin; the app sizes trees from those here, so sizing can be
+// (DBH) in the trees files (treeFormat.ts); the app sizes trees from those here, so sizing can be
 // tuned without a rebake.
 //
 // Species come from DataSF's Street Tree Inventory as

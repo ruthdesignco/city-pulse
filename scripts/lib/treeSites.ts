@@ -1,10 +1,10 @@
 // Where a street tree can't stand in our city: inside a baked building
 // footprint, or on the asphalt Streets.tsx draws (each centerline's class's
-// curb-to-curb width, roads.ts ROAD_CLASS). Both read city.bin, so trees are
+// curb-to-curb width, roads.ts ROAD_CLASS). Both read the tiles, so trees are
 // checked against exactly what's on screen. Spatial grids keep the ~40k
 // lookups fast.
 
-import { COORD_QUANTUM, type CityData } from '../../src/city/format.ts'
+import type { CityData } from '../../src/city/format.ts'
 import { ROAD_CLASS } from '../../src/city/roads.ts'
 
 const CELL_M = 50
@@ -42,8 +42,8 @@ export class FootprintIndex {
       let maxX = -Infinity
       let maxZ = -Infinity
       for (let i = 0; i < 2 * n; i += 2) {
-        const x = (ring[i] = b.coords[c + i] * COORD_QUANTUM)
-        const z = (ring[i + 1] = b.coords[c + i + 1] * COORD_QUANTUM)
+        const x = (ring[i] = b.coords[c + i])
+        const z = (ring[i + 1] = b.coords[c + i + 1])
         minX = Math.min(minX, x)
         maxX = Math.max(maxX, x)
         minZ = Math.min(minZ, z)
@@ -82,10 +82,10 @@ export class RoadwayIndex {
     s.counts.forEach((n, k) => {
       const half = ROAD_CLASS[s.classes[k]].asphaltM / 2
       for (let i = 0; i < n - 1; i++) {
-        const ax = s.coords[c + 2 * i] * COORD_QUANTUM
-        const az = s.coords[c + 2 * i + 1] * COORD_QUANTUM
-        const bx = s.coords[c + 2 * i + 2] * COORD_QUANTUM
-        const bz = s.coords[c + 2 * i + 3] * COORD_QUANTUM
+        const ax = s.coords[c + 2 * i]
+        const az = s.coords[c + 2 * i + 1]
+        const bx = s.coords[c + 2 * i + 2]
+        const bz = s.coords[c + 2 * i + 3]
         const id = this.segs.push([ax, az, bx, bz, half]) - 1
         this.grid.add(id, Math.min(ax, bx) - half, Math.min(az, bz) - half, Math.max(ax, bx) + half, Math.max(az, bz) + half)
       }

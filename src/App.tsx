@@ -154,7 +154,7 @@ export default function App() {
           })
         }}
       >
-        {/* Each independently-loading resource (city.bin, trees.bin, routes.json)
+        {/* Each independently-loading resource (the city's tiles, their trees, routes.json)
             gets its own Suspense boundary. Sharing one boundary across
             siblings suspending on different promises that resolve at
             different real times makes React discard and remount the WHOLE

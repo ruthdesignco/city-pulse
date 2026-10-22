@@ -1,9 +1,10 @@
 // Turn baked footprints into one merged, flat-shaded mesh: one draw call for
-// the whole city. Walls get their own vertices per edge so normals stay crisp.
+// a tile's buildings (Buildings.tsx). Walls get their own vertices per edge
+// so normals stay crisp.
 
 import { ShapeUtils, Vector2 } from 'three'
-import { type CityData, COORD_QUANTUM, HEIGHT_QUANTUM, RING_BAND_METERS } from './format.ts'
-import { StreetFrontage, hasStorefront } from './frontage.ts'
+import { type CityData, HEIGHT_QUANTUM, RING_BAND_METERS } from './format.ts'
+import { type StreetFrontage, hasStorefront } from './frontage.ts'
 
 export interface CityMesh {
   positions: Float32Array
@@ -26,7 +27,7 @@ export interface CityMesh {
 }
 
 // A stable per-building seed from its first footprint point in 0.1 m units
-// (the bake stores it: city.bin buildings.seeds), so a building keeps its
+// (the bake stores it: the tiles' buildings.seeds), so a building keeps its
 // window pattern across rebakes and coordinate formats.
 export const SEED_UNIT_M = 0.1
 export function seedHash(x: number, z: number): number {
@@ -58,16 +59,16 @@ export function buildingGround(pts: [number, number][], groundAt: (x: number, z:
 
 const flatGround = () => 0
 
-// With `streets`, walls that front one may get a storefront (frontage.ts);
-// `groundAt` stands each building on the terrain (buildingGround).
+// With `frontage` (the streets, frontage.ts), walls that front one may get
+// a storefront; `groundAt` stands each building on the terrain
+// (buildingGround).
 export function extrudeBuildings(
   b: CityData['buildings'],
   ringMeters = 600,
   pinned: { building: number; material: number }[] = [],
-  streets?: CityData['streets'],
+  frontage: StreetFrontage | null = null,
   groundAt: (x: number, z: number) => number = flatGround,
 ): CityMesh {
-  const frontage = streets ? new StreetFrontage(streets) : null
   let verts = 0
   let tris = 0
   for (const n of b.counts) {
@@ -115,7 +116,7 @@ export function extrudeBuildings(
     const pts: [number, number][] = []
     seed = seedOf(b.seeds[k])
     mat = pinnedBy.get(k) ?? 0
-    for (let i = 0; i < n; i++, c += 2) pts.push([b.coords[c] * COORD_QUANTUM, b.coords[c + 1] * COORD_QUANTUM])
+    for (let i = 0; i < n; i++, c += 2) pts.push([b.coords[c], b.coords[c + 1]])
     const g = buildingGround(pts, groundAt)
     ground = g.base
     // Its walls, from the lowest ground under it to its roof.

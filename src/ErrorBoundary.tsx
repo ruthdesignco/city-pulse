@@ -8,7 +8,7 @@ interface State {
   error: Error | null
 }
 
-// Catches a failed city.bin/routes.json fetch (or any other render-time
+// Catches a failed tile/routes.json fetch (or any other render-time
 // throw) so it takes down the error message and a retry button, not the
 // whole page including the Freshness pill. Loaders clear their cached
 // promise on rejection (see useCity.ts, useRoutes.ts), so retrying actually

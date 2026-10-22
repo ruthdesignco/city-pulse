@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "bake": "node --experimental-strip-types scripts/bake-city.ts",
+    "bake": "node --max-old-space-size=8192 --experimental-strip-types scripts/bake-city.ts",
     "bake:routes": "node --experimental-strip-types scripts/bake-routes.ts",
     "record": "node --experimental-strip-types scripts/record-state.ts",
     "shot": "node --experimental-strip-types scripts/shot.ts",

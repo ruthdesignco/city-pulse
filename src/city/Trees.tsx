@@ -12,7 +12,6 @@ import {
   Object3D,
   type PerspectiveCamera,
 } from 'three'
-import { COORD_QUANTUM } from './format.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
@@ -24,7 +23,7 @@ import type { Terrain } from './terrain.ts'
 import { useTerrain } from './useCity.ts'
 import { useTrees } from './useTrees.ts'
 
-// Street trees from src/data/trees.bin (scripts/bake-trees.ts): one instanced
+// Street trees from the tiles' trees files (scripts/bake-trees.ts): one instanced
 // mesh per kind, crown variant and level of detail (treeModels.ts,
 // treeLod.ts). Each tree's
 // transform and color are worked out once; when the camera has moved far
@@ -119,8 +118,8 @@ function buildSlots(data: TreesData, terrain: Terrain): KindSlot[] {
       const s = 1 + HEIGHT_JITTER * (2 * hash(key, 1) - 1)
       const w = 1 + CROWN_JITTER * (2 * hash(key, 2) - 1)
       const oval = STRETCH_JITTER * (2 * hash(key, 7) - 1)
-      const tx = data.coords[2 * t] * COORD_QUANTUM
-      const tz = data.coords[2 * t + 1] * COORD_QUANTUM
+      const tx = data.coords[2 * t]
+      const tz = data.coords[2 * t + 1]
       dummy.position.set(tx, terrain.heightAt(tx, tz), tz)
       dummy.rotation.set(0, 2 * Math.PI * hash(key, 3), 0)
       if (isUnitSized(kind)) dummy.scale.set(crown * w * (1 + oval), height * s, crown * w * (1 - oval))
@@ -223,7 +222,7 @@ export function Trees() {
       // Plain loops, no subarray views: this runs on every few meters of
       // camera motion, over every tree.
       slot.trees.forEach((t, j) => {
-        const level: TreeLevel = isNear(data.coords[2 * t] * COORD_QUANTUM, data.coords[2 * t + 1] * COORD_QUANTUM, now) ? 'near' : 'far'
+        const level: TreeLevel = isNear(data.coords[2 * t], data.coords[2 * t + 1], now) ? 'near' : 'far'
         const k = counts[level]++
         const m = out[level].instanceMatrix.array as Float32Array
         for (let e = 0; e < 16; e++) m[16 * k + e] = slot.matrices[16 * j + e]

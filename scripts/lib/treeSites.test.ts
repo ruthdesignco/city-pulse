@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { COORD_QUANTUM, StreetClass } from '../../src/city/format.ts'
+import { StreetClass } from '../../src/city/format.ts'
 import { ROAD_CLASS } from '../../src/city/roads.ts'
 import { CURB_INSET_M, CURB_PUSH_MAX_M, FootprintIndex, RoadwayIndex } from './treeSites.ts'
 
-// Coordinates are COORD_QUANTUM units.
-const q = (pts: number[]) => Int16Array.from(pts.map((v) => Math.round(v / COORD_QUANTUM)))
+// Coordinates in meters.
+const q = (pts: number[]) => Float32Array.from(pts)
 
 describe('FootprintIndex', () => {
   const footprints = new FootprintIndex({

@@ -1,20 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { COORD_QUANTUM } from './format.ts'
 import { EDGE_M, MIN_ROOF_M2, RoofItem, cornersOf, generateRooftops, insideRing } from './rooftops.ts'
 
-// Footprints in meters, quantized: a 40 x 30 m commercial block (Neutral, 20 m),
+// Footprints in meters: a 40 x 30 m commercial block (Neutral, 20 m),
 // a 120 m tower 30 x 30 m (Tower), a 6 x 6 m kiosk, and a 30 x 20 m
 // residential building only 5 m tall.
-const rect = (x: number, z: number, w: number, d: number) => [x, z, x + w, z, x + w, z + d, x, z + d].map((v) => Math.round(v / COORD_QUANTUM))
+const rect = (x: number, z: number, w: number, d: number) => [x, z, x + w, z, x + w, z + d, x, z + d]
 const buildings = {
   counts: Uint16Array.from([4, 4, 4, 4]),
   heights: Uint16Array.from([200, 1200, 100, 50]),
   ringBand: Uint8Array.from([0, 0, 0, 0]),
   colorIndex: Uint8Array.from([0, 6, 0, 3]),
   seeds: Uint32Array.from([11, 22, 33, 44]),
-  coords: Int16Array.from([...rect(0, 0, 40, 30), ...rect(100, 0, 30, 30), ...rect(200, 0, 6, 6), ...rect(300, 0, 30, 20)]),
+  coords: Float32Array.from([...rect(0, 0, 40, 30), ...rect(100, 0, 30, 30), ...rect(200, 0, 6, 6), ...rect(300, 0, 30, 20)]),
 }
-const rings = [rect(0, 0, 40, 30), rect(100, 0, 30, 30), rect(200, 0, 6, 6), rect(300, 0, 30, 20)].map((r) => r.map((v) => v * COORD_QUANTUM))
+const rings = [rect(0, 0, 40, 30), rect(100, 0, 30, 30), rect(200, 0, 6, 6), rect(300, 0, 30, 20)]
 
 describe('generateRooftops', () => {
   const pieces = generateRooftops(buildings, 800)

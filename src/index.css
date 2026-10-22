@@ -118,7 +118,7 @@ body,
   color: #8e93b8;
 }
 
-/* "Loading the city…" until city.bin arrives (App.tsx): the freshness
+/* "Loading the city…" until the city's tiles arrive (App.tsx): the freshness
    pill's look, centered. */
 .loading {
   position: absolute;

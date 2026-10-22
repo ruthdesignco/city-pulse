@@ -3,6 +3,7 @@ import {
   type Pt,
   centroid,
   clipPolylineToRect,
+  clipRingToRect,
   minAreaRect,
   distToRing,
   inBakeArea,
@@ -257,5 +258,25 @@ describe('minAreaRect', () => {
     expect(r.angle).toBeCloseTo(a, 6)
     expect(r.sizeX).toBeCloseTo(40, 6)
     expect(r.sizeZ).toBeCloseTo(20, 6)
+  })
+})
+
+describe('clipRingToRect', () => {
+  const r = { minX: 0, minZ: 0, maxX: 10, maxZ: 10 }
+  it('keeps a ring inside whole and drops one outside', () => {
+    expect(clipRingToRect(square, { minX: -1, minZ: -1, maxX: 11, maxZ: 11 })).toEqual(square)
+    expect(clipRingToRect(square, { minX: 20, minZ: 20, maxX: 30, maxZ: 30 })).toEqual([])
+  })
+  it('cuts a ring across the edges, keeping its area inside and its winding', () => {
+    const big: Pt[] = [
+      [-5, -5],
+      [5, -5],
+      [5, 5],
+      [-5, 5],
+    ]
+    const c = clipRingToRect(big, r)
+    expect(Math.abs(signedArea(c))).toBeCloseTo(25)
+    expect(Math.sign(signedArea(c))).toBe(Math.sign(signedArea(big)))
+    for (const [x, z] of c) expect(x >= 0 && x <= 10 && z >= 0 && z <= 10).toBe(true)
   })
 })

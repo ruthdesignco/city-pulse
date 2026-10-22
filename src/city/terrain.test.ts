@@ -23,7 +23,7 @@ describe('Terrain', () => {
     expect(hill.heightAt(102, 208)).toBeCloseTo(6, 9)
   })
 
-  it('round-trips through terrain.bin bytes', async () => {
+  it('round-trips through the file format', async () => {
     const bytes = await encodeTerrain(hill)
     const back = await decodeTerrain(bytes.buffer as ArrayBuffer)
     expect(back.header).toEqual(hill.header)

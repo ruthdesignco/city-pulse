@@ -1,34 +1,42 @@
-// Bake OSM buildings and streets for SoMa, the Mission and the Tenderloin
-// (plus a dimmer context ring, extended out to the Bay along the waterfront:
-// src/city/waterfront.ts) into src/data/city.bin.
+// Bake OpenStreetMap's buildings, streets and ground cover for all of San
+// Francisco's land into tiles (src/city/format.ts): TILE_M squares from
+// the scene origin, files in public/tiles/, listed in src/data/city-index.json
+// (src/city/cityIndex.ts) with what's city-wide. SoMa, the Mission and the
+// Tenderloin are the focus; everything else is a context ring that fades a
+// little toward the haze with distance from them (ring.ts), the whole city
+// past RING_METERS.
 //
-//   npm run bake                    fetch what's missing, then bake
-//   npm run bake -- --cached-only   bake from cache only (partial preview)
-//   npm run bake -- --pbf <file>    bake from a Geofabrik .osm.pbf via osmium-tool
+//   npm run bake -- --pbf <file>    bake from a Geofabrik .osm.pbf extract
+//                                   (norcal-*.osm.pbf covers the city)
 //
-// Inputs:  scripts/data/analysis-neighborhoods.geojson (DataSF)
-//          OpenStreetMap via Overpass, cached in scripts/.cache/
-// Output:  src/data/city.bin (see src/city/format.ts)
+// Inputs:  scripts/data/analysis-neighborhoods.geojson (DataSF): the three
+//          neighborhoods, and all 41 together as the city's land
+//          (landMask.ts); Alcatraz too, which they leave out
+// Output:  public/tiles/city-<i>_<j>-<hash>.bin, src/data/city-index.json
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import {
-  COORD_QUANTUM,
   HEIGHT_QUANTUM,
   RING_BAND_METERS,
   StreetClass,
-  type CityData,
+  TILE_M,
+  type CityTile,
   type Landmark,
-  decodeCity,
-  encodeCity,
+  type PinnedMaterial,
+  decodeTile,
+  encodeTile,
+  toLines,
 } from '../src/city/format.ts'
+import { type CityIndex, INDEX_VERSION, type TileEntry, tileKey } from '../src/city/cityIndex.ts'
 import { seedHash, SEED_UNIT_M } from '../src/city/extrude.ts'
 import { distToOutline, waterfrontOutline } from '../src/city/waterfront.ts'
 import { ORIGIN, toScene } from '../src/geo/projection.ts'
 import {
   type Pt,
+  type Rect,
   centroid,
+  clipPolylineToRect,
+  clipRingToRect,
   distToRing,
   openRing,
   parseHeight,
@@ -38,38 +46,32 @@ import {
   simplifyRing,
   stitchRings,
 } from './lib/geometry.ts'
-import {
-  type Bbox,
-  type OsmElement,
-  type OsmGeomPoint,
-  buildingRelationsQuery,
-  cityQuery,
-  coverQuery,
-  fetchOverpass,
-  fetchTiled,
-  overpassDataTimestamps,
-} from './lib/overpass.ts'
-import { compareCities, describeCityChange } from './lib/bakeSummary.ts'
+import type { Bbox, OsmElement, OsmGeomPoint } from './lib/overpass.ts'
 import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
 import { CLIFF_WIDTH_M, coverClass, isCliff } from './lib/cover.ts'
 import { LANDMARKS, type LandmarkPlacement } from '../src/city/landmarks/registry.ts'
 import { minAreaRect } from './lib/geometry.ts'
+import { LandMask, neighborhoodRings } from './lib/landMask.ts'
+import { pruneLayer, readIndexIfAny, readTileFile, sizeReport, writeIndex, writeTileFile } from './lib/tileFiles.ts'
 
-const ROOT = join(import.meta.dirname, '..')
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
 // 800 m (not 600) so the whole Transbay cluster is in: Salesforce Tower sits
 // ~600 m out, Millennium and 181 Fremont ~700 m.
 const RING_METERS = 800
-// Cluster bbox padded ~850 m, north to the waterfront extension's edge
-// (Bay St and the piers off it); corners stay inside the Int16 range at
-// COORD_QUANTUM. Part of the Overpass cache key: changing it refetches
-// every tile.
-const QUERY_BBOX: Bbox = { south: 37.74, west: -122.4367, north: 37.8095, east: -122.3825 }
+// The city's land with room around it (the extract is read for this box).
+const QUERY_BBOX: Bbox = { south: 37.7065, west: -122.517, north: 37.8345, east: -122.3555 }
 const WATERFRONT = waterfrontOutline()
-const INT16_LIMIT_M = 32767 * COORD_QUANTUM
-const TILES = 3
+// Alcatraz, which the neighborhoods leave out: its buildings are the city's.
+const ALCATRAZ: Rect = (() => {
+  const nw = toScene(37.8295, -122.4265)
+  const se = toScene(37.8235, -122.4185)
+  return { minX: nw.x, minZ: nw.z, maxX: se.x, maxZ: se.z }
+})()
+// Streets and cover may reach a little past the land (piers, the shore's
+// beaches and rocks).
+const SHORE_M = 60
 
 const SIMPLIFY_BUILDING_M = 0.75
 const SIMPLIFY_STREET_M = 1.0
@@ -90,26 +92,18 @@ const project = (p: OsmGeomPoint): Pt => {
   return [s.x, s.z]
 }
 
-// ---------------------------------------------------------------- boundary
+const inRect = ([x, z]: Pt, r: Rect) => x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ
 
-interface GeoJsonFeature {
-  properties: { nhood: string }
-  geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: number[][][] | number[][][][] }
-}
-
-function loadBoundary(): Pt[][] {
-  const fc = JSON.parse(readFileSync(join(ROOT, 'scripts/data/analysis-neighborhoods.geojson'), 'utf8'))
-  const rings: Pt[][] = []
-  for (const name of NEIGHBORHOODS) {
-    const f = (fc.features as GeoJsonFeature[]).find((x) => x.properties.nhood === name)
-    if (!f) throw new Error(`boundary: no feature named ${JSON.stringify(name)}`)
-    const polys = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][]
-    for (const poly of polys) {
-      if (poly.length > 1) console.warn(`boundary: ${name} has ${poly.length - 1} hole(s); ignoring holes`)
-      rings.push(openRing(poly[0].map(([lng, lat]) => project({ lat, lon: lng }))))
-    }
+// What the bake keeps: the city's land, Alcatraz, and as before the
+// neighborhoods' ring out to the Bay (the waterfront extension: piers).
+// `shore`: also within SHORE_M of land.
+function areaTest(mask: LandMask, boundary: Pt[][]) {
+  const nearLand = ([x, z]: Pt) => {
+    for (const [dx, dz] of [[0, 0], [SHORE_M, 0], [-SHORE_M, 0], [0, SHORE_M], [0, -SHORE_M]]) if (mask.has(x + dx, z + dz)) return true
+    return false
   }
-  return rings
+  const ring = (p: Pt) => boundary.some((b) => pointInRing(p, b)) || Math.min(...boundary.map((b) => distToRing(p, b))) <= RING_METERS || distToOutline(p[0], p[1], WATERFRONT) === 0
+  return (p: Pt, shore = false) => mask.has(p[0], p[1]) || inRect(p, ALCATRAZ) || (shore && nearLand(p)) || ring(p)
 }
 
 // ------------------------------------------------------------- buildings
@@ -130,9 +124,7 @@ const stats = {
   bridgeSupports: 0,
   underground: 0,
   tooSmall: 0,
-  outsideRing: 0,
-  waterfront: 0,
-  pastInt16: 0,
+  outsideCity: 0,
   landmarkModels: 0,
   heightFrom: { height: 0, levels: 0, parts: 0, default: 0 },
   badHeightValues: new Map<string, number>(),
@@ -210,12 +202,15 @@ interface BakedBuilding {
 const LANDMARK_BY_OSM = new Map(LANDMARKS.flatMap((l) => l.replaces.map((osm) => [osm, l] as const)))
 const landmarkFootprints = new Map<string, Footprint>()
 
+// Past RING_METERS a building is as far out as the ring goes (ring.ts):
+// capped there, so the whole city fits a byte.
 function ringBandOf(center: Pt, boundary: Pt[][]): number {
   if (boundary.some((b) => pointInRing(center, b))) return 0
-  return Math.max(1, Math.ceil(Math.min(...boundary.map((b) => distToRing(center, b))) / RING_BAND_METERS))
+  const d = Math.min(...boundary.map((b) => distToRing(center, b)))
+  return Math.max(1, Math.min(Math.ceil(RING_METERS / RING_BAND_METERS), Math.ceil(d / RING_BAND_METERS)))
 }
 
-function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[] {
+function bakeBuildings(elements: OsmElement[], boundary: Pt[][], keep: (p: Pt) => boolean): BakedBuilding[] {
   const outlines: Footprint[] = []
   const partGrid = new Grid<{ center: Pt; height: number }>(100)
 
@@ -254,22 +249,11 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][]): BakedBuilding[
       continue
     }
     const center = centroid(f.ring)
-    let ringBand = 0
-    if (!boundary.some((b) => pointInRing(center, b))) {
-      const d = Math.min(...boundary.map((b) => distToRing(center, b)))
-      if (d > RING_METERS) {
-        if (distToOutline(center[0], center[1], WATERFRONT) > 0) {
-          stats.outsideRing++
-          continue
-        }
-        stats.waterfront++
-      }
-      ringBand = Math.max(1, Math.ceil(d / RING_BAND_METERS))
-    }
-    if (f.ring.some(([x, z]) => Math.abs(x) > INT16_LIMIT_M || Math.abs(z) > INT16_LIMIT_M)) {
-      stats.pastInt16++
+    if (!keep(center)) {
+      stats.outsideCity++
       continue
     }
+    const ringBand = ringBandOf(center, boundary)
 
     let ring = simplifyRing(f.ring, SIMPLIFY_BUILDING_M)
     const area = signedArea(ring)
@@ -314,13 +298,10 @@ const STREET_CLASS: Record<string, number> = {
   tertiary_link: StreetClass.Minor,
 }
 
-// Keep only the runs of each street inside the cluster + ring, so streets
-// end where the buildings do instead of trailing off into empty ground.
-function bakeStreets(elements: OsmElement[], boundary: Pt[][]): { line: Pt[]; cls: number }[] {
-  const within = (p: Pt) =>
-    boundary.some((b) => pointInRing(p, b)) ||
-    Math.min(...boundary.map((b) => distToRing(p, b))) <= RING_METERS ||
-    distToOutline(p[0], p[1], WATERFRONT) === 0
+// Keep only the runs of each street on the city's land (and its piers), so
+// streets end where the city does instead of trailing on into Daly City.
+function bakeStreets(elements: OsmElement[], keep: (p: Pt, shore: boolean) => boolean): { line: Pt[]; cls: number }[] {
+  const within = (p: Pt) => keep(p, true)
   const out: { line: Pt[]; cls: number }[] = []
   for (const el of elements) {
     if (el.type !== 'way' || !el.tags?.highway || !el.geometry) continue
@@ -342,17 +323,13 @@ function bakeStreets(elements: OsmElement[], boundary: Pt[][]): { line: Pt[]; cl
 
 // ----------------------------------------------------------- ground cover
 
-// OSM ground cover (scripts/lib/cover.ts) over the bake area: areas as
-// their outer rings (holes ignored, as for buildings), cliffs widened from
-// their top edge to the right by CLIFF_WIDTH_M. Kept where any point is in
-// the area (the neighborhoods, the ring, the extensions) and inside the
-// Int16 range.
+// OSM ground cover (scripts/lib/cover.ts) over the city: areas as their
+// outer rings (holes ignored, as for buildings), cliffs widened from their
+// top edge to the right by CLIFF_WIDTH_M. Kept where any point is on the
+// city's land or its shore.
 const SIMPLIFY_COVER_M = 1
-function bakeCover(elements: OsmElement[], boundary: Pt[][]): { ring: Pt[]; cls: number }[] {
-  const within = (p: Pt) =>
-    Math.abs(p[0]) < INT16_LIMIT_M &&
-    Math.abs(p[1]) < INT16_LIMIT_M &&
-    (boundary.some((b) => pointInRing(p, b)) || Math.min(...boundary.map((b) => distToRing(p, b))) <= RING_METERS || distToOutline(p[0], p[1], WATERFRONT) === 0)
+function bakeCover(elements: OsmElement[], keep: (p: Pt, shore: boolean) => boolean): { ring: Pt[]; cls: number }[] {
+  const within = (p: Pt) => keep(p, true)
   const out: { ring: Pt[]; cls: number }[] = []
   for (const el of elements) {
     const cls = coverClass(el.tags)
@@ -370,7 +347,7 @@ function bakeCover(elements: OsmElement[], boundary: Pt[][]): { ring: Pt[]; cls:
       rings = [[...line, ...offset.reverse()]]
     } else rings = footprintsOf(el, el.tags ?? {}).map((f) => f.ring)
     for (const r of rings) {
-      if (r.length < 3 || !r.some(within) || r.some(([x, z]) => Math.abs(x) >= INT16_LIMIT_M || Math.abs(z) >= INT16_LIMIT_M)) continue
+      if (r.length < 3 || !r.some(within)) continue
       let ring = simplifyRing(r, SIMPLIFY_COVER_M)
       if (ring.length < 3) continue
       if (signedArea(ring) < 0) ring = [...ring].reverse()
@@ -380,109 +357,103 @@ function bakeCover(elements: OsmElement[], boundary: Pt[][]): { ring: Pt[]; cls:
   return out
 }
 
-// --------------------------------------------------------------- encode
+// ----------------------------------------------------------------- tiles
 
-function quantize(v: number): number {
-  const q = Math.round(v / COORD_QUANTUM)
-  if (q < -32768 || q > 32767) throw new Error(`coordinate ${v.toFixed(1)} m is outside the Int16 range`)
-  return q
-}
-
-function packLines(lines: Pt[][]): { counts: Uint16Array; coords: Int16Array } {
-  const counts = new Uint16Array(lines.length)
-  const coords = new Int16Array(lines.reduce((n, l) => n + l.length * 2, 0))
-  let i = 0
-  lines.forEach((l, k) => {
-    if (l.length > 65535) throw new Error(`line with ${l.length} points exceeds Uint16`)
-    counts[k] = l.length
-    for (const [x, z] of l) {
-      coords[i++] = quantize(x)
-      coords[i++] = quantize(z)
-    }
-  })
-  return { counts, coords }
-}
-
-// The query bbox in scene meters, [minX, minZ, maxX, maxZ] (north is -z).
-function bboxExtent(b: Bbox): [number, number, number, number] {
-  const sw = toScene(b.south, b.west)
-  const ne = toScene(b.north, b.east)
-  const r = (v: number) => Math.round(v * 10) / 10
-  return [r(sw.x), r(ne.z), r(ne.x), r(sw.z)]
-}
-
-// ----------------------------------------------------------------- main
-
-// Landmark grounds' OSM ways (registry.ts), fetched by ID with the rest.
+// Landmark grounds' OSM ways (registry.ts), read with the rest.
 const LANDMARK_GROUNDS = new Set(LANDMARKS.flatMap((l) => (l.grounds ? [Number(l.grounds.split('/')[1])] : [])))
 
-async function loadFromOverpass(): Promise<OsmElement[]> {
-  const cachedOnly = process.argv.includes('--cached-only')
-  if (cachedOnly) console.warn('bake: --cached-only. Output may be PARTIAL; do not commit it.')
-  const tiled = await fetchTiled(QUERY_BBOX, TILES, TILES, cityQuery, { cachedOnly })
-  let relations: OsmElement[] = []
-  try {
-    relations = await fetchOverpass(buildingRelationsQuery(QUERY_BBOX), undefined, { cachedOnly })
-  } catch (err) {
-    if (!cachedOnly) throw err
-    console.warn('bake: building relations not cached; multipolygon buildings will be missing')
+const tileRect = (i: number, j: number): Rect => ({ minX: i * TILE_M, minZ: j * TILE_M, maxX: (i + 1) * TILE_M, maxZ: (j + 1) * TILE_M })
+const tileOf = ([x, z]: Pt): [number, number] => [Math.floor(x / TILE_M), Math.floor(z / TILE_M)]
+
+interface TileParts {
+  i: number
+  j: number
+  buildings: BakedBuilding[]
+  pinned: PinnedMaterial[]
+  streets: { line: Pt[]; cls: number }[]
+  cover: { ring: Pt[]; cls: number }[]
+}
+
+// Buildings by the tile their center is in; streets and cover cut at the
+// tiles' edges.
+function intoTiles(buildings: BakedBuilding[], streets: { line: Pt[]; cls: number }[], cover: { ring: Pt[]; cls: number }[]): Map<string, TileParts> {
+  const tiles = new Map<string, TileParts>()
+  const at = (i: number, j: number) => {
+    const k = tileKey(i, j)
+    let t = tiles.get(k)
+    if (!t) tiles.set(k, (t = { i, j, buildings: [], pinned: [], streets: [], cover: [] }))
+    return t
   }
-  // Full-geometry relations replace the tag-only copies from the tiles.
-  const byId = new Map(tiled.map((e) => [`${e.type}/${e.id}`, e]))
-  for (const r of relations) byId.set(`${r.type}/${r.id}`, r)
-  // Ground cover replaces any tag-only copies too.
-  for (const c of await fetchOverpass(coverQuery(QUERY_BBOX), undefined, { cachedOnly })) byId.set(`${c.type}/${c.id}`, c)
-  if (LANDMARK_GROUNDS.size) {
-    const grounds = await fetchOverpass(`[out:json][timeout:60];\nway(id:${[...LANDMARK_GROUNDS].join(',')});\nout tags geom;`, undefined, { cachedOnly })
-    for (const g of grounds) byId.set(`${g.type}/${g.id}`, g)
+  for (const b of buildings) {
+    const t = at(...tileOf(b.center))
+    if (b.name !== undefined && Object.hasOwn(LANDMARK_MATERIALS, b.name)) t.pinned.push({ building: t.buildings.length, material: LANDMARK_MATERIALS[b.name], name: b.name })
+    t.buildings.push(b)
   }
-  return [...byId.values()]
+  const span = (pts: Pt[]) => {
+    const [i0, j0] = tileOf([Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))])
+    const [i1, j1] = tileOf([Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))])
+    return { i0, j0, i1, j1 }
+  }
+  for (const s of streets) {
+    const { i0, j0, i1, j1 } = span(s.line)
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) for (const run of clipPolylineToRect(s.line, tileRect(i, j))) at(i, j).streets.push({ line: run, cls: s.cls })
+  }
+  for (const c of cover) {
+    const { i0, j0, i1, j1 } = span(c.ring)
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const ring = i0 === i1 && j0 === j1 ? c.ring : clipRingToRect(c.ring, tileRect(i, j))
+        if (ring.length >= 3 && Math.abs(signedArea(ring)) >= 1) at(i, j).cover.push({ ring, cls: c.cls })
+      }
+  }
+  return tiles
+}
+
+function toTile(t: TileParts): CityTile {
+  const b = t.buildings
+  return {
+    header: { version: 1, i: t.i, j: t.j, x0: t.i * TILE_M, z0: t.j * TILE_M, pinnedMaterials: t.pinned },
+    buildings: {
+      ...toLines(b.map((x) => x.ring)),
+      heights: Uint16Array.from(b, (x) => Math.round(x.height / HEIGHT_QUANTUM)),
+      ringBand: Uint8Array.from(b, (x) => Math.min(255, x.ringBand)),
+      colorIndex: Uint8Array.from(b, (x) => x.colorIndex),
+      seeds: Uint32Array.from(b, (x) => seedHash(Math.round(x.ring[0][0] / SEED_UNIT_M), Math.round(x.ring[0][1] / SEED_UNIT_M))),
+    },
+    streets: { ...toLines(t.streets.map((x) => x.line)), classes: Uint8Array.from(t.streets, (x) => x.cls) },
+    cover: { ...toLines(t.cover.map((x) => x.ring)), classes: Uint8Array.from(t.cover, (x) => x.cls) },
+  }
 }
 
 async function main() {
   const started = Date.now()
-  const boundary = loadBoundary()
-  console.log(`boundary: ${boundary.length} rings, ${boundary.reduce((n, r) => n + r.length, 0)} points`)
-
   const pbfIdx = process.argv.indexOf('--pbf')
-  let elements: OsmElement[]
-  let osmTimestamp: string | null
-  if (pbfIdx !== -1) {
-    ;({ elements, osmTimestamp } = loadFromPbf(process.argv[pbfIdx + 1] ?? '', QUERY_BBOX, LANDMARK_GROUNDS))
-  } else {
-    elements = await loadFromOverpass()
-    // The oldest response: the whole bake is at least that current.
-    osmTimestamp = [...overpassDataTimestamps].sort()[0] ?? null
-  }
+  if (pbfIdx === -1 || !process.argv[pbfIdx + 1]) throw new Error('bake: --pbf <file.osm.pbf> is required (a Geofabrik extract covering the city)')
+  const boundary = neighborhoodRings(NEIGHBORHOODS)
+  console.log(`boundary: ${boundary.length} rings, ${boundary.reduce((n, r) => n + r.length, 0)} points`)
+  const mask = new LandMask(neighborhoodRings())
+  const keep = areaTest(mask, boundary)
+
+  const { elements, osmTimestamp } = loadFromPbf(process.argv[pbfIdx + 1], QUERY_BBOX, LANDMARK_GROUNDS)
   if (!osmTimestamp) console.warn('bake: the OSM source has no data timestamp; osmTimestamp stays null')
   const osmElementsSha256 = createHash('sha256').update(JSON.stringify(elements)).digest('hex')
   console.log(`osm: ${elements.length} elements, data as of ${osmTimestamp ?? 'unknown'}`)
 
-  const buildings = bakeBuildings(elements, boundary)
-  const streets = bakeStreets(elements, boundary)
-  const cover = bakeCover(elements, boundary)
+  const buildings = bakeBuildings(elements, boundary, keep)
+  const streets = bakeStreets(elements, keep)
+  const cover = bakeCover(elements, keep)
 
-  // A near-empty OSM source (e.g. --cached-only with nothing cached yet, or
-  // a bad --pbf path) must never silently overwrite a good city.bin with a
-  // near-empty one -- happened twice in one session before this guard existed.
-  if (buildings.length === 0) {
-    throw new Error(
-      `bake: 0 buildings kept from ${elements.length} OSM elements -- refusing to write src/data/city.bin. ` +
-        'Check the Overpass cache (bake without --cached-only first) or the --pbf path.',
-    )
+  // A near-empty OSM source (a bad --pbf path, a wrong extract) must never
+  // silently overwrite a good city with a near-empty one.
+  if (buildings.length < 1000) {
+    throw new Error(`bake: only ${buildings.length} buildings kept from ${elements.length} OSM elements -- refusing to write. Check the --pbf extract covers San Francisco.`)
   }
 
   const tallest = [...buildings].sort((a, b) => b.height - a.height).slice(0, 10)
   const landmarks: Landmark[] = tallest
     .filter((b) => b.name)
     .map((b) => ({ name: b.name!, x: b.center[0], z: b.center[1], height: b.height }))
-
-  // Landmark facades, pinned by exact OSM name; every name must match.
-  const pinnedMaterials = buildings.flatMap((x, building) =>
-    x.name !== undefined && Object.hasOwn(LANDMARK_MATERIALS, x.name) ? [{ building, material: LANDMARK_MATERIALS[x.name], name: x.name }] : [],
-  )
-  const unmatched = Object.keys(LANDMARK_MATERIALS).filter((name) => !pinnedMaterials.some((p) => p.name === name))
-  if (unmatched.length) throw new Error(`bake: landmark material names match no building: ${unmatched.join(', ')}`)
 
   // Each landmark's placement, from the first of its footprints; its grounds' outline.
   const r1 = (v: number) => Math.round(v * 10) / 10
@@ -509,55 +480,64 @@ async function main() {
     return placement
   })
 
-  const b = packLines(buildings.map((x) => x.ring))
-  const s = packLines(streets.map((x) => x.line))
-  const n = packLines(boundary)
-  const cv = packLines(cover.map((x) => x.ring))
-  const data: CityData = {
-    header: {
-      version: 3,
-      origin: ORIGIN,
-      ringMeters: RING_METERS,
-      waterfront: WATERFRONT.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]),
-      extent: bboxExtent(QUERY_BBOX),
-      pinnedMaterials,
-      landmarkModels,
-      attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
-      osmTimestamp,
-      osmElementsSha256,
-      bakedAt: new Date().toISOString(),
-      landmarks,
-    },
-    buildings: {
-      counts: b.counts,
-      heights: Uint16Array.from(buildings, (x) => Math.round(x.height / HEIGHT_QUANTUM)),
-      ringBand: Uint8Array.from(buildings, (x) => Math.min(255, x.ringBand)),
-      colorIndex: Uint8Array.from(buildings, (x) => x.colorIndex),
-      seeds: Uint32Array.from(buildings, (x) => seedHash(Math.round(x.ring[0][0] / SEED_UNIT_M), Math.round(x.ring[0][1] / SEED_UNIT_M))),
-      coords: b.coords,
-    },
-    streets: { counts: s.counts, classes: Uint8Array.from(streets, (x) => x.cls), coords: s.coords },
-    boundary: n,
-    cover: { counts: cv.counts, classes: Uint8Array.from(cover, (x) => x.cls), coords: cv.coords },
-  }
-  const bytes = encodeCity(data)
-  const out = join(ROOT, 'src/data/city.bin')
-  if (existsSync(out)) {
-    const prev = readFileSync(out)
-    try {
-      console.log(`\nchange vs the committed city.bin: ${describeCityChange(compareCities(decodeCity(prev.buffer.slice(prev.byteOffset, prev.byteOffset + prev.byteLength)), data))}`)
-    } catch (err) {
-      // An older format version: nothing to compare against here.
-      console.log(`\nchange vs the committed city.bin: not compared (${err instanceof Error ? err.message : err})`)
+  const tiles = intoTiles(buildings, streets, cover)
+  // Landmark facades, pinned by exact OSM name; every name must match.
+  const pinned = [...tiles.values()].flatMap((t) => t.pinned)
+  const unmatched = Object.keys(LANDMARK_MATERIALS).filter((name) => !pinned.some((p) => p.name === name))
+  if (unmatched.length) throw new Error(`bake: landmark material names match no building: ${unmatched.join(', ')}`)
+
+  // What changes against the tiles baked before (by facade seed).
+  const before = readIndexIfAny()
+  const oldSeeds = new Set<number>()
+  let oldBuildings = 0
+  let oldStreets = 0
+  if (before)
+    for (const t of before.tiles) {
+      if (!t.files.city) continue
+      const old = await decodeTile(readTileFile(t.files.city.file))
+      old.buildings.seeds.forEach((x) => oldSeeds.add(x))
+      oldBuildings += old.buildings.counts.length
+      oldStreets += old.streets.counts.length
     }
+
+  const entries: TileEntry[] = []
+  const kept = new Map((before?.tiles ?? []).map((t) => [tileKey(t.i, t.j), t]))
+  for (const t of [...tiles.values()].sort((a, b) => a.j - b.j || a.i - b.i)) {
+    const land = Math.round(mask.fraction(tileRect(t.i, t.j)) * 1000) / 1000
+    if (t.buildings.length === 0 && land === 0) continue
+    const file = writeTileFile('city', t.i, t.j, await encodeTile(toTile(t)))
+    const prev = kept.get(tileKey(t.i, t.j))
+    entries.push({ i: t.i, j: t.j, buildings: t.buildings.length, land, files: { ...prev?.files, city: file } })
   }
-  writeFileSync(out, bytes)
+  const index: CityIndex = {
+    version: INDEX_VERSION,
+    origin: ORIGIN,
+    tileM: TILE_M,
+    ringMeters: RING_METERS,
+    boundary: boundary.map((r) => r.flatMap(([x, z]) => [r1(x), r1(z)])),
+    waterfront: WATERFRONT.map(([x, z]) => [r1(x), r1(z)]),
+    landmarks,
+    landmarkModels,
+    attribution: '© OpenStreetMap contributors (ODbL) · Neighborhoods: DataSF',
+    osmTimestamp,
+    osmElementsSha256,
+    bakedAt: new Date().toISOString(),
+    sources: { ...before?.sources, city: `OpenStreetMap contributors (ODbL), extract of ${osmTimestamp ?? 'unknown date'}` },
+    tiles: entries,
+  }
+  writeIndex(index)
+  const removed = pruneLayer(index, 'city')
+  if (before) {
+    const newSeeds = buildings.filter((b) => !oldSeeds.has(seedHash(Math.round(b.ring[0][0] / SEED_UNIT_M), Math.round(b.ring[0][1] / SEED_UNIT_M)))).length
+    console.log(`\nchange vs the tiles before: buildings ${oldBuildings} -> ${buildings.length}, streets ${oldStreets} -> ${streets.length}; ${newSeeds} buildings with a new facade seed (their look may change)`)
+  }
+  console.log(`tiles: ${entries.length} written, ${removed} stale city files removed`)
 
   // ------------------------------------------------------------- report
   const core = buildings.filter((x) => x.ringBand === 0).length
-  console.log(`\nbuildings: ${buildings.length} kept (${core} in the three neighborhoods, ${buildings.length - core} in the ring, ${stats.waterfront} of them in the waterfront extension)`)
+  console.log(`\nbuildings: ${buildings.length} kept (${core} in the three neighborhoods, ${buildings.length - core} beyond)`)
   console.log(`  outlines seen ${stats.outlines}, parts with heights ${stats.parts}`)
-  console.log(`  dropped: ${stats.outsideRing} beyond ring, ${stats.pastInt16} past the Int16 limit, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value, ${stats.bridgeSupports} bridge supports, ${stats.underground} underground`)
+  console.log(`  dropped: ${stats.outsideCity} outside the city, ${stats.tooSmall} under ${MIN_FOOTPRINT_M2} m², ${stats.skippedByValue} by building=* value, ${stats.bridgeSupports} bridge supports, ${stats.underground} underground`)
   console.log(`  multipolygon: ${stats.relationRingsUnclosed} outer rings could not be closed, ${stats.holesIgnored} inner rings (courtyards) ignored, ${stats.relationsWithoutGeometry} relations had no geometry`)
   const hf = stats.heightFrom
   const pct = (v: number) => `${((100 * v) / buildings.length).toFixed(1)}%`
@@ -567,14 +547,15 @@ async function main() {
     console.log(`  unparseable height values (${stats.badHeightValues.size} distinct): ${top.map(([v, c]) => `${JSON.stringify(v)}×${c}`).join(', ')}`)
   }
   console.log(`landmark models: ${landmarkModels.map((m) => `${m.id} (${m.sizeX.toFixed(0)} x ${m.sizeZ.toFixed(0)} m at ${m.x.toFixed(0)}, ${m.z.toFixed(0)}, ${((m.angle * 180) / Math.PI).toFixed(1)} deg${m.grounds ? `, grounds ${m.grounds.length / 2} pts` : ''})`).join(', ')}`)
-  console.log(`landmark materials: ${pinnedMaterials.map((p) => `${p.name} (#${p.building}, ${buildings[p.building].height.toFixed(0)} m)`).join(', ')}`)
+  console.log(`landmark materials: ${pinned.map((p) => p.name).join(', ')}`)
   console.log(`streets: ${streets.length} runs`)
   console.log(`ground cover: ${['grass', 'wood', 'rock', 'sand'].map((name, c) => `${cover.filter((x) => x.cls === c).length} ${name}`).join(', ')} outlines`)
   console.log(`\ntallest:`)
   for (const t of tallest) {
     console.log(`  ${t.height.toFixed(1).padStart(6)} m  ${t.name ?? '(unnamed)'}  at x=${t.center[0].toFixed(0)}, z=${t.center[1].toFixed(0)}${t.ringBand ? '  [ring]' : ''}`)
   }
-  console.log(`\nsrc/data/city.bin: ${(bytes.length / 1024).toFixed(0)} KB in ${((Date.now() - started) / 1000).toFixed(1)}s`)
+  console.log(`\n${sizeReport(index, ['city', 'terrain', 'trees'])}`)
+  console.log(`\nbaked in ${((Date.now() - started) / 1000).toFixed(1)}s`)
 }
 
 await main()

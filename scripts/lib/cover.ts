@@ -2,7 +2,7 @@
 // isn't paved (src/city/Ground.tsx): parks and lawns, woods and scrub,
 // bare rock and cliffs, sand. The bake (bake-city.ts) keeps these areas
 // (and cliffs, which OSM draws as lines along their top edge, widened to
-// CLIFF_WIDTH_M) in city.bin's cover section.
+// CLIFF_WIDTH_M) in the tiles' cover section.
 
 import { CoverClass } from '../../src/city/format.ts'
 

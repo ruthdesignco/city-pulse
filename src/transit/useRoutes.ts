@@ -1,7 +1,7 @@
 import { use } from 'react'
 import type { RoutesFile } from './routes-format.ts'
 import { type ShapeIndex, buildShapeIndex } from './shapes.ts'
-import routesUrl from '../data/routes.json?url' // hashed by the build, as city.bin (useCity.ts)
+import routesUrl from '../data/routes.json?url' // hashed by the build, as the city index (useCity.ts)
 
 export interface Routes {
   file: RoutesFile

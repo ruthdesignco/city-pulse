@@ -1,4 +1,4 @@
-// Road surfaces from the baked street centerlines (city.bin): each street is
+// Road surfaces from the baked street centerlines (the tiles): each street is
 // a flat ribbon of asphalt with a lighter sidewalk strip along both edges,
 // and the wider classes get dashed lane lines. Widths are typical San
 // Francisco curb-to-curb and sidewalk widths per class, not per street (the

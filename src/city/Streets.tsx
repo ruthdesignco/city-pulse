@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
-import { COORD_QUANTUM, StreetClass } from './format.ts'
+import { StreetClass } from './format.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
-import { ringDim, ringPosition } from './ring.ts'
+import { ringDim, ringField } from './ring.ts'
 import { ROAD_CLASS, type Mesh, type Pt, dashes, emptyMesh, laneLineOffsets, ribbon } from './roads.ts'
 import { type GroundShading, SHADING_PARS, groundShading, shadingCode } from './groundShading.ts'
 import { densify, drape } from './terrain.ts'
@@ -46,14 +46,13 @@ const POOL_BY_CLASS: Record<number, number> = { [StreetClass.Major]: 1, [StreetC
 // `pools` (ribbon layers): per vertex, the street's curb offset (m) and how
 // bright its streetlight pools are (POOL_BY_CLASS).
 function toGeometry(m: Mesh, base: Color, city: LoadedCity, pools?: { curb: number[]; lit: number[] }): BufferGeometry {
-  const { boundary } = city
-  const ringMeters = city.header.ringMeters
+  const ring = ringField(city.boundary, city.header.ringMeters, city.header.extent)
   const position = new Float32Array(m.position)
   const color = new Float32Array(position.length)
   const ringFade = new Float32Array(position.length / 3)
   for (let i = 0; i < position.length; i += 3) {
     base.toArray(color, i)
-    ringFade[i / 3] = ringDim(ringPosition(boundary, ringMeters, position[i], position[i + 2]))
+    ringFade[i / 3] = ringDim(ring(position[i], position[i + 2]))
   }
   // On the ground (terrain.ts), shaded by its slope.
   const normal = new Float32Array(position.length)
@@ -91,7 +90,7 @@ function buildLayers(city: LoadedCity) {
   let c = 0
   streets.counts.forEach((n, k) => {
     const raw: Pt[] = []
-    for (let i = 0; i < n; i++, c += 2) raw.push([streets.coords[c] * COORD_QUANTUM, streets.coords[c + 1] * COORD_QUANTUM])
+    for (let i = 0; i < n; i++, c += 2) raw.push([streets.coords[c], streets.coords[c + 1]])
     // A vertex every few meters, so the ribbon follows the ground's slope.
     const line = densify(raw, DRAPE_STEP_M)
     const cls = ROAD_CLASS[streets.classes[k]] ?? ROAD_CLASS[StreetClass.Local]

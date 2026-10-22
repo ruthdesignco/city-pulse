@@ -1,19 +1,11 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { decodeCity } from '../../src/city/format.ts'
-import { decodeTerrain } from '../../src/city/terrain.ts'
 import { toScene } from '../../src/geo/projection.ts'
+import { loadShippedCity } from './shippedCity.ts'
 
-const read = (f: string) => {
-  const b = readFileSync(join(import.meta.dirname, '../../src/data', f))
-  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)
-}
-const terrain = await decodeTerrain(read('terrain.bin'))
-const city = decodeCity(read('city.bin'))
+const shipped = await loadShippedCity()
 const at = (lat: number, lng: number) => {
   const p = toScene(lat, lng)
-  return terrain.heightAt(p.x, p.z)
+  return shipped.heightAt(p.x, p.z)
 }
 
 // The shipped terrain against known elevations (NAVD88; OSM's ele tags and
@@ -32,15 +24,22 @@ describe('the shipped terrain', () => {
   it('keeps the flats near sea level and the Bay under the water', () => {
     expect(at(37.7955, -122.3937)).toBeLessThan(8) // Ferry Building
     expect(at(37.775, -122.418)).toBeLessThan(25) // Market and Van Ness
-    expect(at(37.79, -122.37)).toBeLessThan(0.2) // the Bay
+    expect(at(37.792, -122.385)).toBeLessThan(0.2) // the Bay, off Rincon Point
   })
 
-  it('covers the whole bake area', () => {
-    const [minX, minZ, maxX, maxZ] = city.header.extent!
-    const { x0, z0, cell, nx, nz } = terrain.header
-    expect(x0).toBeLessThanOrEqual(minX)
-    expect(z0).toBeLessThanOrEqual(minZ)
-    expect(x0 + (nx - 1) * cell).toBeGreaterThanOrEqual(maxX)
-    expect(z0 + (nz - 1) * cell).toBeGreaterThanOrEqual(maxZ)
+  it('reaches across the city: Twin Peaks at ~280 m, Ocean Beach at the sea', () => {
+    expect(at(37.7516, -122.4477)).toBeGreaterThan(270) // Twin Peaks' south summit, 282 m
+    expect(at(37.7516, -122.4477)).toBeLessThan(290)
+    expect(at(37.76, -122.5115)).toBeLessThan(12) // the Great Highway at Ocean Beach
+  })
+
+  it('has ground under every tile, its edges shared with its neighbors', () => {
+    expect(shipped.terrain.size).toBe(shipped.index.tiles.length)
+    const m = shipped.index.tileM
+    for (const [k, t] of shipped.terrain) {
+      const [i, j] = k.split(',').map(Number)
+      const east = shipped.terrain.get(`${i + 1},${j}`)
+      if (east) for (let z = j * m; z <= (j + 1) * m; z += 50) expect(east.heightAt((i + 1) * m, z)).toBeCloseTo(t.heightAt((i + 1) * m, z), 6)
+    }
   })
 })

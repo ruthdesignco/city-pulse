@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { toScene } from '../geo/projection.ts'
-import { COORD_QUANTUM } from './format.ts'
 import { distToOutline, waterfrontOutline } from './waterfront.ts'
 
 const at = (lat: number, lng: number) => {
@@ -25,13 +24,6 @@ describe('the waterfront extension', () => {
     expect(at(37.801, -122.419)).toBeGreaterThan(0) // Russian Hill
     expect(at(37.808, -122.415)).toBeGreaterThan(0) // north of Bay St
     expect(at(37.79, -122.37)).toBeGreaterThan(0)
-  })
-
-  it('stays inside the Int16 coordinate range of city.bin', () => {
-    for (const [x, z] of waterfrontOutline()) {
-      expect(Math.abs(x)).toBeLessThan(32767 * COORD_QUANTUM)
-      expect(Math.abs(z)).toBeLessThan(32767 * COORD_QUANTUM)
-    }
   })
 
   it('is empty-safe: no outline is never inside', () => {

@@ -1,13 +1,13 @@
 // Rooftop detail on the flat roofs (Rooftops.tsx): mechanical boxes and
 // HVAC units, stair and elevator penthouses, a tower's mechanical
 // penthouse, and now and then a wooden water tank on an older mid-rise.
-// Worked out at load from city.bin, deterministic per building (the facade
+// Worked out at load from the tiles' buildings, deterministic per building (the facade
 // seed, extrude.ts), sized by footprint and building family
 // (scripts/lib/buildingColor.ts BuildingColorType), each item aligned with
 // the building's longest wall and kept inside the roof's edge without
 // overlapping the others.
 
-import { type CityData, COORD_QUANTUM, HEIGHT_QUANTUM, RING_BAND_METERS } from './format.ts'
+import { type CityData, HEIGHT_QUANTUM, RING_BAND_METERS } from './format.ts'
 import { buildingGround, seedOf } from './extrude.ts'
 
 export const RoofItem = { Hvac: 0, Penthouse: 1, Tank: 2 } as const
@@ -123,7 +123,7 @@ export function generateRooftops(
   for (let k = 0; k < b.counts.length; k++) {
     const n = b.counts[k]
     const ring = new Array<number>(2 * n)
-    for (let i = 0; i < 2 * n; i++) ring[i] = b.coords[c + i] * COORD_QUANTUM
+    for (let i = 0; i < 2 * n; i++) ring[i] = b.coords[c + i]
     const seed = seedOf(b.seeds[k])
     c += 2 * n
     const height = b.heights[k] * HEIGHT_QUANTUM

@@ -1,5 +1,5 @@
 // Snap a GTFS route shape onto the street centerlines the city draws
-// (city.bin, from OpenStreetMap), so vehicles drive on the asphalt instead
+// (the tiles, from OpenStreetMap), so vehicles drive on the asphalt instead
 // of beside it: GTFS shapes are traced separately and wander a few meters
 // off OSM's centerlines, onto sidewalks and into buildings.
 //

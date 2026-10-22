@@ -116,7 +116,7 @@ export const FACADES: [Facade, Facade, Facade, Facade] = [
 ]
 
 // A facade material pinned for a landmark (scripts/lib/landmarkMaterials.ts,
-// city.bin header `pinnedMaterials`), overriding the random choice below.
+// the tiles' `pinnedMaterials`), overriding the random choice below.
 export const PinnedMaterial = { Auto: 0, Glass: 1, PaleStone: 2, Granite: 3 } as const
 export type PinnedMaterial = (typeof PinnedMaterial)[keyof typeof PinnedMaterial]
 

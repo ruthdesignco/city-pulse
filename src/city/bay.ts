@@ -2,7 +2,7 @@
 // polygon whose near edge is the real waterfront (approximate bulkhead line,
 // hand-placed from map coordinates, ~50-100 m accuracy) and whose far edge
 // sits well past the fog's far distance, so it's never seen. The piers in
-// city.bin stand out over it, as the real ones do. South and west the city
+// the city's tiles stand out over it, as the real ones do. South and west the city
 // carries on over land (palette.ground) into the haze.
 //
 // Points run from the Presidio's shore east along the north waterfront,

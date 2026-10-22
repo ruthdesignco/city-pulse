@@ -1,43 +1,34 @@
 // Paving: everything between the roads and the buildings is concrete, the
 // same material as the sidewalks, so no bare ground shows through between a
-// sidewalk's edge and a building's footprint. One flat grid over the bake
-// area (neighborhoods + context ring), vertex-colored: sidewalk concrete,
-// fading toward the sky in the ring exactly like the sidewalks and buildings
-// there (ring.ts), then blending into the bare ground just past the ring's
-// outer edge, where the city stops.
+// sidewalk's edge and a building's footprint. One flat grid over the city's
+// loaded tiles (header.extent), vertex-colored: sidewalk concrete, fading
+// toward the land in the context ring exactly like the sidewalks and
+// buildings there (ring.ts), then into the bare ground across the city's
+// edge (cityEdge), where its tiles stop.
 
 import { Color } from 'three'
-import { COORD_QUANTUM, type CityData } from './format.ts'
+import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
-import { ringDim, ringPosition } from './ring.ts'
-import { distToOutline } from './waterfront.ts'
+import { ringDim, ringField } from './ring.ts'
 
 // The terrain's cell (scripts/bake-terrain.ts), on the same lattice from the
 // scene origin and split along the same diagonal, so the paving lies exactly
 // on the ground mesh (Ground.tsx).
 export const CELL_M = 20
-// Paving blends into bare ground over this distance either side of the ring's
-// edge (inside it, at most half the ring).
+// Paving blends into bare ground over this distance across the city's edge,
+// half inside it, half past it.
 export const EDGE_BLEND_M = 300
 
-// Distance (m) past the three neighborhoods' boundary, measured out to
-// ringMeters + EDGE_BLEND_M: within the waterfront extension, no further
-// than the ring's edge; past the baked data's extent (the ring is cut off
-// at its north edge), at least the ring's edge plus the distance past it.
-export function bakeDistance(city: CityData): (x: number, z: number) => number {
-  const { boundary } = city
-  const ringMeters = city.header.ringMeters
-  const waterfront = city.header.waterfront ?? []
-  const extent = city.header.extent
-  const reach = ringMeters + EDGE_BLEND_M
+// How far gone the city is at (x, z), 0..1 (linear: callers ease it): 0
+// more than EDGE_BLEND_M / 2 inside its tiles' extent, 1 as far past it.
+export function cityEdge(city: Pick<CityData, 'header'>): (x: number, z: number) => number {
+  const [minX, minZ, maxX, maxZ] = city.header.extent
   return (x, z) => {
-    let d = Math.min(ringPosition(boundary, reach, x, z) * reach, ringMeters + distToOutline(x, z, waterfront))
-    if (extent) {
-      const [minX, minZ, maxX, maxZ] = extent
-      const outside = Math.hypot(Math.max(0, minX - x, x - maxX), Math.max(0, minZ - z, z - maxZ))
-      if (outside > 0) d = Math.max(d, ringMeters + outside)
-    }
-    return d
+    // Signed distance to the extent's edge: negative inside.
+    const dx = Math.max(minX - x, x - maxX)
+    const dz = Math.max(minZ - z, z - maxZ)
+    const d = dx > 0 || dz > 0 ? Math.hypot(Math.max(0, dx), Math.max(0, dz)) : Math.max(dx, dz)
+    return Math.min(1, Math.max(0, (d + EDGE_BLEND_M / 2) / EDGE_BLEND_M))
   }
 }
 
@@ -52,31 +43,17 @@ export interface PavingGrid {
   index: Uint32Array
 }
 
-export function buildPaving(city: CityData, y: number): PavingGrid {
+export function buildPaving(city: Pick<CityData, 'header' | 'boundary'>, y: number): PavingGrid {
   const { boundary } = city
-  const ringMeters = city.header.ringMeters
-  const waterfront = city.header.waterfront ?? []
-  const reach = ringMeters + EDGE_BLEND_M
-  // Bounds: the boundary padded by `reach`, the extension by the edge blend.
-  let minX = Infinity
-  let minZ = Infinity
-  let maxX = -Infinity
-  let maxZ = -Infinity
-  const include = (x: number, z: number, pad: number) => {
-    minX = Math.min(minX, x - pad)
-    maxX = Math.max(maxX, x + pad)
-    minZ = Math.min(minZ, z - pad)
-    maxZ = Math.max(maxZ, z + pad)
-  }
-  for (let i = 0; i < boundary.coords.length; i += 2)
-    include(boundary.coords[i] * COORD_QUANTUM, boundary.coords[i + 1] * COORD_QUANTUM, reach)
-  for (const [x, z] of waterfront) include(x, z, EDGE_BLEND_M)
-  minX = Math.floor(minX / CELL_M) * CELL_M
-  minZ = Math.floor(minZ / CELL_M) * CELL_M
-  const nx = Math.ceil((maxX - minX) / CELL_M) + 1
-  const nz = Math.ceil((maxZ - minZ) / CELL_M) + 1
+  const { ringMeters, extent } = city.header
+  // The extent and the blend past it, on the CELL_M lattice.
+  const minX = Math.floor((extent[0] - EDGE_BLEND_M / 2) / CELL_M) * CELL_M
+  const minZ = Math.floor((extent[1] - EDGE_BLEND_M / 2) / CELL_M) * CELL_M
+  const nx = Math.ceil((extent[2] + EDGE_BLEND_M / 2 - minX) / CELL_M) + 1
+  const nz = Math.ceil((extent[3] + EDGE_BLEND_M / 2 - minZ) / CELL_M) + 1
 
-  const distance = bakeDistance(city)
+  const edge = cityEdge(city)
+  const ring = ringField(boundary, ringMeters, extent)
   const sidewalk = new Color(palette.sidewalk)
   const ground = new Color(palette.ground)
   const c = new Color()
@@ -88,15 +65,8 @@ export function buildPaving(city: CityData, y: number): PavingGrid {
       const z = minZ + j * CELL_M
       const k = (j * nx + i) * 3
       position.set([x, y, z], k)
-      const d = distance(x, z)
-      const ring = Math.min(1, d / ringMeters)
-      // Into the land across the ring's edge, from EDGE_BLEND_M inside it (at
-      // most half the ring) to EDGE_BLEND_M past it: the ring's outer paving
-      // fades toward the haze, far paler than the land, and blending only
-      // past the edge left a pale band between them.
-      const start = ringMeters - Math.min(EDGE_BLEND_M, ringMeters / 2)
-      const beyond = Math.min(1, Math.max(0, (d - start) / (ringMeters + EDGE_BLEND_M - start)))
-      c.copy(sidewalk).lerp(ground, Math.max(ringDim(ring), beyond * beyond * (3 - 2 * beyond)))
+      const t = edge(x, z)
+      c.copy(sidewalk).lerp(ground, Math.max(ringDim(ring(x, z)), t * t * (3 - 2 * t)))
       c.toArray(color, k)
     }
 

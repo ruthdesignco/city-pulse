@@ -8,7 +8,7 @@
 // sidewalk plus a small setback. Of several, the biggest street wins: a
 // corner building fronts its main street on that side.
 
-import { COORD_QUANTUM, type CityData, StreetClass } from './format.ts'
+import { type CityData, StreetClass } from './format.ts'
 import { ROAD_CLASS } from './roads.ts'
 
 const CELL_M = 40
@@ -37,10 +37,10 @@ export class StreetFrontage {
       const cls = s.classes[k]
       const reach = frontageReach(cls)
       for (let i = 0; i < n - 1; i++) {
-        const ax = s.coords[c + 2 * i] * COORD_QUANTUM
-        const az = s.coords[c + 2 * i + 1] * COORD_QUANTUM
-        const bx = s.coords[c + 2 * i + 2] * COORD_QUANTUM
-        const bz = s.coords[c + 2 * i + 3] * COORD_QUANTUM
+        const ax = s.coords[c + 2 * i]
+        const az = s.coords[c + 2 * i + 1]
+        const bx = s.coords[c + 2 * i + 2]
+        const bz = s.coords[c + 2 * i + 3]
         const id = this.segs.push([ax, az, bx, bz, cls]) - 1
         for (let gx = Math.floor((Math.min(ax, bx) - reach) / CELL_M); gx <= Math.floor((Math.max(ax, bx) + reach) / CELL_M); gx++)
           for (let gz = Math.floor((Math.min(az, bz) - reach) / CELL_M); gz <= Math.floor((Math.max(az, bz) + reach) / CELL_M); gz++) {

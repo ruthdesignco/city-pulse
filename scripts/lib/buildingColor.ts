@@ -1,4 +1,4 @@
-// Bucket an OSM building into one of three color families for city.bin's
+// Bucket an OSM building into one of three color families for the tiles'
 // `colorType` byte (format.ts), read by Buildings.tsx's shader
 // (palette.ts): cream/sandstone/pastel residential, gray/glass towers (by
 // height, regardless of tag), everything else the existing neutral grey.

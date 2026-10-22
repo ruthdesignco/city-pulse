@@ -123,7 +123,7 @@ export const CALIBRATION_CENTER: Vec3 = [TARGET[0], 500, TARGET[2]]
 // Close looks at the landmark models (src/city/landmarks/): the
 // Transamerica Pyramid from the south-southeast, both wings in profile at
 // its sides; Coit Tower from the southeast, over North Beach's roofs.
-// Centers from the bake (city.bin landmarkModels).
+// Centers from the bake (the city index's landmarkModels).
 const TRANSAMERICA: Vec3 = [900, 130, -3015]
 const COIT: Vec3 = [631, 32, -3815]
 // California Street's climb to Nob Hill (the 1 California and the cable

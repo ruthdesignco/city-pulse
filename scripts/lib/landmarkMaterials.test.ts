@@ -1,11 +1,9 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { Color } from 'three'
 import { describe, expect, it } from 'vitest'
 import { LANDMARK_MATERIALS } from './landmarkMaterials.ts'
 import { PinnedMaterial } from '../../src/city/facade.ts'
-import { decodeCity } from '../../src/city/format.ts'
 import { palette } from '../../src/city/palette.ts'
+import { loadShippedCity } from './shippedCity.ts'
 
 const luminance = (hex: string) => {
   const c = new Color(hex)
@@ -36,10 +34,9 @@ describe('landmark materials', () => {
     expect(granite.r).toBeGreaterThan(granite.b) // carnelian: red-brown, not gray
   })
 
-  it('is baked into the shipped city.bin: every landmark pinned, by its own name', () => {
-    const buf = readFileSync(join(import.meta.dirname, '../../src/data/city.bin'))
-    const city = decodeCity(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer)
-    const pins = city.header.pinnedMaterials ?? []
+  it('is baked into the shipped tiles: every landmark pinned, by its own name', async () => {
+    const { city } = await loadShippedCity()
+    const pins = city.pinnedMaterials
     for (const [name, material] of Object.entries(LANDMARK_MATERIALS)) {
       const pin = pins.find((p) => p.name === name)
       expect(pin, name).toBeDefined()

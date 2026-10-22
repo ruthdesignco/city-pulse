@@ -132,6 +132,32 @@ export function clipPolylineToRect(line: Pt[], r: Rect): Pt[][] {
   return out
 }
 
+// Sutherland-Hodgman: the part of a ring inside r (a concave ring cut in
+// two comes back as one ring joined along r's edge, which fills the same).
+export function clipRingToRect(ring: Pt[], r: Rect): Pt[] {
+  const edges: [(p: Pt) => boolean, (a: Pt, b: Pt) => Pt][] = [
+    [(p) => p[0] >= r.minX, (a, b) => [r.minX, a[1] + ((b[1] - a[1]) * (r.minX - a[0])) / (b[0] - a[0])]],
+    [(p) => p[0] <= r.maxX, (a, b) => [r.maxX, a[1] + ((b[1] - a[1]) * (r.maxX - a[0])) / (b[0] - a[0])]],
+    [(p) => p[1] >= r.minZ, (a, b) => [a[0] + ((b[0] - a[0]) * (r.minZ - a[1])) / (b[1] - a[1]), r.minZ]],
+    [(p) => p[1] <= r.maxZ, (a, b) => [a[0] + ((b[0] - a[0]) * (r.maxZ - a[1])) / (b[1] - a[1]), r.maxZ]],
+  ]
+  let out = ring
+  for (const [inside, cross] of edges) {
+    if (out.length === 0) break
+    const input = out
+    out = []
+    for (let i = 0; i < input.length; i++) {
+      const a = input[(i + input.length - 1) % input.length]
+      const b = input[i]
+      if (inside(b)) {
+        if (!inside(a)) out.push(cross(a, b))
+        out.push(b)
+      } else if (inside(a)) out.push(cross(a, b))
+    }
+  }
+  return out
+}
+
 // Douglas-Peucker on an open polyline; always keeps both ends.
 export function simplifyLine(points: Pt[], tolerance: number): Pt[] {
   if (points.length <= 2) return points

@@ -16,7 +16,7 @@ import { createServer } from 'vite'
 export const ROOT = join(import.meta.dirname, '..', '..')
 export const WIDTH = 1920
 export const HEIGHT = 1080
-// Time after the page's own network-idle for city.bin/routes.json to decode,
+// Time after the page's own network-idle for the tiles/routes.json to decode,
 // the scene to extrude/build, and the first few frames (shadows, SSAO) to
 // stabilize -- a guess, not measured; widen it if shots still look mid-load.
 const SETTLE_MS = 4000

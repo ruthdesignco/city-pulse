@@ -3,6 +3,8 @@ import { DEMO } from '../params.ts'
 import { BufferAttribute, BufferGeometry, Color, type Material, type Mesh, MeshStandardMaterial } from 'three'
 import { type LoadedCity, useCity } from './useCity.ts'
 import { extrudeBuildings } from './extrude.ts'
+import type { CityTile } from './format.ts'
+import { StreetFrontage } from './frontage.ts'
 import { type GroundShading, groundShading } from './groundShading.ts'
 import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
@@ -26,9 +28,10 @@ const ROOF_SHADE = 0.8
 // How far roofs go to gray at night.
 const ROOF_NIGHT_GRAY = 0.75
 
-function buildGeometry(city: LoadedCity): BufferGeometry {
-  const started = performance.now()
-  const mesh = extrudeBuildings(city.buildings, city.header.ringMeters, city.header.pinnedMaterials, city.streets, (x, z) => city.terrain.heightAt(x, z))
+// One tile's buildings (format.ts), with storefronts on walls that front
+// any street, the neighboring tiles' included.
+function buildGeometry(city: LoadedCity, tile: CityTile, frontage: StreetFrontage): BufferGeometry {
+  const mesh = extrudeBuildings(tile.buildings, city.header.ringMeters, tile.header.pinnedMaterials, frontage, (x, z) => city.terrain.heightAt(x, z))
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(mesh.positions, 3))
   g.setAttribute('normal', new BufferAttribute(mesh.normals, 3))
@@ -40,10 +43,18 @@ function buildGeometry(city: LoadedCity): BufferGeometry {
   g.setAttribute('localY', new BufferAttribute(mesh.localY, 1))
   g.setIndex(new BufferAttribute(mesh.index, 1))
   g.computeBoundingSphere()
-  console.info(
-    `city: ${city.buildings.counts.length} buildings, ${mesh.index.length / 3} triangles, extruded in ${(performance.now() - started).toFixed(0)} ms`,
-  )
   return g
+}
+
+// Every loaded tile's: drawn tile by tile, so each is culled on its own
+// from the view and the shadow map.
+function buildTiles(city: LoadedCity): BufferGeometry[] {
+  const started = performance.now()
+  const frontage = new StreetFrontage(city.streets)
+  const out = city.tiles.map((t) => buildGeometry(city, t, frontage))
+  const triangles = out.reduce((n, g) => n + (g.index?.count ?? 0) / 3, 0)
+  console.info(`city: ${city.buildings.counts.length} buildings in ${out.length} tiles, ${triangles} triangles, extruded in ${(performance.now() - started).toFixed(0)} ms`)
+  return out
 }
 
 function buildMaterial(shading: GroundShading): MeshStandardMaterial {
@@ -136,10 +147,16 @@ const reportDrawn = (own: Material): Mesh['onAfterRender'] => (renderer, _scene,
 
 export function Buildings() {
   const city = useCity()
-  const geometry = useMemo(() => buildGeometry(city), [city])
+  const geometries = useMemo(() => buildTiles(city), [city])
   const material = useMemo(() => buildMaterial(groundShading(city)), [city])
-  useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => () => geometries.forEach((g) => g.dispose()), [geometries])
   useEffect(() => () => material.dispose(), [material])
 
-  return <mesh geometry={geometry} material={material} castShadow receiveShadow onAfterRender={DEMO ? reportDrawn(material) : undefined} />
+  return (
+    <>
+      {geometries.map((g, k) => (
+        <mesh key={k} geometry={g} material={material} castShadow receiveShadow onAfterRender={DEMO ? reportDrawn(material) : undefined} />
+      ))}
+    </>
+  )
 }

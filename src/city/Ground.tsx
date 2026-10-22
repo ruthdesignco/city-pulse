@@ -10,7 +10,7 @@ import { LOD_STEPS, buildTile, lodFor, tileRanges } from './groundTiles.ts'
 import { LAND_TILE_M, createLandMaterial, createLandTexture } from './landTexture.ts'
 import { ModelBuilder, type V3 } from './landmarks/build.ts'
 import { landPars, landUniforms } from './landShading.ts'
-import { CELL_M as PAVING_CELL_M, EDGE_BLEND_M, bakeDistance, buildPaving } from './paving.ts'
+import { CELL_M as PAVING_CELL_M, buildPaving, cityEdge } from './paving.ts'
 import type { Terrain } from './terrain.ts'
 import { type LoadedCity, useCity } from './useCity.ts'
 
@@ -18,7 +18,8 @@ import { type LoadedCity, useCity } from './useCity.ts'
 // their distance needs (groundTiles.ts), textured as distant city like the
 // land beyond it, under a cover of paving over the bake area: everything
 // between the roads and the buildings is concrete, the sidewalks' color,
-// fading toward the haze in the ring and into bare ground past its edge
+// fading toward the haze in the ring and into bare ground past the city's
+// edge
 // (paving.ts, sampled every 20 m into a texture). Steep ground isn't paved:
 // Telegraph Hill's quarried east face, the slopes under the Filbert and
 // Greenwich steps turn to scrubby earth from STEEP_FROM (the slope's
@@ -43,7 +44,7 @@ const TERRAIN_Y = -0.2
 
 // The paving's colors as a texture over its grid, with a transparent texel
 // all round, so it ends where the grid does; its alpha falls off with the
-// paving's own fade past the ring's edge (paving.ts), so the land beyond
+// paving's own fade across the city's edge (paving.ts), so the land beyond
 // (landShading.ts) shows through where the paving has gone to bare ground.
 interface PavingTexture {
   texture: DataTexture
@@ -56,13 +57,12 @@ function pavingTexture(city: LoadedCity): PavingTexture {
   const h = p.nz + 2
   const data = new Uint8Array(w * h * 4)
   const c = new Color()
-  const distance = bakeDistance(city)
-  const ring = city.header.ringMeters
+  const edge = cityEdge(city)
   for (let j = 0; j < p.nz; j++)
     for (let i = 0; i < p.nx; i++) {
       const k = (j * p.nx + i) * 3
       c.setRGB(p.color[k], p.color[k + 1], p.color[k + 2]).convertLinearToSRGB()
-      const t = Math.min(1, Math.max(0, (distance(p.x0 + i * PAVING_CELL_M, p.z0 + j * PAVING_CELL_M) - ring) / EDGE_BLEND_M))
+      const t = edge(p.x0 + i * PAVING_CELL_M, p.z0 + j * PAVING_CELL_M)
       data.set([c.r * 255, c.g * 255, c.b * 255, 255 * (1 - t * t * (3 - 2 * t))], ((j + 1) * w + i + 1) * 4)
     }
   const texture = new DataTexture(data, w, h, RGBAFormat)

@@ -3,9 +3,9 @@ import { StreetClass } from './format.ts'
 import { STOREFRONT_SHARE, StreetFrontage, frontageReach, hasStorefront } from './frontage.ts'
 import { ROAD_CLASS } from './roads.ts'
 
-// Coordinates are COORD_QUANTUM (0.1 m) units. A minor street along x at
-// z = 0, and a local one along x at z = 40.
-const q = (pts: number[]) => Int16Array.from(pts.map((v) => v * 10))
+// Coordinates in meters. A minor street along x at z = 0, and a local one
+// along x at z = 40.
+const q = (pts: number[]) => Float32Array.from(pts)
 const frontage = new StreetFrontage({
   counts: Uint16Array.from([2, 2]),
   classes: Uint8Array.from([StreetClass.Minor, StreetClass.Local]),

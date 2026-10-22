@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
 import { extrudeBuildings } from './extrude.ts'
-import { COORD_QUANTUM } from './format.ts'
+import { StreetFrontage } from './frontage.ts'
 
 // One 10 x 10 m square, 20 m tall, wound so signedArea(x, z) > 0, plus a
-// triangle in the context ring. Coords in meters (quantized below), heights
-// in 0.1 m.
-const q = (m: number[]) => Int16Array.from(m, (v) => Math.round(v / COORD_QUANTUM))
+// triangle in the context ring. Coords in meters, heights in 0.1 m.
+const q = (m: number[]) => Float32Array.from(m)
 const buildings = {
   counts: new Uint16Array([4, 3]),
   heights: new Uint16Array([200, 50]),
@@ -71,9 +70,8 @@ describe('extrudeBuildings', () => {
 
   it('carries wall position, wall length, height and a seed per vertex for the windows', () => {
     const f = (v: number) => Array.from(g.facade.slice(v * 4, v * 4 + 4))
-    // First wall of the 10 x 10 m (to the coordinate quantum), 20 m
-    // building: from (0,0) to (10,0).
-    const side = Math.round(10 / COORD_QUANTUM) * COORD_QUANTUM
+    // First wall of the 10 x 10 m, 20 m building: from (0,0) to (10,0).
+    const side = 10
     const near = (got: number[], want: number[]) => want.forEach((w, i) => expect(got[i]).toBeCloseTo(w, 4))
     const [u0, len0, h0, seed] = f(0)
     near([u0, len0, h0], [0, side, 20])
@@ -105,7 +103,7 @@ describe('extrudeBuildings', () => {
     let marked: number[] = []
     for (let dx = 0; dx < 50 && marked.length === 0; dx++) {
       const moved = { ...buildings, seeds: Uint32Array.from(buildings.seeds, (s, k) => (k === 0 ? s + dx * 7919 : s)) }
-      const m = extrudeBuildings(moved, 600, [], streets)
+      const m = extrudeBuildings(moved, 600, [], new StreetFrontage(streets))
       marked = []
       for (let v = 0; v < m.storefront.length; v++) if (m.storefront[v]) marked.push(v)
       for (const v of marked) {

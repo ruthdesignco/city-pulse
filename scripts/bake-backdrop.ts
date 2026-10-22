@@ -1,5 +1,5 @@
 // Bake the landforms around the city (src/data/backdrop.bin, the same
-// format as terrain.bin: src/city/terrain.ts) for a low-detail backdrop:
+// format as the tiles' terrain: src/city/terrain.ts) for a low-detail backdrop:
 // the Marin Headlands and Mt Tamalpais, Angel Island, Alcatraz, Yerba Buena
 // Island, Twin Peaks and the rest of the peninsula, the East Bay hills. From
 // USGS 3DEP (public domain) at CELL_M, over BBOX. Context only: no

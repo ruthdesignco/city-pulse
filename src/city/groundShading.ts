@@ -9,7 +9,7 @@
 //   surroundings (the 5 m heights against their blur over AO_RADIUS_M):
 //   the foot of a slope, a hollow, a cut darkens a little.
 //   Cover: OSM's parks, woods and scrub, rock and cliffs, sand
-//   (city.bin cover), drawn into a 5 m map, shown instead of paving.
+//   (the tiles' cover), drawn into a 5 m map, shown instead of paving.
 //   Contact: the ground darkens along the foot of every building, most in
 //   alleys and light wells with walls close on both sides: the footprints
 //   drawn into a CONTACT_CELL_M map (by height: a low shed shades less)
@@ -24,8 +24,8 @@
 // mottled the land, which reads as distant city (landShading.ts).
 
 import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, RedFormat } from 'three'
-import { COORD_QUANTUM, HEIGHT_QUANTUM } from './format.ts'
-import { EDGE_BLEND_M, bakeDistance } from './paving.ts'
+import { HEIGHT_QUANTUM } from './format.ts'
+import { cityEdge } from './paving.ts'
 import { Terrain } from './terrain.ts'
 import type { LoadedCity } from './useCity.ts'
 
@@ -112,15 +112,14 @@ function smoothed(t: Terrain, smooth: Float32Array): Terrain {
 // between).
 function smoothing(city: LoadedCity): Float32Array {
   const { x0, z0, cell, nx, nz } = city.terrain.header
-  const distance = bakeDistance(city)
-  const ring = city.header.ringMeters
+  const edge = cityEdge(city)
   const step = 8
   const cx = Math.ceil((nx - 1) / step) + 1
   const cz = Math.ceil((nz - 1) / step) + 1
   const coarse = new Float32Array(cx * cz)
   for (let b = 0; b < cz; b++)
     for (let a = 0; a < cx; a++) {
-      const t = Math.min(1, Math.max(0, (distance(x0 + a * step * cell, z0 + b * step * cell) - ring) / EDGE_BLEND_M))
+      const t = edge(x0 + a * step * cell, z0 + b * step * cell)
       coarse[b * cx + a] = t * t * (3 - 2 * t)
     }
   const out = new Float32Array(nx * nz)
@@ -176,8 +175,8 @@ function coverPixels(city: LoadedCity): Uint8Array {
   counts.forEach((n, k) => {
     g.beginPath()
     for (let i = 0; i < n; i++, c += 2) {
-      const px = (coords[c] * COORD_QUANTUM - x0) / cell + 0.5
-      const pz = (coords[c + 1] * COORD_QUANTUM - z0) / cell + 0.5
+      const px = (coords[c] - x0) / cell + 0.5
+      const pz = (coords[c + 1] - z0) / cell + 0.5
       if (i === 0) g.moveTo(px, pz)
       else g.lineTo(px, pz)
     }
@@ -211,8 +210,8 @@ export function contactPixels(city: LoadedCity, grid: ContactGrid): Uint8Array {
     const v = Math.round(255 * Math.min(1, (heights[k] * HEIGHT_QUANTUM) / CONTACT_FULL_HEIGHT_M))
     g.beginPath()
     for (let i = 0; i < n; i++, c += 2) {
-      const px = (coords[c] * COORD_QUANTUM - x0) / CONTACT_CELL_M + 0.5
-      const pz = (coords[c + 1] * COORD_QUANTUM - z0) / CONTACT_CELL_M + 0.5
+      const px = (coords[c] - x0) / CONTACT_CELL_M + 0.5
+      const pz = (coords[c + 1] - z0) / CONTACT_CELL_M + 0.5
       if (i === 0) g.moveTo(px, pz)
       else g.lineTo(px, pz)
     }

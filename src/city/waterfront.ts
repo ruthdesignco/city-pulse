@@ -5,12 +5,11 @@
 // skyline runs right down to the Embarcadero, and north of the ring up to
 // Bay St (Jackson Square, North Beach, Telegraph Hill and Coit Tower). It's
 // part of the ring: same fade toward the sky, never the focus. The bake
-// records the outline in city.bin's header (`waterfront`), which is what
-// the app reads.
+// records the outline in the city's index (`waterfront`). Since the bake
+// covers the whole city (2026-10) it only matters where the land mask
+// stops short of the water: the piers.
 //
-// Its east edge sits out over the water so the piers come in whole. Its
-// north edge, Bay St, is ~4.2 km from ORIGIN, inside city.bin's Int16
-// range at COORD_QUANTUM (format.ts).
+// Its east edge sits out over the water so the piers come in whole.
 
 import { toScene } from '../geo/projection.ts'
 import type { LatLngPt } from './bay.ts'

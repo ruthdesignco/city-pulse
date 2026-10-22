@@ -1,7 +1,7 @@
 // src/data/routes.json: Muni route shapes for interpolation, baked by
 // scripts/bake-routes.ts from 511's static GTFS, so the app never fetches
 // GTFS at runtime. Coordinates are integers in COORD_QUANTUM meters,
-// interleaved x,z in scene space (src/geo/projection.ts), like city.bin.
+// interleaved x,z in scene space (src/geo/projection.ts).
 // Version 2: shapes are snapped onto the drawn streets' centerlines, with
 // rounded corners (scripts/lib/snapRoute.ts), and carry each vertex's
 // street class.

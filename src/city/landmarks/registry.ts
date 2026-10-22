@@ -3,7 +3,7 @@
 // One builder per landmark in this directory (models.ts lists them); this
 // list is what the bake reads (no three.js here), so it can drop each
 // one's OSM footprint by ID and record where the model goes
-// (city.bin header landmarkModels). The bake fails if an ID matches
+// (the city index's landmarkModels). The bake fails if an ID matches
 // nothing, so a remapped OSM way can't silently bring the box back.
 //
 // To add one (the Ferry Building's clock tower, the Bay Bridge): an entry

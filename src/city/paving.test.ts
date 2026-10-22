@@ -2,18 +2,30 @@ import { Color } from 'three'
 import { describe, expect, it } from 'vitest'
 import type { CityData } from './format.ts'
 import { palette } from './palette.ts'
-import { CELL_M, EDGE_BLEND_M, buildPaving } from './paving.ts'
+import { CELL_M, EDGE_BLEND_M, buildPaving, cityEdge } from './paving.ts'
 
-// One 400 m square neighborhood (coords in 0.1 m units), a 200 m ring.
+// One 400 m square neighborhood, a 200 m ring, the city's tiles 2 km
+// across around it.
 const city = {
-  header: { ringMeters: 200 },
-  boundary: { counts: Uint16Array.of(4), coords: Int16Array.of(0, 0, 4000, 0, 4000, 4000, 0, 4000) },
+  header: { ringMeters: 200, extent: [-800, -800, 1200, 1200] },
+  boundary: { counts: Uint16Array.of(4), coords: Float32Array.of(0, 0, 400, 0, 400, 400, 0, 400) },
 } as unknown as CityData
 
 const near = (a: number[], hex: string) => {
   const c = new Color(hex)
   return Math.abs(a[0] - c.r) < 1e-4 && Math.abs(a[1] - c.g) < 1e-4 && Math.abs(a[2] - c.b) < 1e-4
 }
+
+describe('cityEdge', () => {
+  const edge = cityEdge(city)
+  it('is 0 well inside the city, 1 well past its edge, halfway at it', () => {
+    expect(edge(200, 200)).toBe(0)
+    expect(edge(1200 - EDGE_BLEND_M / 2, 200)).toBe(0)
+    expect(edge(1200, 200)).toBeCloseTo(0.5)
+    expect(edge(1200 + EDGE_BLEND_M / 2, 200)).toBe(1)
+    expect(edge(-800 - EDGE_BLEND_M, -800 - EDGE_BLEND_M)).toBe(1)
+  })
+})
 
 describe('buildPaving', () => {
   const g = buildPaving(city, 0.15)
@@ -31,10 +43,10 @@ describe('buildPaving', () => {
     return Array.from(g.color.slice(best * 3, best * 3 + 3))
   }
 
-  it('covers the neighborhoods, the ring and the edge blend, at height y', () => {
+  it("covers the city's tiles and the blend past their edge, at height y", () => {
     const xs = Array.from({ length: n }, (_, i) => g.position[i * 3])
-    expect(Math.min(...xs)).toBeLessThanOrEqual(-(200 + EDGE_BLEND_M))
-    expect(Math.max(...xs)).toBeGreaterThanOrEqual(400 + 200 + EDGE_BLEND_M - CELL_M)
+    expect(Math.min(...xs)).toBeLessThanOrEqual(-800 - EDGE_BLEND_M / 2)
+    expect(Math.max(...xs)).toBeGreaterThanOrEqual(1200 + EDGE_BLEND_M / 2 - CELL_M)
     expect(g.position[1]).toBeCloseTo(0.15)
     expect(g.index.length).toBeGreaterThan(0)
   })
@@ -43,46 +55,20 @@ describe('buildPaving', () => {
     expect(near(colorAt(200, 200), palette.sidewalk)).toBe(true)
   })
 
-  it('fades in the ring toward the land beyond, not the pale haze', () => {
+  it('fades in the ring toward the land, not the pale haze, and stays paved past it', () => {
     const ring = colorAt(-100, 200)
     expect(near(ring, palette.sidewalk)).toBe(false)
     expect(near(ring, palette.ground)).toBe(false)
     const dist = (a: number[], hex: string) => Math.hypot(...a.map((v, i) => v - new Color(hex).toArray()[i]))
     expect(dist(ring, palette.ground)).toBeLessThan(dist(ring, palette.sky))
+    // Past the ring, still the city: paved, as the ring's outer edge is.
+    expect(near(colorAt(-500, 200), palette.ground)).toBe(false)
   })
 
-  it('becomes bare ground past the ring, so it meets the ground plane seamlessly', () => {
-    expect(near(colorAt(-(200 + EDGE_BLEND_M + 10), 200), palette.ground)).toBe(true)
-  })
-
-  it('reaches out over a waterfront extension as ring paving, then blends into ground past it', () => {
-    // A 400 m wide strip running 1.5 km east of the ring's edge.
-    const wide = { ...city, header: { ringMeters: 200, waterfront: [[400, 0], [2000, 0], [2000, 400], [400, 400]] } } as unknown as CityData
-    const w = buildPaving(wide, 0.15)
-    const m = w.position.length / 3
-    const at = (x: number, z: number) => {
-      let best = 0
-      for (let i = 1; i < m; i++)
-        if (Math.hypot(w.position[i * 3] - x, w.position[i * 3 + 2] - z) < Math.hypot(w.position[best * 3] - x, w.position[best * 3 + 2] - z)) best = i
-      return Array.from(w.color.slice(best * 3, best * 3 + 3))
-    }
-    // Deep in the extension it's paved like the ring's own outer edge.
-    const edge = colorAt(-200, 200)
-    at(1800, 200).forEach((v, i) => expect(v).toBeCloseTo(edge[i], 4))
-    expect(near(at(2000 + EDGE_BLEND_M + 10, 200), palette.ground)).toBe(true)
-  })
-
-  it("is bare land past the baked data's extent, even inside the ring", () => {
-    // An 800 m ring, but data stops at z = -100: the ring's band north of it
-    // was never baked, so it must not be paved.
-    const at = (header: object, x: number, z: number) => {
-      const g = buildPaving({ ...city, header } as unknown as CityData, 0.15)
-      let best = 0
-      for (let i = 1; i < g.position.length / 3; i++)
-        if (Math.hypot(g.position[i * 3] - x, g.position[i * 3 + 2] - z) < Math.hypot(g.position[best * 3] - x, g.position[best * 3 + 2] - z)) best = i
-      return Array.from(g.color.slice(best * 3, best * 3 + 3))
-    }
-    expect(near(at({ ringMeters: 800 }, 200, -700), palette.ground)).toBe(false)
-    expect(near(at({ ringMeters: 800, extent: [-2000, -100, 2000, 2000] }, 200, -700), palette.ground)).toBe(true)
+  it("becomes bare ground past the city's edge, so it meets the land beyond", () => {
+    // The grid's last column, at or past the blend's end.
+    const last = Math.max(...Array.from({ length: n }, (_, i) => g.position[i * 3]))
+    expect(last).toBeGreaterThanOrEqual(1200 + EDGE_BLEND_M / 2)
+    expect(near(colorAt(last, 200), palette.ground)).toBe(true)
   })
 })
