@@ -1,13 +1,18 @@
 // The render's floor for slower GPUs: the scene starts at full quality and,
 // if the frame rate stays below DECLINE_BELOW_FPS, steps down one rung at a
 // time (App.tsx, via drei's PerformanceMonitor), cheapest look-loss first.
-// It never steps back up, so it can't oscillate. Four steps, no settings UI
-// (Board of Vibes 2026-10-20): what breaks first on integrated GPUs is
-// per-pixel cost (SSAO and its normal-pass re-render, 4x MSAA in half
-// float), then shadow-map size.
+// It never steps back up, so it can't oscillate. No settings UI (Board of
+// Vibes 2026-10-20).
+//
+// SSAO is for ?quality=high only (shots, calibrate, recordings): with its
+// normal pass (a second render of the whole scene) it took ~11 ms of a
+// 22 ms frame on an M4 Pro at Retina size (2592 x 1500), holding the page
+// to ~46 fps. The ground's baked contact occlusion (groundShading.ts) and
+// the walls' base darkening (Buildings.tsx) stand in for it. Then what
+// costs most is pixels: the pixel ratio comes down before the shadow map.
 //
 //   ?quality=low    start at the floor
-//   ?quality=high   stay at full quality, never step down (shots, calibrate)
+//   ?quality=high   SSAO on, never step down (shots, calibrate)
 
 export interface QualityStep {
   ssao: boolean // SSAO and the normal pass it needs
@@ -16,16 +21,21 @@ export interface QualityStep {
   msaa: number // EffectComposer multisampling
 }
 
+// Step 0 is ?quality=high's; pages start at DEFAULT_STEP.
 export const QUALITY_STEPS: readonly QualityStep[] = [
   { ssao: true, shadowMapSize: 4096, maxDpr: 1.5, msaa: 4 },
   { ssao: false, shadowMapSize: 4096, maxDpr: 1.5, msaa: 4 },
-  { ssao: false, shadowMapSize: 2048, maxDpr: 1.5, msaa: 4 },
+  { ssao: false, shadowMapSize: 4096, maxDpr: 1.25, msaa: 4 },
+  { ssao: false, shadowMapSize: 2048, maxDpr: 1.25, msaa: 4 },
   { ssao: false, shadowMapSize: 2048, maxDpr: 1, msaa: 4 },
   { ssao: false, shadowMapSize: 2048, maxDpr: 1, msaa: 0 },
 ]
+export const DEFAULT_STEP = 1
 export const LOWEST_STEP = QUALITY_STEPS.length - 1
 
-export const DECLINE_BELOW_FPS = 30
+// Under 60 with room for a slow moment: at 30 (until 2026-10) the floor
+// never caught a page held to 48.
+export const DECLINE_BELOW_FPS = 50
 // Load-time hitches (extrusion, shader compiles) don't count.
 export const MONITOR_WARMUP_MS = 5000
 
@@ -41,7 +51,7 @@ export function isSoftwareRenderer(renderer: string | null): boolean {
 export function startStep(param: QualityParam, renderer: string | null): number {
   if (param === 'high') return 0
   if (param === 'low' || isSoftwareRenderer(renderer)) return LOWEST_STEP
-  return 0
+  return DEFAULT_STEP
 }
 
 // Whether the frame-rate monitor runs at all.

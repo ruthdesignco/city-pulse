@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AO_MAX, normalsAo, occlusion } from './groundShading.ts'
+import { AO_MAX, CONTACT_CELL_M, CONTACT_MAX, CONTACT_REACH_M, contact, normalsAo, occlusion } from './groundShading.ts'
 import { Terrain } from './terrain.ts'
 
 // A 61 x 61 grid, 5 m cells: flat at 20 m with a 10 m deep hollow and a
@@ -28,5 +28,27 @@ describe('ground occlusion', () => {
     expect(px[k + 1]).toBe(255) // flat: straight up
     expect(Math.abs(px[k] - 128)).toBeLessThanOrEqual(1)
     expect(px[(30 * n + 15) * 4 + 3]).toBeLessThan(205) // the hollow's occlusion in alpha
+  })
+})
+
+describe('contact shading', () => {
+  // A 60 x 20 strip of 2 m texels: a lone wall (a block filling i < 10),
+  // and further on an alley 2 texels (4 m) wide between two blocks.
+  const w = 60
+  const rows = 20
+  const cover = new Float32Array(w * rows)
+  for (let j = 0; j < rows; j++)
+    for (let i = 0; i < w; i++) if (i < 10 || (i >= 40 && i < 45) || i >= 47) cover[j * w + i] = 1
+  const at = (i: number) => contact(cover, w, rows)[10 * w + i] / 255
+
+  it('darkens the ground at the foot of a wall, fading out by its reach', () => {
+    expect(at(10)).toBeGreaterThan(0.5 * CONTACT_MAX)
+    expect(at(10)).toBeLessThanOrEqual(CONTACT_MAX)
+    expect(at(10 + Math.ceil(CONTACT_REACH_M / CONTACT_CELL_M))).toBe(0)
+    expect(at(12)).toBeLessThan(at(10))
+  })
+
+  it('darkens an alley more than the foot of a lone wall', () => {
+    expect(at(45)).toBeGreaterThan(at(10))
   })
 })

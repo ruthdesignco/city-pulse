@@ -15,7 +15,7 @@ import { loadCity } from './city/useCity.ts'
 import { Atmosphere } from './scene/Atmosphere.tsx'
 import { Calibration } from './scene/Calibration.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
-import { QUALITY_STEPS, monitorEnabled, startStep, stepDown } from './scene/quality.ts'
+import { DEFAULT_STEP, QUALITY_STEPS, monitorEnabled, startStep, stepDown } from './scene/quality.ts'
 import { QualityMonitor } from './scene/QualityMonitor.tsx'
 import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
@@ -101,13 +101,13 @@ export default function App() {
   useWeather(feed.state)
   useWind(feed.state)
   const overlayHidden = useOverlayToggle()
-  // The render's quality step (quality.ts): full to start, lower while the
-  // frame rate stays under the floor.
+  // The render's quality step (quality.ts): the default to start (SSAO only
+  // on ?quality=high), lower while the frame rate stays under the floor.
   const [step, setStep] = useState(() => startStep(QUALITY, null))
   const quality = QUALITY_STEPS[step]
   useEffect(() => {
     document.documentElement.dataset.quality = String(step)
-    if (step > 0) console.info(`quality: step ${step}`, quality)
+    if (step > DEFAULT_STEP) console.info(`quality: step ${step}`, quality)
   }, [step, quality])
   const decline = useCallback(() => setStep(stepDown), [])
   // A lost WebGL context (a driver reset, or memory pressure on an
@@ -192,7 +192,10 @@ export default function App() {
           {quality.ssao ? <SSAO radius={0.12} intensity={12} luminanceInfluence={0.6} distanceFalloff={0.5} /> : <></>}
           <ToneMapping mode={ToneMappingMode.NEUTRAL} />
         </EffectComposer>
-        {monitorEnabled(QUALITY) && step < QUALITY_STEPS.length - 1 && <QualityMonitor key={step} onDecline={decline} />}
+        {/* Watching from when the city is in: frames while it loads (fetching,
+            extruding, compiling) aren't the scene's frame rate, and counting
+            them stepped quality down on slow loads. */}
+        {cityReady && monitorEnabled(QUALITY) && step < QUALITY_STEPS.length - 1 && <QualityMonitor key={step} onDecline={decline} />}
         {((import.meta.env.DEV && !DEMO) || SHOW_FPS) && <Stats />}
       </Canvas>
       {!cityReady && (

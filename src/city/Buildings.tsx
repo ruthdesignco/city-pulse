@@ -3,6 +3,7 @@ import { DEMO } from '../params.ts'
 import { BufferAttribute, BufferGeometry, Color, type Material, type Mesh, MeshStandardMaterial } from 'three'
 import { type LoadedCity, useCity } from './useCity.ts'
 import { extrudeBuildings } from './extrude.ts'
+import { type GroundShading, groundShading } from './groundShading.ts'
 import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
@@ -13,6 +14,10 @@ import { RING_DIM_MAX } from './ring.ts'
 // level. Most SF buildings are 10-15 m, so keep this short and gentle.
 const BASE_FADE_M = 12
 const BASE_FLOOR = 0.55 // darkest a wall gets at street level, as a mix toward full color
+// Walls also take the ground's contact shading where they stand
+// (groundShading.ts: deepest in alleys and light wells), easing out over
+// their lowest WALL_CONTACT_M, in place of SSAO (quality.ts).
+const WALL_CONTACT_M = 6
 // Context-ring buildings blend toward the sky color as ring.ts's ringDim().
 // Walls get procedural windows (facade.ts).
 // Roofs face the whole sky fill and read brightest from above; most real
@@ -41,10 +46,11 @@ function buildGeometry(city: LoadedCity): BufferGeometry {
   return g
 }
 
-function buildMaterial(): MeshStandardMaterial {
+function buildMaterial(shading: GroundShading): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: palette.building, roughness: 0.92, metalness: 0 })
   material.onBeforeCompile = (shader) => {
     registerHeightFog(shader)
+    shader.uniforms.uContactAo = { value: shading.contact }
     shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
     shader.uniforms.uDim = sceneUniforms.uHaze
     shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
@@ -62,16 +68,16 @@ function buildMaterial(): MeshStandardMaterial {
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float ring;\nattribute float colorIndex;\nattribute vec4 facade;\nattribute float material;\nattribute float storefront;\nattribute float localY;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\nvarying vec4 vFacade;\nvarying float vMaterial;\nvarying float vStorefront;',
+        '#include <common>\nattribute float ring;\nattribute float colorIndex;\nattribute vec4 facade;\nattribute float material;\nattribute float storefront;\nattribute float localY;\nvarying vec2 vGround;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\nvarying vec4 vFacade;\nvarying float vMaterial;\nvarying float vStorefront;',
       )
       .replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\nvRing = ring;\nvY = localY;\nvWall = 1.0 - step(0.5, normal.y);\nvColorIndex = colorIndex;\nvFacade = facade;\nvMaterial = material;\nvStorefront = storefront;',
+        '#include <begin_vertex>\nvGround = position.xz;\nvRing = ring;\nvY = localY;\nvWall = 1.0 - step(0.5, normal.y);\nvColorIndex = colorIndex;\nvFacade = facade;\nvMaterial = material;\nvStorefront = storefront;',
       )
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\n${FACADE_PARS}`,
+        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nuniform sampler2D uContactAo;\nvarying vec2 vGround;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\n${FACADE_PARS}`,
       )
       .replace(
         '#include <color_fragment>',
@@ -80,6 +86,8 @@ function buildMaterial(): MeshStandardMaterial {
         ${FACADE_COLOR}
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
+        float wallContact = texture2D(uContactAo, ${shading.contactUv('vGround')}).r * (1.0 - smoothstep(0.0, ${WALL_CONTACT_M.toFixed(1)}, vY));
+        diffuseColor.rgb *= 1.0 - wallContact * vWall;
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, vRing));
         diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);
         // At night roofs lose most of their color (glass-tower roofs read
@@ -91,7 +99,7 @@ function buildMaterial(): MeshStandardMaterial {
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v25'
+  material.customProgramCacheKey = () => 'city-buildings-v26'
   return material
 }
 
@@ -129,7 +137,7 @@ const reportDrawn = (own: Material): Mesh['onAfterRender'] => (renderer, _scene,
 export function Buildings() {
   const city = useCity()
   const geometry = useMemo(() => buildGeometry(city), [city])
-  const material = useMemo(() => buildMaterial(), [])
+  const material = useMemo(() => buildMaterial(groundShading(city)), [city])
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
 

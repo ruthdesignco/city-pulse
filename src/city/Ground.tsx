@@ -88,6 +88,7 @@ function groundMaterial(city: LoadedCity, land: MeshStandardMaterial, paving: Pa
     land.onBeforeCompile(shader, renderer)
     shader.uniforms.uGroundNormals = { value: shading.normals }
     shader.uniforms.uGroundCover = { value: shading.cover }
+    shader.uniforms.uContactAo = { value: shading.contact }
     shader.uniforms.uLightDir = sceneUniforms.uLightDir
     shader.uniforms.uHillshade = sceneUniforms.uHillshade
     shader.uniforms.uPaving = { value: paving.texture }
@@ -118,7 +119,7 @@ ${coverCode(shading, 'vGround', new Color(palette.sidewalk), new Color(palette.g
 normal = normalize( ( viewMatrix * vec4( normalize( vec3( groundN.x, max( groundN.y, 0.05 ), groundN.z ) ), 0.0 ) ).xyz );`,
       )
   }
-  material.customProgramCacheKey = () => 'city-ground-v3'
+  material.customProgramCacheKey = () => 'city-ground-v4'
   return material
 }
 

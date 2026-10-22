@@ -35,7 +35,15 @@ export interface PageReport {
 // (Linux, no GPU) has. Slow, but it compiles every shader the same way.
 const SOFTWARE_GL = process.env.SCENE_GL === 'software'
 
-export async function withScenePage(label: string, query: Record<string, string>, withPage: (page: Page, report: PageReport) => Promise<void>) {
+// What fps.ts needs beyond a shot: a viewport other than WIDTH x HEIGHT at
+// 1x (a Retina laptop's, at its pixel ratio), and frames not held to the
+// display's refresh, so the frame time measured is the scene's own.
+export interface PageOptions {
+  viewport?: { width: number; height: number; scale: number }
+  uncapped?: boolean
+}
+
+export async function withScenePage(label: string, query: Record<string, string>, withPage: (page: Page, report: PageReport) => Promise<void>, opts: PageOptions = {}) {
   const server = await createServer({ root: ROOT, server: { port: 0 }, logLevel: 'warn' })
   await server.listen()
   const url = server.resolvedUrls?.local[0]
@@ -46,13 +54,15 @@ export async function withScenePage(label: string, query: Record<string, string>
   // WebGL, which rendered the scene at ~1 fps and, with the street trees,
   // too slowly to load within the page timeouts. (ANGLE's Metal backend is
   // macOS only; elsewhere Chromium ignores the flag and picks its default.)
+  const uncapped = opts.uncapped ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : []
   const browser = await chromium.launch({
     headless: true,
-    args: SOFTWARE_GL ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'],
+    args: SOFTWARE_GL ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', ...uncapped],
   })
   const report: PageReport = { errors: [] }
   try {
-    const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 })
+    const { width, height, scale } = opts.viewport ?? { width: WIDTH, height: HEIGHT, scale: 1 }
+    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: scale })
     // Surface what the page itself saw -- a shot that looks wrong is often a
     // failed asset load or a thrown error, not just a color to retune.
     page.on('console', (msg) => {

@@ -132,6 +132,7 @@ function roadMaterial(shading: GroundShading, layer: number, markings = false): 
     shader.uniforms.uPoolColor = { value: POOL_COLOR }
     shader.uniforms.uGroundNormals = { value: shading.normals }
     shader.uniforms.uGroundCover = { value: shading.cover }
+    shader.uniforms.uContactAo = { value: shading.contact }
     shader.uniforms.uLightDir = sceneUniforms.uLightDir
     shader.uniforms.uHillshade = sceneUniforms.uHillshade
     const poolVars = 'attribute float along;\nattribute float offset;\nattribute float curb;\nattribute float lit;\nvarying float vAlong;\nvarying float vOffset;\nvarying float vCurb;\nvarying float vLit;'
@@ -179,7 +180,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uHaze, vRingFade);`,
       )
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${pools}`)
   }
-  material.customProgramCacheKey = () => `city-roads-v7-${markings ? 'markings' : 'surface'}`
+  material.customProgramCacheKey = () => `city-roads-v8-${markings ? 'markings' : 'surface'}`
   return material
 }
 
