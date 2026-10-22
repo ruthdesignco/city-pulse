@@ -42,3 +42,37 @@ describe('the shipped tiles', () => {
     }
   })
 })
+
+// The city seen from afar (farFormat.ts, bake-far.ts).
+describe('the shipped far file', async () => {
+  const { decodeFar } = await import('../../src/city/farFormat.ts')
+  const { readTileFile } = await import('./tileFiles.ts')
+  const far = shipped.index.far!
+  const data = await decodeFar(readTileFile(far.file))
+
+  it('is listed at its size, with every tile and fewer prisms than buildings', () => {
+    expect(shipped.fileBytes(far.file)).toBe(far.bytes)
+    expect(data.tiles.map((t) => tileKey(t.i, t.j)).sort()).toEqual(shipped.index.tiles.map((t) => tileKey(t.i, t.j)).sort())
+    const prisms = data.tiles.reduce((n, t) => n + t.prisms.counts.length, 0)
+    expect(prisms).toBeGreaterThan(10_000)
+    expect(prisms).toBeLessThan(shipped.city.buildings.counts.length / 3)
+  })
+
+  it('has the woods as canopy, and where every landmark stands', () => {
+    expect(data.tiles.reduce((n, t) => n + t.canopy.cells.length, 0)).toBeGreaterThan(5000)
+    for (const at of shipped.index.landmarkModels) expect(data.header.landmarkY[at.id], at.id).toBeTypeOf('number')
+    // Sutro Tower on Mount Sutro's summit, ~250 m up.
+    expect(data.header.landmarkY.sutro).toBeGreaterThan(230)
+  })
+})
+
+describe('the shipped terrain', () => {
+  it("keeps the Bay's islands' ground: Alcatraz and Treasure Island stand out of the water", () => {
+    const at = (lat: number, lng: number) => {
+      const p = toScene(lat, lng)
+      return shipped.heightAt(p.x, p.z)
+    }
+    expect(at(37.8267, -122.4230)).toBeGreaterThan(20) // Alcatraz
+    expect(at(37.8235, -122.3706)).toBeGreaterThan(1) // Treasure Island
+  })
+})

@@ -26,6 +26,7 @@ export interface LandmarkSpec {
 export const LANDMARKS: LandmarkSpec[] = [
   { id: 'transamerica', name: 'Transamerica Pyramid', replaces: ['way/24222973'] },
   { id: 'coit', name: 'Coit Tower', replaces: ['way/28824850'], grounds: 'way/224941774', stand: 'center' },
+  { id: 'sutro', name: 'Sutro Tower', replaces: ['relation/3829019'] },
 ]
 
 // Where a landmark stands, from its OSM footprint (the bake's
@@ -43,4 +44,25 @@ export interface LandmarkPlacement {
   ring: number
   // The grounds' outline, scene meters x, z interleaved (rounded to 0.1).
   grounds?: number[]
+}
+
+// The ground a landmark stands on (LandmarkSpec.stand): the lowest under
+// its footprint's rectangle, or the ground under its center. The far bake
+// records it (farFormat.ts landmarkY) for Landmarks.tsx.
+export function landmarkGround(at: LandmarkPlacement, heightAt: (x: number, z: number) => number): number {
+  if (LANDMARKS.find((l) => l.id === at.id)?.stand === 'center') return heightAt(at.x, at.z)
+  const c = Math.cos(at.angle)
+  const s = Math.sin(at.angle)
+  let lo = heightAt(at.x, at.z)
+  for (const [u, v] of [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ]) {
+    const lx = (u * at.sizeX) / 2
+    const lz = (v * at.sizeZ) / 2
+    lo = Math.min(lo, heightAt(at.x + lx * c - lz * s, at.z + lx * s + lz * c))
+  }
+  return lo
 }

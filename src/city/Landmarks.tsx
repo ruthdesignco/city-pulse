@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { type BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
@@ -7,9 +7,9 @@ import { Glow, place } from './landmarks/build.ts'
 import { LANDMARK_MODELS } from './landmarks/models.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
-import { LANDMARKS, type LandmarkPlacement } from './landmarks/registry.ts'
-import type { Terrain } from './terrain.ts'
-import { type LoadedCity, useCity } from './useCity.ts'
+import type { LandmarkPlacement } from './landmarks/registry.ts'
+import type { TileStream } from './stream/TileStream.ts'
+import { useCityBase } from './useCity.ts'
 import { LIT_SHARE_GLSL } from './windowLight.ts'
 
 // The landmarks drawn as models (landmarks/registry.ts) where the bake left
@@ -31,25 +31,13 @@ const FLOOD_RADIANCE = 0.42
 const OPENING_RADIANCE = 0.5
 const DETAIL_PX = [0.25, 0.6] // floors per pixel: full detail, then only the average
 
-// Each stands on the lowest ground under its footprint's rectangle, or the
-// ground under its center (registry.ts `stand`; terrain.ts).
-function groundUnder(at: LandmarkPlacement, t: Terrain): number {
-  if (LANDMARKS.find((l) => l.id === at.id)?.stand === 'center') return t.heightAt(at.x, at.z)
-  const c = Math.cos(at.angle)
-  const s = Math.sin(at.angle)
-  let lo = t.heightAt(at.x, at.z)
-  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    const lx = (u * at.sizeX) / 2
-    const lz = (v * at.sizeZ) / 2
-    lo = Math.min(lo, t.heightAt(at.x + lx * c - lz * s, at.z + lx * s + lz * c))
-  }
-  return lo
-}
-
-function buildGeometry(city: LoadedCity): BufferGeometry | null {
-  const parts = (city.header.landmarkModels ?? []).flatMap((at) => {
+// Each stands where the far bake found its ground (registry.ts
+// landmarkGround, farFormat.ts landmarkY), so it's in place before its
+// tile's own files are: Sutro Tower stands over the whole west of the city.
+function buildGeometry(models: LandmarkPlacement[], ground: Record<string, number>): BufferGeometry | null {
+  const parts = models.flatMap((at) => {
     const build = LANDMARK_MODELS[at.id]
-    return build ? [place(build(at), { ...at, y: groundUnder(at, city.terrain) }, at.ring)] : []
+    return build ? [place(build(at), { ...at, y: ground[at.id] ?? 0 }, at.ring)] : []
   })
   return parts.length ? mergeGeometries(parts) : null
 }
@@ -110,9 +98,13 @@ diffuseColor.rgb = mix( diffuseColor.rgb, uDim, ${f(RING_DIM_MAX)} * smoothstep(
   return material
 }
 
-export function Landmarks() {
-  const city = useCity()
-  const geometry = useMemo(() => buildGeometry(city), [city])
+export function Landmarks({ stream }: { stream: TileStream }) {
+  const { index } = useCityBase()
+  const ground = useSyncExternalStore(
+    (f) => stream.subscribe(f),
+    () => stream.landmarkY,
+  )
+  const geometry = useMemo(() => (ground ? buildGeometry(index.landmarkModels, ground) : null), [index, ground])
   const material = useMemo(() => buildMaterial(), [])
   useEffect(() => () => geometry?.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])

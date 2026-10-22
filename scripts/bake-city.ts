@@ -17,6 +17,8 @@
 import { createHash } from 'node:crypto'
 import {
   HEIGHT_QUANTUM,
+  LAND_CELLS,
+  LAND_CELL_M,
   RING_BAND_METERS,
   StreetClass,
   TILE_M,
@@ -53,7 +55,7 @@ import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
 import { CLIFF_WIDTH_M, coverClass, isCliff } from './lib/cover.ts'
 import { LANDMARKS, type LandmarkPlacement } from '../src/city/landmarks/registry.ts'
 import { minAreaRect } from './lib/geometry.ts'
-import { LandMask, neighborhoodRings } from './lib/landMask.ts'
+import { ALCATRAZ, LandMask, neighborhoodRings } from './lib/landMask.ts'
 import { pruneLayer, readIndexIfAny, readTileFile, sizeReport, writeIndex, writeTileFile } from './lib/tileFiles.ts'
 
 const NEIGHBORHOODS = ['South of Market', 'Mission', 'Tenderloin']
@@ -63,12 +65,6 @@ const RING_METERS = 800
 // The city's land with room around it (the extract is read for this box).
 const QUERY_BBOX: Bbox = { south: 37.7065, west: -122.517, north: 37.8345, east: -122.3555 }
 const WATERFRONT = waterfrontOutline()
-// Alcatraz, which the neighborhoods leave out: its buildings are the city's.
-const ALCATRAZ: Rect = (() => {
-  const nw = toScene(37.8295, -122.4265)
-  const se = toScene(37.8235, -122.4185)
-  return { minX: nw.x, minZ: nw.z, maxX: se.x, maxZ: se.z }
-})()
 // Streets and cover may reach a little past the land (piers, the shore's
 // beaches and rocks).
 const SHORE_M = 60
@@ -200,7 +196,9 @@ interface BakedBuilding {
 // footprints are left out of the extrusion, and each one's placement is
 // worked out from its footprint instead.
 const LANDMARK_BY_OSM = new Map(LANDMARKS.flatMap((l) => l.replaces.map((osm) => [osm, l] as const)))
-const landmarkFootprints = new Map<string, Footprint>()
+// Every outline point of each replaced element (a multipolygon brings
+// several rings: Sutro Tower's legs).
+const landmarkFootprints = new Map<string, Pt[]>()
 
 // Past RING_METERS a building is as far out as the ring goes (ring.ts):
 // capped there, so the whole city fits a byte.
@@ -244,7 +242,7 @@ function bakeBuildings(elements: OsmElement[], boundary: Pt[][], keep: (p: Pt) =
   const baked: BakedBuilding[] = []
   for (const f of outlines) {
     if (LANDMARK_BY_OSM.has(f.osm)) {
-      landmarkFootprints.set(f.osm, f)
+      landmarkFootprints.set(f.osm, [...(landmarkFootprints.get(f.osm) ?? []), ...f.ring])
       stats.landmarkModels++
       continue
     }
@@ -410,10 +408,19 @@ function intoTiles(buildings: BakedBuilding[], streets: { line: Pt[]; cls: numbe
   return tiles
 }
 
-function toTile(t: TileParts): CityTile {
+// Which of the tile's LAND_CELL_M cells are the city's land, by their centers.
+function landCells(i: number, j: number, mask: LandMask): Uint8Array {
+  const out = new Uint8Array(LAND_CELLS * LAND_CELLS)
+  for (let b = 0; b < LAND_CELLS; b++)
+    for (let a = 0; a < LAND_CELLS; a++) if (mask.has(i * TILE_M + (a + 0.5) * LAND_CELL_M, j * TILE_M + (b + 0.5) * LAND_CELL_M)) out[b * LAND_CELLS + a] = 255
+  return out
+}
+
+function toTile(t: TileParts, mask: LandMask): CityTile {
   const b = t.buildings
   return {
-    header: { version: 1, i: t.i, j: t.j, x0: t.i * TILE_M, z0: t.j * TILE_M, pinnedMaterials: t.pinned },
+    header: { version: 2, i: t.i, j: t.j, x0: t.i * TILE_M, z0: t.j * TILE_M, pinnedMaterials: t.pinned },
+    land: landCells(t.i, t.j, mask),
     buildings: {
       ...toLines(b.map((x) => x.ring)),
       heights: Uint16Array.from(b, (x) => Math.round(x.height / HEIGHT_QUANTUM)),
@@ -460,9 +467,8 @@ async function main() {
   const landmarkModels: LandmarkPlacement[] = LANDMARKS.map((l) => {
     const missing = l.replaces.filter((osm) => !landmarkFootprints.has(osm))
     if (missing.length) throw new Error(`bake: landmark ${l.id}: no building footprint for ${missing.join(', ')}`)
-    const ring = landmarkFootprints.get(l.replaces[0])!.ring
-    const rect = minAreaRect(ring)
-    const center = centroid(ring)
+    const rect = minAreaRect(landmarkFootprints.get(l.replaces[0])!)
+    const center = rect.center
     const placement: LandmarkPlacement = {
       id: l.id,
       x: r1(rect.center[0]),
@@ -491,10 +497,16 @@ async function main() {
   const oldSeeds = new Set<number>()
   let oldBuildings = 0
   let oldStreets = 0
+  let comparable = !!before
   if (before)
     for (const t of before.tiles) {
       if (!t.files.city) continue
-      const old = await decodeTile(readTileFile(t.files.city.file))
+      // Tiles of an older format version can't be read: no comparison then.
+      const old = await decodeTile(readTileFile(t.files.city.file)).catch(() => null)
+      if (!old) {
+        comparable = false
+        break
+      }
       old.buildings.seeds.forEach((x) => oldSeeds.add(x))
       oldBuildings += old.buildings.counts.length
       oldStreets += old.streets.counts.length
@@ -505,7 +517,7 @@ async function main() {
   for (const t of [...tiles.values()].sort((a, b) => a.j - b.j || a.i - b.i)) {
     const land = Math.round(mask.fraction(tileRect(t.i, t.j)) * 1000) / 1000
     if (t.buildings.length === 0 && land === 0) continue
-    const file = writeTileFile('city', t.i, t.j, await encodeTile(toTile(t)))
+    const file = writeTileFile('city', t.i, t.j, await encodeTile(toTile(t, mask)))
     const prev = kept.get(tileKey(t.i, t.j))
     entries.push({ i: t.i, j: t.j, buildings: t.buildings.length, land, files: { ...prev?.files, city: file } })
   }
@@ -527,7 +539,8 @@ async function main() {
   }
   writeIndex(index)
   const removed = pruneLayer(index, 'city')
-  if (before) {
+  if (before && !comparable) console.log('\nchange vs the tiles before: they are an older format version, not compared')
+  if (before && comparable) {
     const newSeeds = buildings.filter((b) => !oldSeeds.has(seedHash(Math.round(b.ring[0][0] / SEED_UNIT_M), Math.round(b.ring[0][1] / SEED_UNIT_M)))).length
     console.log(`\nchange vs the tiles before: buildings ${oldBuildings} -> ${buildings.length}, streets ${oldStreets} -> ${streets.length}; ${newSeeds} buildings with a new facade seed (their look may change)`)
   }

@@ -134,6 +134,65 @@ body,
   pointer-events: none;
 }
 
+/* ?net (city/NetOverlay.tsx): the tiles' downloads, top left, under the
+   pills; the freshness pill's look, as a panel. */
+.net {
+  position: absolute;
+  left: 16px;
+  top: 56px;
+  max-width: calc(100% - 32px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(27 30 48 / 0.78);
+  backdrop-filter: blur(6px);
+  color: #c9cde8;
+  font: 500 12px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.net__layers,
+.net__legend {
+  margin: 2px 0 8px;
+  color: #9aa0c0;
+}
+
+.net__map {
+  display: block;
+}
+
+.net__map rect:hover {
+  stroke: #fff;
+}
+
+.net__legend {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.net__legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.net__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.net__list li {
+  display: grid;
+  grid-template-columns: 4em 3em 1fr;
+  gap: 6px;
+}
+
+.net__list li span:last-child {
+  text-align: right;
+}
+
 /* "Light set to HH:MM" and "Weather set to fog" (LightNote.tsx), top
    right, stacked: the freshness pill's look. */
 .notes {

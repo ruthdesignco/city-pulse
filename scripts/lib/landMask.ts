@@ -17,6 +17,14 @@ interface Feature {
 
 export const NEIGHBORHOODS_PATH = join(import.meta.dirname, '../data/analysis-neighborhoods.geojson')
 
+// Alcatraz, which the neighborhoods leave out: its buildings are the
+// city's (bake-city.ts), and its ground (bake-terrain.ts).
+export const ALCATRAZ: Rect = (() => {
+  const nw = toScene(37.8295, -122.4265)
+  const se = toScene(37.8235, -122.4185)
+  return { minX: nw.x, minZ: nw.z, maxX: se.x, maxZ: se.z }
+})()
+
 // The outer rings of the named neighborhoods (all of them by default), in
 // scene meters.
 export function neighborhoodRings(names?: string[]): Pt[][] {

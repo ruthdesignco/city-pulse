@@ -1,8 +1,7 @@
 import { type ComponentRef, useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { loadCity } from '../city/useCity.ts'
-import type { Terrain } from '../city/terrain.ts'
+import { cityGround, loadCityBase } from '../city/useCity.ts'
 import { DEMO, VIEW } from '../params.ts'
 import { type Pose, SHOTS, type Shot, liftPose, shotPose } from './shots.ts'
 import { ORBIT_LIMITS } from './view.ts'
@@ -27,19 +26,25 @@ export function CameraRig({ start }: { start: Pose }) {
   const reducedMotion = useRef(true)
   // The walkthrough shot playing, if any (?demo, keys 1-7; Esc or a drag stops it).
   const playing = useRef<{ shot: Shot; startedAt: number } | null>(null)
-  const terrain = useRef<Terrain | null>(null)
+  // Lifting poses onto the ground waits for the ground under them.
+  const lifted = useRef(false)
   const moved = useRef(false)
 
-  // Once the ground has loaded: lift the starting pose onto it.
+  // Once the ground under the starting pose has loaded (its tiles' terrain,
+  // the first the stream fetches: they're in view): lift the pose onto it.
   useEffect(() => {
     let live = true
-    loadCity()
-      .then((city) => {
+    loadCityBase()
+      .then(({ index }) => {
+        const keys = [start.target, start.position].map(([x, , z]) => cityGround.keyAt(x, z)).filter((k) => index.tiles.some((t) => `${t.i},${t.j}` === k))
+        return cityGround.whenTiles(keys)
+      })
+      .then(() => {
         if (!live) return
-        terrain.current = city.terrain
+        lifted.current = true
         const c = controls.current
         if (!c || VIEW === 'calibrate') return
-        const pose = liftPose(start, city.terrain)
+        const pose = liftPose(start, cityGround)
         c.object.position.set(...pose.position)
         c.target.set(...pose.target)
         c.update()
@@ -81,10 +86,9 @@ export function CameraRig({ start }: { start: Pose }) {
     const c = controls.current
     if (!c) return
     // Never into a hill.
-    const ground = terrain.current
-    if (ground) {
+    if (lifted.current) {
       const cam = c.object.position
-      const floor = ground.heightAt(cam.x, cam.z) + CLEARANCE_M
+      const floor = cityGround.heightAt(cam.x, cam.z) + CLEARANCE_M
       if (cam.y < floor) {
         cam.y = floor
         c.update()
@@ -95,7 +99,7 @@ export function CameraRig({ start }: { start: Pose }) {
       // A shot plays even with reduced motion: someone asked for it.
       const elapsedS = (performance.now() - p.startedAt) / 1000
       const raw = shotPose(p.shot, elapsedS)
-      const pose = terrain.current ? liftPose(raw, terrain.current) : raw
+      const pose = liftPose(raw, cityGround)
       c.object.position.set(...pose.position)
       c.target.set(...pose.target)
       c.update()

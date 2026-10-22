@@ -15,7 +15,7 @@
 
 import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, RepeatWrapping, SRGBColorSpace } from 'three'
 import { palette } from './palette.ts'
-import type { LoadedCity } from './useCity.ts'
+import type { LandCover } from './landCover.ts'
 
 const URBAN_MEAN = new Color(palette.ground).lerp(new Color(palette.building), 0.06).multiplyScalar(1.03)
 // The rooftop tile: URBAN_TILE_M across, BLOCKS x BLOCKS blocks, turned
@@ -131,25 +131,25 @@ export interface LandTextures {
   urban: DataTexture
 }
 
-const built = new WeakMap<LoadedCity, LandTextures>()
+const built = new WeakMap<LandCover, LandTextures>()
 
-export function landTextures(city: LoadedCity): LandTextures {
-  let t = built.get(city)
+export function landTextures(landCover: LandCover): LandTextures {
+  let t = built.get(landCover)
   if (!t) {
-    const { nx, nz } = city.landCover.header
-    const cover = new DataTexture(city.landCover.rgba, nx, nz, RGBAFormat)
+    const { nx, nz } = landCover.header
+    const cover = new DataTexture(landCover.rgba, nx, nz, RGBAFormat)
     cover.magFilter = LinearFilter
     cover.minFilter = LinearFilter
     cover.needsUpdate = true
     t = { cover, urban: urbanTexture() }
-    built.set(city, t)
+    built.set(landCover, t)
   }
   return t
 }
 
 // Sets the uniforms landPars declares.
-export function landUniforms(city: LoadedCity) {
-  const t = landTextures(city)
+export function landUniforms(landCover: LandCover) {
+  const t = landTextures(landCover)
   return { uLandCover: { value: t.cover }, uLandUrban: { value: t.urban } }
 }
 
@@ -158,8 +158,8 @@ const vec3 = (c: Color) => `vec3(${f(c.r)}, ${f(c.g)}, ${f(c.b)})`
 
 // GLSL declarations (fragment shader): landColor( xz, height above sea
 // level, the ground's normal, distance from the camera ).
-export function landPars(city: LoadedCity): string {
-  const { x0, z0, cell, nx, nz } = city.landCover.header
+export function landPars(landCover: LandCover): string {
+  const { x0, z0, cell, nx, nz } = landCover.header
   const c = LAND_COLORS
   const cos = Math.cos(URBAN_ANGLE)
   const sin = Math.sin(URBAN_ANGLE)

@@ -1,83 +1,42 @@
 // Paving: everything between the roads and the buildings is concrete, the
 // same material as the sidewalks, so no bare ground shows through between a
-// sidewalk's edge and a building's footprint. One flat grid over the city's
-// loaded tiles (header.extent), vertex-colored: sidewalk concrete, fading
-// toward the land in the context ring exactly like the sidewalks and
-// buildings there (ring.ts), then into the bare ground across the city's
-// edge (cityEdge), where its tiles stop.
+// sidewalk's edge and a building's footprint. Per tile, a CELL_M grid of
+// colors over it edge to edge (a texture: Ground.tsx), sidewalk concrete
+// fading toward the land in the context ring exactly like the sidewalks and
+// buildings there (ring.ts), and gone where the city's land ends (the
+// tiles' land masks: format.ts), so the ground past the county line, and
+// on Alcatraz, is the land beyond's (landShading.ts).
 
 import { Color } from 'three'
-import type { CityData } from './format.ts'
+import { TILE_M } from './format.ts'
 import { palette } from './palette.ts'
-import { ringDim, ringField } from './ring.ts'
+import { ringDim } from './ring.ts'
 
-// The terrain's cell (scripts/bake-terrain.ts), on the same lattice from the
-// scene origin and split along the same diagonal, so the paving lies exactly
-// on the ground mesh (Ground.tsx).
 export const CELL_M = 20
-// Paving blends into bare ground over this distance across the city's edge,
-// half inside it, half past it.
-export const EDGE_BLEND_M = 300
+export const PAVING_SAMPLES = TILE_M / CELL_M + 1 // per side, edges shared with the neighbors
+// The paving's edge: how far each way of the land's edge it blends out.
+export const EDGE_BLEND_M = 40
 
-// How far gone the city is at (x, z), 0..1 (linear: callers ease it): 0
-// more than EDGE_BLEND_M / 2 inside its tiles' extent, 1 as far past it.
-export function cityEdge(city: Pick<CityData, 'header'>): (x: number, z: number) => number {
-  const [minX, minZ, maxX, maxZ] = city.header.extent
-  return (x, z) => {
-    // Signed distance to the extent's edge: negative inside.
-    const dx = Math.max(minX - x, x - maxX)
-    const dz = Math.max(minZ - z, z - maxZ)
-    const d = dx > 0 || dz > 0 ? Math.hypot(Math.max(0, dx), Math.max(0, dz)) : Math.max(dx, dz)
-    return Math.min(1, Math.max(0, (d + EDGE_BLEND_M / 2) / EDGE_BLEND_M))
-  }
-}
-
-export interface PavingGrid {
-  // The grid: first sample at (x0, z0), nx by nz, CELL_M apart.
-  x0: number
-  z0: number
-  nx: number
-  nz: number
-  position: Float32Array
-  color: Float32Array
-  index: Uint32Array
-}
-
-export function buildPaving(city: Pick<CityData, 'header' | 'boundary'>, y: number): PavingGrid {
-  const { boundary } = city
-  const { ringMeters, extent } = city.header
-  // The extent and the blend past it, on the CELL_M lattice.
-  const minX = Math.floor((extent[0] - EDGE_BLEND_M / 2) / CELL_M) * CELL_M
-  const minZ = Math.floor((extent[1] - EDGE_BLEND_M / 2) / CELL_M) * CELL_M
-  const nx = Math.ceil((extent[2] + EDGE_BLEND_M / 2 - minX) / CELL_M) + 1
-  const nz = Math.ceil((extent[3] + EDGE_BLEND_M / 2 - minZ) / CELL_M) + 1
-
-  const edge = cityEdge(city)
-  const ring = ringField(boundary, ringMeters, extent)
+// A tile's paving from its corner (x0, z0): PAVING_SAMPLES square, RGBA, the
+// color in sRGB (the shader decodes it) and in alpha how paved it is.
+// `landAt`: how much of the ground at (x, z) is the city's land (0..1);
+// `ringAt`: ring.ts ringPosition.
+export function pavingPixels(x0: number, z0: number, landAt: (x: number, z: number) => number, ringAt: (x: number, z: number) => number): Uint8Array {
+  const n = PAVING_SAMPLES
   const sidewalk = new Color(palette.sidewalk)
   const ground = new Color(palette.ground)
   const c = new Color()
-  const position = new Float32Array(nx * nz * 3)
-  const color = new Float32Array(nx * nz * 3)
-  for (let j = 0; j < nz; j++)
-    for (let i = 0; i < nx; i++) {
-      const x = minX + i * CELL_M
-      const z = minZ + j * CELL_M
-      const k = (j * nx + i) * 3
-      position.set([x, y, z], k)
-      const t = edge(x, z)
-      c.copy(sidewalk).lerp(ground, Math.max(ringDim(ring(x, z)), t * t * (3 - 2 * t)))
-      c.toArray(color, k)
+  const out = new Uint8Array(n * n * 4)
+  const d = EDGE_BLEND_M / 2
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * CELL_M
+      const z = z0 + j * CELL_M
+      c.copy(sidewalk).lerp(ground, ringDim(ringAt(x, z))).convertLinearToSRGB()
+      // The land's share around the sample, eased: a soft edge where it ends.
+      const land = (landAt(x, z) * 2 + landAt(x - d, z) + landAt(x + d, z) + landAt(x, z - d) + landAt(x, z + d)) / 6
+      const t = Math.min(1, Math.max(0, (land - 0.2) / 0.6))
+      out.set([Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255), Math.round(255 * t * t * (3 - 2 * t))], (j * n + i) * 4)
     }
-
-  const index = new Uint32Array((nx - 1) * (nz - 1) * 6)
-  let t = 0
-  for (let j = 0; j < nz - 1; j++)
-    for (let i = 0; i < nx - 1; i++) {
-      const a = j * nx + i
-      // Split from (i, j) to (i + 1, j + 1), as terrain.ts heightAt; facing up.
-      index.set([a, a + nx + 1, a + 1, a, a + nx, a + nx + 1], t)
-      t += 6
-    }
-  return { x0: minX, z0: minZ, nx, nz, position, color, index }
+  return out
 }

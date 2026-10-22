@@ -1,34 +1,24 @@
-import { useEffect, useMemo } from 'react'
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial } from 'three'
-import { StreetClass } from './format.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
-import { ringDim, ringField } from './ring.ts'
-import { ROAD_CLASS, type Mesh, type Pt, dashes, emptyMesh, laneLineOffsets, ribbon } from './roads.ts'
-import { type GroundShading, SHADING_PARS, groundShading, shadingCode } from './groundShading.ts'
-import { densify, drape } from './terrain.ts'
-import { type LoadedCity, useCity } from './useCity.ts'
+import { SHADING_PARS, type ShadingUniforms, shadingCode } from './groundShading.ts'
+import type { StreetLayer } from './streetMesh.ts'
 
-// Real roads (roads.ts): sidewalks, asphalt over them, lane lines over that,
-// a few centimeters apart above the ground (Ground.tsx, y <= 0.1) and pushed
-// further apart in depth by polygon offset so they don't z-fight from the
-// orbit's far end.
-const SIDEWALK_Y = 0.2
-const ASPHALT_Y = 0.25
-const MARKING_Y = 0.3
+// Real roads (streetMesh.ts, built per tile off the main thread):
+// sidewalks, asphalt over them, lane lines over that, a few centimeters
+// apart above the ground and pushed further apart in depth by polygon
+// offset (roadMaterial's `layer`) so they don't z-fight from far off.
 
 // Lane lines fade into the asphalt with distance, so thin dashes don't
 // shimmer from the opening view.
 const MARKING_FADE_M: [number, number] = [250, 900]
-// Streets lie on the ground (terrain.ts) with a vertex at least this often.
-const DRAPE_STEP_M = 5
 
 // Streetlight pools at night: discrete pools of neutral warm-white LED light
 // along both curbs, staggered side to side, over the curb lane and the
 // sidewalk, with dark gray asphalt between them, so the street grid reads
 // after dark. No streetlights are modeled; these are the light they'd cast.
 // Emitted, so it shows against the dark (sceneUniforms.ts uWindowsOn: 0 by
-// day). Main streets brightest, side streets dimmer (POOL_BY_CLASS).
+// day). Main streets brightest, side streets dimmer (streetMesh.ts).
 const POOL_SPACING_M = 28
 const POOL_ALONG_M = 4.5 // gaussian sigma along the street
 const POOL_ACROSS_M = 3.5 // and across it, centered on the curb
@@ -38,82 +28,34 @@ const POOL_LIGHT = 0.24
 const POOL_COLOR = new Color('#fff0dc') // ~4000 K LED: warm white, not orange
 // The faded line's brightness, relative to the pools' own average.
 const POOL_FAR = 0.6
-const POOL_BY_CLASS: Record<number, number> = { [StreetClass.Major]: 1, [StreetClass.Minor]: 0.75, [StreetClass.Local]: 0.5 }
 
-// Streets in the context ring fade toward the haze like the ring's
-// buildings (ring.ts): how far, per vertex (ringFade), toward the time of
-// day's haze color (sceneUniforms.ts uHaze), in the shader.
-// `pools` (ribbon layers): per vertex, the street's curb offset (m) and how
-// bright its streetlight pools are (POOL_BY_CLASS).
-function toGeometry(m: Mesh, base: Color, city: LoadedCity, pools?: { curb: number[]; lit: number[] }): BufferGeometry {
-  const ring = ringField(city.boundary, city.header.ringMeters, city.header.extent)
-  const position = new Float32Array(m.position)
-  const color = new Float32Array(position.length)
-  const ringFade = new Float32Array(position.length / 3)
-  for (let i = 0; i < position.length; i += 3) {
-    base.toArray(color, i)
-    ringFade[i / 3] = ringDim(ring(position[i], position[i + 2]))
-  }
-  // On the ground (terrain.ts), shaded by its slope.
-  const normal = new Float32Array(position.length)
-  drape(city.terrain, position, normal)
+// A tile's street layer from its arrays. Streets in the context ring fade
+// toward the haze like the ring's buildings (ring.ts): how far, per vertex
+// (ringFade), toward the time of day's haze color (sceneUniforms.ts
+// uHaze), in the shader. The pools' attributes on sidewalks and asphalt.
+export function streetGeometry(l: StreetLayer): BufferGeometry {
   const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(position, 3))
-  g.setAttribute('normal', new BufferAttribute(normal, 3))
-  g.setAttribute('color', new BufferAttribute(color, 3))
-  g.setAttribute('ringFade', new BufferAttribute(ringFade, 1))
-  if (pools) {
-    g.setAttribute('along', new BufferAttribute(new Float32Array(m.along), 1))
-    g.setAttribute('offset', new BufferAttribute(new Float32Array(m.offset), 1))
-    g.setAttribute('curb', new BufferAttribute(new Float32Array(pools.curb), 1))
-    g.setAttribute('lit', new BufferAttribute(new Float32Array(pools.lit), 1))
+  g.setAttribute('position', new BufferAttribute(l.position, 3))
+  g.setAttribute('normal', new BufferAttribute(l.normal, 3))
+  g.setAttribute('color', new BufferAttribute(l.color, 3))
+  g.setAttribute('ringFade', new BufferAttribute(l.ringFade, 1))
+  if (l.along && l.offset && l.curb && l.lit) {
+    g.setAttribute('along', new BufferAttribute(l.along, 1))
+    g.setAttribute('offset', new BufferAttribute(l.offset, 1))
+    g.setAttribute('curb', new BufferAttribute(l.curb, 1))
+    g.setAttribute('lit', new BufferAttribute(l.lit, 1))
   }
-  g.setIndex(new BufferAttribute(position.length / 3 > 65535 ? new Uint32Array(m.index) : new Uint16Array(m.index), 1))
+  g.setIndex(new BufferAttribute(l.index, 1))
   g.computeBoundingSphere()
   return g
 }
 
-function buildLayers(city: LoadedCity) {
-  const { streets } = city
-  const sidewalk = emptyMesh()
-  const asphalt = emptyMesh()
-  const markings = emptyMesh()
-  const sidewalkPools = { curb: [] as number[], lit: [] as number[] }
-  const asphaltPools = { curb: [] as number[], lit: [] as number[] }
-  // Tags the vertices `ribbon` just added with this street's curb and pools.
-  const tag = (m: Mesh, p: typeof sidewalkPools, curb: number, lit: number) => {
-    while (p.curb.length < m.along.length) {
-      p.curb.push(curb)
-      p.lit.push(lit)
-    }
-  }
-  let c = 0
-  streets.counts.forEach((n, k) => {
-    const raw: Pt[] = []
-    for (let i = 0; i < n; i++, c += 2) raw.push([streets.coords[c], streets.coords[c + 1]])
-    // A vertex every few meters, so the ribbon follows the ground's slope.
-    const line = densify(raw, DRAPE_STEP_M)
-    const cls = ROAD_CLASS[streets.classes[k]] ?? ROAD_CLASS[StreetClass.Local]
-    const lit = POOL_BY_CLASS[streets.classes[k]] ?? POOL_BY_CLASS[StreetClass.Local]
-    ribbon(sidewalk, line, cls.asphaltM / 2 + cls.sidewalkM, SIDEWALK_Y)
-    tag(sidewalk, sidewalkPools, cls.asphaltM / 2, lit)
-    ribbon(asphalt, line, cls.asphaltM / 2, ASPHALT_Y)
-    tag(asphalt, asphaltPools, cls.asphaltM / 2, lit)
-    const lanes = laneLineOffsets(cls.asphaltM, cls.lanes)
-    if (lanes.length) dashes(markings, line, lanes, MARKING_Y)
-  })
-  return {
-    sidewalk: toGeometry(sidewalk, new Color(palette.sidewalk), city, sidewalkPools),
-    asphalt: toGeometry(asphalt, new Color(palette.asphalt), city, asphaltPools),
-    markings: toGeometry(markings, new Color(palette.laneMarking), city),
-  }
-}
-
 // `layer` 1-3, bottom to top: each one wins the depth test over the one below.
 // Lane markings (`markings`) also fade into the asphalt with distance.
-// `shading`: hillshading and the valleys' occlusion, as on the ground
-// around them (groundShading.ts).
-function roadMaterial(shading: GroundShading, layer: number, markings = false): MeshStandardMaterial {
+// `shading`: the tile's hillshading and the valleys' occlusion, as on the
+// ground around them (groundShading.ts). Light pools brightness by street
+// class: streetMesh.ts.
+export function roadMaterial(shading: ShadingUniforms, layer: number, markings = false): MeshStandardMaterial {
   const material = new MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.95,
@@ -129,9 +71,7 @@ function roadMaterial(shading: GroundShading, layer: number, markings = false): 
     shader.uniforms.uHaze = sceneUniforms.uHaze
     shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
     shader.uniforms.uPoolColor = { value: POOL_COLOR }
-    shader.uniforms.uGroundNormals = { value: shading.normals }
-    shader.uniforms.uGroundCover = { value: shading.cover }
-    shader.uniforms.uContactAo = { value: shading.contact }
+    Object.assign(shader.uniforms, shading)
     shader.uniforms.uLightDir = sceneUniforms.uLightDir
     shader.uniforms.uHillshade = sceneUniforms.uHillshade
     const poolVars = 'attribute float along;\nattribute float offset;\nattribute float curb;\nattribute float lit;\nvarying float vAlong;\nvarying float vOffset;\nvarying float vCurb;\nvarying float vLit;'
@@ -174,32 +114,11 @@ function roadMaterial(shading: GroundShading, layer: number, markings = false): 
         '#include <color_fragment>',
         `#include <color_fragment>
 ${markingFade}
-${shadingCode(shading, 'vGround')}
+${shadingCode('vGround')}
 diffuseColor.rgb = mix(diffuseColor.rgb, uHaze, vRingFade);`,
       )
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${pools}`)
   }
-  material.customProgramCacheKey = () => `city-roads-v8-${markings ? 'markings' : 'surface'}`
+  material.customProgramCacheKey = () => `city-roads-v9-${markings ? 'markings' : 'surface'}`
   return material
-}
-
-export function Streets() {
-  const city = useCity()
-  const layers = useMemo(() => buildLayers(city), [city])
-  const shading = useMemo(() => groundShading(city), [city])
-  const materials = useMemo(
-    () => ({ sidewalk: roadMaterial(shading, 1), asphalt: roadMaterial(shading, 2), markings: roadMaterial(shading, 3, true) }),
-    [shading],
-  )
-  useEffect(() => () => Object.values(layers).forEach((g) => g.dispose()), [layers])
-  useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials])
-
-  // Flat at street level: nothing the Bay's reflection could show (BayWater.tsx).
-  return (
-    <>
-      <mesh geometry={layers.sidewalk} material={materials.sidewalk} receiveShadow userData={{ noReflect: true }} />
-      <mesh geometry={layers.asphalt} material={materials.asphalt} receiveShadow userData={{ noReflect: true }} />
-      <mesh geometry={layers.markings} material={materials.markings} receiveShadow userData={{ noReflect: true }} />
-    </>
-  )
 }

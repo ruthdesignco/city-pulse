@@ -1,12 +1,8 @@
-import { useEffect, useMemo } from 'react'
-import { DEMO } from '../params.ts'
 import { BufferAttribute, BufferGeometry, Color, type Material, type Mesh, MeshStandardMaterial } from 'three'
-import { type LoadedCity, useCity } from './useCity.ts'
-import { extrudeBuildings } from './extrude.ts'
-import type { CityTile } from './format.ts'
-import { StreetFrontage } from './frontage.ts'
-import { type GroundShading, groundShading } from './groundShading.ts'
-import { FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
+import type { CityMesh, PrismMesh } from './extrude.ts'
+import type { ShadingUniforms } from './groundShading.ts'
+import { FACADE_AVERAGE, FACADE_AVERAGE_PARS, FACADE_COLOR, FACADE_PARS, FACADE_REFLECTION, FACADE_ROUGHNESS, FACADE_SPECULAR } from './facade.ts'
+import { type Fade, withDither } from './stream/dither.ts'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
@@ -28,40 +24,47 @@ const ROOF_SHADE = 0.8
 // How far roofs go to gray at night.
 const ROOF_NIGHT_GRAY = 0.75
 
-// One tile's buildings (format.ts), with storefronts on walls that front
-// any street, the neighboring tiles' included.
-function buildGeometry(city: LoadedCity, tile: CityTile, frontage: StreetFrontage): BufferGeometry {
-  const mesh = extrudeBuildings(tile.buildings, city.header.ringMeters, tile.header.pinnedMaterials, frontage, (x, z) => city.terrain.heightAt(x, z))
+// The worker's meshes, an index of either width.
+type CityMeshArrays = Omit<CityMesh, 'index'> & { index: Uint16Array | Uint32Array }
+type PrismMeshArrays = Omit<PrismMesh, 'index'> & { index: Uint16Array | Uint32Array }
+
+// A tile's buildings from the tile worker's arrays (stream/tileBuild.ts):
+// in full (extrude.ts extrudeBuildings) up close, as plain prisms
+// (extrudePrisms) further off and for the far blocks.
+export function nearGeometry(m: CityMeshArrays): BufferGeometry {
   const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(mesh.positions, 3))
-  g.setAttribute('normal', new BufferAttribute(mesh.normals, 3))
-  g.setAttribute('ring', new BufferAttribute(mesh.ring, 1))
-  g.setAttribute('colorIndex', new BufferAttribute(mesh.colorIndex, 1))
-  g.setAttribute('facade', new BufferAttribute(mesh.facade, 4))
-  g.setAttribute('material', new BufferAttribute(mesh.material, 1))
-  g.setAttribute('storefront', new BufferAttribute(mesh.storefront, 1))
-  g.setAttribute('localY', new BufferAttribute(mesh.localY, 1))
-  g.setIndex(new BufferAttribute(mesh.index, 1))
+  g.setAttribute('position', new BufferAttribute(m.positions, 3))
+  g.setAttribute('normal', new BufferAttribute(m.normals, 3))
+  g.setAttribute('ring', new BufferAttribute(m.ring, 1))
+  g.setAttribute('colorIndex', new BufferAttribute(m.colorIndex, 1))
+  g.setAttribute('facade', new BufferAttribute(m.facade, 4))
+  g.setAttribute('material', new BufferAttribute(m.material, 1))
+  g.setAttribute('storefront', new BufferAttribute(m.storefront, 1))
+  g.setAttribute('localY', new BufferAttribute(m.localY, 1))
+  g.setIndex(new BufferAttribute(m.index, 1))
   g.computeBoundingSphere()
   return g
 }
 
-// Every loaded tile's: drawn tile by tile, so each is culled on its own
-// from the view and the shadow map.
-function buildTiles(city: LoadedCity): BufferGeometry[] {
-  const started = performance.now()
-  const frontage = new StreetFrontage(city.streets)
-  const out = city.tiles.map((t) => buildGeometry(city, t, frontage))
-  const triangles = out.reduce((n, g) => n + (g.index?.count ?? 0) / 3, 0)
-  console.info(`city: ${city.buildings.counts.length} buildings in ${out.length} tiles, ${triangles} triangles, extruded in ${(performance.now() - started).toFixed(0)} ms`)
-  return out
+export function prismGeometry(m: PrismMeshArrays): BufferGeometry {
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(m.positions, 3))
+  g.setAttribute('prism', new BufferAttribute(m.prism, 4))
+  g.setAttribute('localY', new BufferAttribute(m.localY, 1))
+  g.setIndex(new BufferAttribute(m.index, 1))
+  g.computeBoundingSphere()
+  return g
 }
 
-function buildMaterial(shading: GroundShading): MeshStandardMaterial {
+// Each tile's own (its contact map; its fade), sharing one program per
+// level: `dither` for the copy drawn while a tile changes level (dither.ts).
+export function nearBuildingMaterial(shading: ShadingUniforms, fade: Fade, dither = false): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: palette.building, roughness: 0.92, metalness: 0 })
   material.onBeforeCompile = (shader) => {
     registerHeightFog(shader)
-    shader.uniforms.uContactAo = { value: shading.contact }
+    shader.uniforms.uFade = fade
+    shader.uniforms.uContactAo = shading.uContactAo
+    shader.uniforms.uContactUv = shading.uContactUv
     shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
     shader.uniforms.uDim = sceneUniforms.uHaze
     shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
@@ -88,7 +91,7 @@ function buildMaterial(shading: GroundShading): MeshStandardMaterial {
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nuniform sampler2D uContactAo;\nvarying vec2 vGround;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\n${FACADE_PARS}`,
+        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nuniform sampler2D uContactAo;\nuniform vec4 uContactUv;\nvarying vec2 vGround;\nvarying float vRing;\nvarying float vY;\nvarying float vWall;\nvarying float vColorIndex;\n${FACADE_PARS}`,
       )
       .replace(
         '#include <color_fragment>',
@@ -97,7 +100,7 @@ function buildMaterial(shading: GroundShading): MeshStandardMaterial {
         ${FACADE_COLOR}
         float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
         diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
-        float wallContact = texture2D(uContactAo, ${shading.contactUv('vGround')}).r * (1.0 - smoothstep(0.0, ${WALL_CONTACT_M.toFixed(1)}, vY));
+        float wallContact = texture2D(uContactAo, vGround * uContactUv.xy + uContactUv.zw).r * (1.0 - smoothstep(0.0, ${WALL_CONTACT_M.toFixed(1)}, vY));
         diffuseColor.rgb *= 1.0 - wallContact * vWall;
         diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, vRing));
         diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);
@@ -109,54 +112,97 @@ function buildMaterial(shading: GroundShading): MeshStandardMaterial {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
+    shader.fragmentShader = withDither(shader.fragmentShader, dither)
   }
-  material.customProgramCacheKey = () => 'city-buildings-v26'
+  material.customProgramCacheKey = () => `city-buildings-v27${dither ? '-dither' : ''}`
+  return material
+}
+
+// Buildings at middle distance and the far blocks: plain prisms (extrude.ts
+// extrudePrisms), flat-shaded from the screen's derivatives, their walls
+// the windows' average (facade.ts FACADE_AVERAGE), with the near
+// material's street-level darkening, ring fade and roofs. No contact
+// shading: at this distance it's under a pixel.
+export function midBuildingMaterial(fade: Fade, dither = false): MeshStandardMaterial {
+  const material = new MeshStandardMaterial({ color: palette.building, roughness: 0.92, metalness: 0, flatShading: true })
+  material.onBeforeCompile = (shader) => {
+    registerHeightFog(shader)
+    shader.uniforms.uFade = fade
+    shader.uniforms.uBase = { value: new Color(palette.buildingBase) }
+    shader.uniforms.uDim = sceneUniforms.uHaze
+    shader.uniforms.uBuildingColors = { value: palette.buildingColors.map((c) => new Color(c)) }
+    shader.uniforms.uSkyReflection = sceneUniforms.uHaze
+    shader.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
+    shader.uniforms.uHour = sceneUniforms.uHour
+    shader.uniforms.uWeekend = sceneUniforms.uWeekend
+    shader.uniforms.uStoneColors = { value: palette.stoneTowerColors.map((c) => new Color(c)) }
+    shader.uniforms.uPaleStone = { value: new Color(palette.landmarkPaleStone) }
+    shader.uniforms.uGranite = { value: new Color(palette.landmarkGranite) }
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec4 prism;\nattribute float localY;\nvarying vec4 vPrism;\nvarying float vY;\nvarying vec3 vWorld;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPrism = prism;\nvY = localY;\nvWorld = position;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>\nuniform vec3 uBase;\nuniform vec3 uDim;\nuniform vec3 uBuildingColors[${palette.buildingColors.length}];\nvarying vec4 vPrism;\nvarying float vY;\nvarying vec3 vWorld;\n${FACADE_AVERAGE_PARS}`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        vec3 prismN = normalize( cross( dFdx( vWorld ), dFdy( vWorld ) ) );
+        float vWall = 1.0 - step( 0.5, abs( prismN.y ) );
+        vec2 vGround = vWorld.xz;
+        float fcMat = floor( vPrism.x / 10.0 + 0.05 );
+        float fcCI = floor( vPrism.x - 10.0 * fcMat + 0.5 );
+        diffuseColor.rgb = uBuildingColors[ int( fcCI ) ];
+        ${FACADE_AVERAGE}
+        float lift = mix(${BASE_FLOOR.toFixed(2)}, 1.0, smoothstep(0.0, ${BASE_FADE_M.toFixed(1)}, vY));
+        diffuseColor.rgb = mix(uBase, diffuseColor.rgb, mix(1.0, lift, vWall));
+        diffuseColor.rgb = mix(diffuseColor.rgb, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, vPrism.y));
+        diffuseColor.rgb *= mix(${ROOF_SHADE.toFixed(2)}, 1.0, vWall);
+        float roofGray = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(roofGray), ${ROOF_NIGHT_GRAY.toFixed(2)} * uWindowsOn * (1.0 - vWall));`,
+      )
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FACADE_ROUGHNESS}`)
+      .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>\n${FACADE_SPECULAR}`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${FACADE_REFLECTION}`)
+    shader.fragmentShader = withDither(shader.fragmentShader, dither)
+  }
+  material.customProgramCacheKey = () => `city-buildings-mid-v1${dither ? '-dither' : ''}`
   return material
 }
 
 declare global {
   interface Window {
-    // ?demo only: whether the city mesh's shader program is runnable, set on
-    // each draw. A shader that fails to compile drops the whole city while
-    // everything else still renders; npm run smoke checks this.
+    // ?demo only: whether the city's shader programs are runnable, each set
+    // on its draws (__cityShaders: the full buildings, the prisms, the
+    // ground, the canopy), and all of them together once the full
+    // buildings have drawn. A shader that fails to compile drops what it
+    // draws while everything else still renders; npm run smoke checks this.
     __cityDrawn?: boolean
+    __cityShaders?: Record<string, boolean>
   }
 }
 
 // Asks WebGL itself whether the program linked: three.js's own diagnostics
 // aren't always filled in for a failed compile. Cached per program. The hook
 // also runs in the shadow and SSAO normal passes, with their own working
-// materials, so only the city's own material counts.
+// materials, so only the mesh's own material counts.
 type ProgramInfo = { currentProgram?: { program: WebGLProgram } }
 const linked = new WeakMap<WebGLProgram, boolean>()
-const reportDrawn = (own: Material): Mesh['onAfterRender'] => (renderer, _scene, _camera, _geometry, material) => {
+export const reportDrawn = (own: Material, name: string): Mesh['onAfterRender'] => (renderer, _scene, _camera, _geometry, material) => {
   if (material !== own) return
   const program = (renderer.properties.get(material) as ProgramInfo).currentProgram?.program
-  if (!program) {
-    window.__cityDrawn = false
-    return
+  let ok = false
+  if (program) {
+    const known = linked.get(program)
+    if (known === undefined) {
+      const gl = renderer.getContext()
+      ok = gl.getProgramParameter(program, gl.LINK_STATUS) === true
+      linked.set(program, ok)
+    } else ok = known
   }
-  let ok = linked.get(program)
-  if (ok === undefined) {
-    const gl = renderer.getContext()
-    ok = gl.getProgramParameter(program, gl.LINK_STATUS) === true
-    linked.set(program, ok)
-  }
-  window.__cityDrawn = ok
-}
-
-export function Buildings() {
-  const city = useCity()
-  const geometries = useMemo(() => buildTiles(city), [city])
-  const material = useMemo(() => buildMaterial(groundShading(city)), [city])
-  useEffect(() => () => geometries.forEach((g) => g.dispose()), [geometries])
-  useEffect(() => () => material.dispose(), [material])
-
-  return (
-    <>
-      {geometries.map((g, k) => (
-        <mesh key={k} geometry={g} material={material} castShadow receiveShadow onAfterRender={DEMO ? reportDrawn(material) : undefined} />
-      ))}
-    </>
-  )
+  const shaders = (window.__cityShaders ??= {})
+  shaders[name] = ok
+  window.__cityDrawn = 'buildings' in shaders && Object.values(shaders).every(Boolean)
 }

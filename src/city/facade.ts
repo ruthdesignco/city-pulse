@@ -397,3 +397,77 @@ export const FACADE_REFLECTION = /* glsl */ `
   totalEmissiveRadiance += windowLight;
 }
 `
+
+// Buildings at middle distance (extrude.ts extrudePrisms, Buildings.tsx):
+// no window pattern, only what FACADE_COLOR fades to there. Across a wall
+// the windows are always their average; up it, the floor lines stay while
+// they're a few pixels or more; at night blocks of WINDOW_BLOCK_FLOORS
+// floors light at the lit share, columns taken along the wall's ground
+// position (there is no wall coordinate). Shop floors are left out. Sets
+// what FACADE_COLOR sets, for the same later chunks. Needs vPrism
+// (extrudePrisms' prism), vY, vWall and vGround.
+export const FACADE_AVERAGE_PARS = /* glsl */ `
+uniform vec3 uSkyReflection;
+uniform vec3 uStoneColors[3];
+uniform vec3 uPaleStone;
+uniform vec3 uGranite;
+uniform float uWindowsOn;
+uniform float uHour;
+uniform float uWeekend;
+float fcHash( vec3 p ) {
+  return fract( sin( dot( p, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+}
+${LIT_SHARE_GLSL}
+float facadeBox( float x, float lo, float hi, float aa ) {
+  return smoothstep( lo - aa, lo + aa, x ) * ( 1.0 - smoothstep( hi - aa, hi + aa, x ) );
+}
+`
+
+// After the wall's base color is in diffuseColor.rgb; `fcCI` and `fcMat`
+// (the building's colorIndex and pinned material) declared before it.
+export const FACADE_AVERAGE = /* glsl */ `
+float fcSeed = vPrism.w;
+float fcHeightM = vPrism.z;
+float fcFamily = floor( ( fcCI + 0.5 ) / 3.0 );
+float fcPinned = step( 0.5, fcMat );
+float fcTower = max( step( 1.5, fcFamily ), fcPinned );
+float fcRandomStone = step( fract( fcSeed * ${v(STONE_HASH[0])} + ${v(STONE_HASH[1])} ), ${v(STONE_TOWER_SHARE)} );
+float fcStone = fcTower * mix( fcRandomStone, step( ${v(PINNED_STONE_FROM)}, fcMat ), fcPinned );
+int fcType = fcStone > 0.5 ? ${STONE_TOWER} : fcTower > 0.5 ? 2 : int( fcFamily );
+vec3 fcStoneColor = fcMat > ${v(PinnedMaterial.Granite - 0.5)} ? uGranite : fcMat > ${v(PinnedMaterial.PaleStone - 0.5)} ? uPaleStone : uStoneColors[ int( mod( fcCI + 0.5, 3.0 ) ) ];
+diffuseColor.rgb = mix( diffuseColor.rgb, fcStoneColor, fcStone );
+float fcS1 = fract( fcSeed * 7.31 + 0.13 );
+float fcS2 = fract( fcSeed * 13.17 + 0.71 );
+float fcS3 = fract( fcSeed * 29.93 + 0.37 );
+float fcFloorM = ${pick((f) => v(f.floorM))} * ( 1.0 + ( fcSeed - 0.5 ) * 2.0 * ${pick((f) => v(f.varyFloor))} );
+float fcSpacing = ${pick((f) => v(f.spacingM))} * ( 1.0 + ( fcS1 - 0.5 ) * 2.0 * ${pick((f) => v(f.varySpacing))} );
+float fcWidth = ${pick((f) => v(f.width))} * ( 1.0 + ( fcS2 - 0.5 ) * 2.0 * ${pick((f) => v(f.varyWidth))} );
+float fcHeight = ${pick((f) => v(f.height))};
+float fcSill = ${pick((f) => v(f.sill))};
+float fcMullion = step( fcS3, ${pick((f) => v(f.mullion))} );
+float fcRows = floor( max( 0.0, fcHeightM - ${v(PARAPET_M)} ) / fcFloorM );
+float fcCv = vY / fcFloorM;
+float fcDv = fwidth( fcCv );
+float fcDetailUp = 1.0 - smoothstep( ${v(1 / DETAIL_FULL_PX)}, ${v(1 / DETAIL_GONE_PX)}, fcDv );
+float fcUp = mix( fcHeight, facadeBox( fract( fcCv ), fcSill, fcSill + fcHeight, fcDv ), fcDetailUp );
+float fcInside = mix( 1.0, facadeBox( fcCv, 0.0, fcRows, fcDv ), fcDetailUp ) * step( 1.0, fcRows );
+float fcEnabled = vWall * step( ${v(MIN_HEIGHT_M)}, fcHeightM );
+float fcUpperGlass = fcEnabled * fcInside * ( fcWidth - fcMullion * ${v(2 * MULLION)} ) * fcUp;
+diffuseColor.rgb = mix( diffuseColor.rgb, ${pick((f) => vec3(f.glass))}, fcUpperGlass );
+float windowGlass = fcUpperGlass;
+float windowMatte = fcUpperGlass * ( fcType == 2 ? 0.0 : 1.0 );
+int fcUse = fcType == 1 ? 1 : 0;
+float fcShare = litShare( fcUse, uHour, uWeekend );
+float fcBlockU = dot( vGround, vec2( 0.7071 ) ) / ( fcSpacing * ${v(WINDOW_BLOCK_COLUMNS)} );
+float fcBlockV = fcCv / ${v(WINDOW_BLOCK_FLOORS)};
+float fcBlockDetail = min(
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockU ) ),
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockV ) )
+);
+float fcBlockLit = step( fcHash( vec3( fcSeed * 59.0, floor( fcBlockU ), floor( fcBlockV ) ) ), fcShare );
+vec3 fcFarColor = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, 0.15 ) * 0.8;
+vec3 fcFar = mix( fcFarColor * fcShare * ${v(FAR_AVERAGE)}, fcFarColor * mix( fcShare, fcBlockLit, ${v(BLOCK_CONTRAST)} * uWindowsOn ) * ${v(FAR_GLOW)}, fcBlockDetail );
+vec3 windowLight = uWindowsOn * uWindowsOn * fcUpperGlass * fcFar * ${v(WINDOW_RADIANCE)};
+float windowReflect = fcUpperGlass * ${pick((f) => v(f.reflect))};
+float windowGlint = ${pick((f) => v(f.glint))};
+`

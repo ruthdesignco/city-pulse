@@ -16,18 +16,19 @@
 //   and blurred over about CONTACT_REACH_M. Baked in place of SSAO, which
 //   cost too much at Retina size (quality.ts) and is now ?quality=high's.
 //
-// The first two maps are on the terrain's grid, built once per loaded city: the
-// normals with the occlusion in alpha (normalsAo), and the cover's classes
-// in red (grass), green (wood) and blue (rock; sand is half of it). Past
-// the bake area the normals and occlusion come from ground smoothed over
-// SMOOTH_RADIUS_M: there the 1 m lidar's piers, pads and rubble only
-// mottled the land, which reads as distant city (landShading.ts).
+// Every map is a tile's own (stream/tileBuild.ts, built off the main
+// thread), placed by uniforms (uGroundUv, uContactUv), so one shader serves
+// every tile. The first two are on the tile's 5 m terrain grid: the normals
+// with the occlusion in alpha (normalsAo), and the cover's classes in red
+// (grass), green (wood) and blue (rock; sand is half of it). Off the
+// city's land (Daly City's edge, Alcatraz) the normals and occlusion come
+// from ground smoothed over SMOOTH_RADIUS_M: there the 1 m lidar's piers,
+// pads and rubble only mottled the land, which reads as distant city
+// (landShading.ts).
 
-import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, RedFormat } from 'three'
-import { HEIGHT_QUANTUM } from './format.ts'
-import { cityEdge } from './paving.ts'
+import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, RedFormat, type Vector4 } from 'three'
+import { type CityParts, HEIGHT_QUANTUM } from './format.ts'
 import { Terrain } from './terrain.ts'
-import type { LoadedCity } from './useCity.ts'
 
 export const AO_RADIUS_M = 40
 const AO_DEPTH_M = 6 // this far below its surroundings is fully occluded
@@ -107,35 +108,6 @@ function smoothed(t: Terrain, smooth: Float32Array): Terrain {
   return new Terrain(t.header, out)
 }
 
-// How much to smooth each sample of the city's terrain: none over the bake
-// area, fully past the paving's outer blend (on a coarse lattice, eased
-// between).
-function smoothing(city: LoadedCity): Float32Array {
-  const { x0, z0, cell, nx, nz } = city.terrain.header
-  const edge = cityEdge(city)
-  const step = 8
-  const cx = Math.ceil((nx - 1) / step) + 1
-  const cz = Math.ceil((nz - 1) / step) + 1
-  const coarse = new Float32Array(cx * cz)
-  for (let b = 0; b < cz; b++)
-    for (let a = 0; a < cx; a++) {
-      const t = edge(x0 + a * step * cell, z0 + b * step * cell)
-      coarse[b * cx + a] = t * t * (3 - 2 * t)
-    }
-  const out = new Float32Array(nx * nz)
-  for (let j = 0; j < nz; j++)
-    for (let i = 0; i < nx; i++) {
-      const a = Math.min(cx - 2, Math.floor(i / step))
-      const b = Math.min(cz - 2, Math.floor(j / step))
-      const u = i / step - a
-      const v = j / step - b
-      const top = coarse[b * cx + a] * (1 - u) + coarse[b * cx + a + 1] * u
-      const bottom = coarse[(b + 1) * cx + a] * (1 - u) + coarse[(b + 1) * cx + a + 1] * u
-      out[j * nx + i] = top * (1 - v) + bottom * v
-    }
-  return out
-}
-
 // The ground's normal at every sample, packed for a texture (x and z
 // centered on 128, y as 0..255), with 255 x (1 - occlusion) in alpha.
 // `smooth`: how much to smooth each sample first (smoothed), if at all.
@@ -158,67 +130,96 @@ export function normalsAo(terrain: Terrain, smooth?: Float32Array): Uint8Array {
   return out
 }
 
-// The cover outlines drawn on a canvas over the terrain's grid, one
-// channel per class (additive: overlapping outlines of one class stay at
-// full, of different classes mix).
-function coverPixels(city: LoadedCity): Uint8Array {
-  const { x0, z0, cell, nx, nz } = city.terrain.header
-  const canvas = document.createElement('canvas')
-  canvas.width = nx
-  canvas.height = nz
-  const g = canvas.getContext('2d', { willReadFrequently: true })
-  if (!g) return new Uint8Array(nx * nz * 4)
-  g.globalCompositeOperation = 'lighter'
-  const fill = ['rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(64,0,128)']
-  const { counts, classes, coords } = city.cover
-  let c = 0
-  counts.forEach((n, k) => {
-    g.beginPath()
-    for (let i = 0; i < n; i++, c += 2) {
-      const px = (coords[c] - x0) / cell + 0.5
-      const pz = (coords[c + 1] - z0) / cell + 0.5
-      if (i === 0) g.moveTo(px, pz)
-      else g.lineTo(px, pz)
-    }
-    g.closePath()
-    g.fillStyle = fill[classes[k]] ?? fill[0]
-    g.fill()
-  })
-  return new Uint8Array(g.getImageData(0, 0, nx, nz).data.buffer)
-}
-
-// The contact map's grid over the bake area, with a clear texel all round.
-interface ContactGrid {
+// Where a tile's maps lie: sample (i, j) at (x0 + i * cell, z0 + j * cell),
+// at texel (i, j)'s center.
+export interface Grid {
   x0: number
   z0: number
+  cell: number
   nx: number
   nz: number
 }
 
-// The buildings' footprints over a CONTACT_CELL_M grid, as how much each
-// texel is darkened, 0..CONTACT_MAX (contact()), packed 0..255.
-export function contactPixels(city: LoadedCity, grid: ContactGrid): Uint8Array {
-  const { x0, z0, nx, nz } = grid
-  const canvas = document.createElement('canvas')
-  canvas.width = nx
-  canvas.height = nz
-  const g = canvas.getContext('2d', { willReadFrequently: true })
-  if (!g) return new Uint8Array(nx * nz)
-  const { counts, heights, coords } = city.buildings
-  let c = 0
-  counts.forEach((n, k) => {
-    const v = Math.round(255 * Math.min(1, (heights[k] * HEIGHT_QUANTUM) / CONTACT_FULL_HEIGHT_M))
-    g.beginPath()
-    for (let i = 0; i < n; i++, c += 2) {
-      const px = (coords[c] - x0) / CONTACT_CELL_M + 0.5
-      const pz = (coords[c + 1] - z0) / CONTACT_CELL_M + 0.5
-      if (i === 0) g.moveTo(px, pz)
-      else g.lineTo(px, pz)
+// The uv of scene (x, z) on a grid's texture, as uv = xz * (a.x, a.y) +
+// (a.z, a.w): the shaders' uGroundUv and uContactUv, set per tile.
+export function gridUv(g: Grid): [number, number, number, number] {
+  return [1 / (g.cell * g.nx), 1 / (g.cell * g.nz), (0.5 - g.x0 / g.cell) / g.nx, (0.5 - g.z0 / g.cell) / g.nz]
+}
+
+// A 2D canvas in a worker or the page; null where there's none (tests).
+function canvas2d(w: number, h: number): OffscreenCanvasRenderingContext2D | null {
+  if (typeof OffscreenCanvas === 'undefined') return null
+  return new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true })
+}
+
+// Rings (x, z interleaved, `counts` points each) traced onto a canvas over
+// `grid` (cells `cell` m, sample centers at (i + 0.5)).
+function trace(g: OffscreenCanvasRenderingContext2D, grid: Grid, counts: Uint16Array, coords: Float32Array, k: number, c: number): number {
+  const n = counts[k]
+  g.beginPath()
+  for (let i = 0; i < n; i++, c += 2) {
+    const px = (coords[c] - grid.x0) / grid.cell + 0.5
+    const pz = (coords[c + 1] - grid.z0) / grid.cell + 0.5
+    if (i === 0) g.moveTo(px, pz)
+    else g.lineTo(px, pz)
+  }
+  g.closePath()
+  return c
+}
+
+// The cover outlines (a tile's and its neighbors', which meet it at its
+// edges) drawn over the grid, one channel per class (additive: overlapping
+// outlines of one class stay at full, of different classes mix).
+export function coverPixels(covers: CityParts['cover'][], grid: Grid): Uint8Array {
+  const { nx, nz } = grid
+  const g = canvas2d(nx, nz)
+  if (!g) return new Uint8Array(nx * nz * 4)
+  g.globalCompositeOperation = 'lighter'
+  const fill = ['rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(64,0,128)']
+  for (const { counts, classes, coords } of covers) {
+    let c = 0
+    for (let k = 0; k < counts.length; k++) {
+      c = trace(g, grid, counts, coords, k, c)
+      g.fillStyle = fill[classes[k]] ?? fill[0]
+      g.fill()
     }
-    g.closePath()
-    g.fillStyle = `rgb(${v},${v},${v})`
-    g.fill()
-  })
+  }
+  return new Uint8Array(g.getImageData(0, 0, nx, nz).data.buffer)
+}
+
+// The contact map's grid for a tile: over the tile and its own buildings
+// (some reach past its edge), CONTACT_CELL_M cells, with room for the
+// darkening's reach all round.
+export function contactGrid(rect: [number, number, number, number], b: CityParts['buildings']): Grid {
+  let [minX, minZ, maxX, maxZ] = rect
+  for (let c = 0; c < b.coords.length; c += 2) {
+    minX = Math.min(minX, b.coords[c])
+    maxX = Math.max(maxX, b.coords[c])
+    minZ = Math.min(minZ, b.coords[c + 1])
+    maxZ = Math.max(maxZ, b.coords[c + 1])
+  }
+  const pad = CONTACT_REACH_M + CONTACT_CELL_M
+  const x0 = Math.floor((minX - pad) / CONTACT_CELL_M) * CONTACT_CELL_M
+  const z0 = Math.floor((minZ - pad) / CONTACT_CELL_M) * CONTACT_CELL_M
+  return { x0, z0, cell: CONTACT_CELL_M, nx: Math.ceil((maxX + pad - x0) / CONTACT_CELL_M) + 1, nz: Math.ceil((maxZ + pad - z0) / CONTACT_CELL_M) + 1 }
+}
+
+// Buildings' footprints (a tile's and its neighbors') over a contact grid,
+// as how much each texel is darkened, 0..CONTACT_MAX (contact()), packed
+// 0..255.
+export function contactPixels(buildings: CityParts['buildings'][], grid: Grid): Uint8Array {
+  const { nx, nz } = grid
+  const g = canvas2d(nx, nz)
+  if (!g) return new Uint8Array(nx * nz)
+  for (const { counts, heights, coords } of buildings) {
+    let c = 0
+    for (let k = 0; k < counts.length; k++) {
+      const v = Math.round(255 * Math.min(1, (heights[k] * HEIGHT_QUANTUM) / CONTACT_FULL_HEIGHT_M))
+      c = trace(g, grid, counts, coords, k, c)
+      g.fillStyle = `rgb(${v},${v},${v})`
+      g.fill()
+    }
+  }
   const rgba = g.getImageData(0, 0, nx, nz).data
   const cover = new Float32Array(nx * nz)
   for (let k = 0; k < cover.length; k++) cover[k] = rgba[4 * k] / 255
@@ -235,21 +236,9 @@ export function contact(cover: Float32Array, nx: number, nz: number): Uint8Array
   return out
 }
 
-function contactGrid(city: LoadedCity): ContactGrid {
-  const { x0, z0, cell, nx, nz } = city.terrain.header
-  const [minX, minZ, maxX, maxZ] = city.header.extent ?? [x0, z0, x0 + (nx - 1) * cell, z0 + (nz - 1) * cell]
-  const pad = CONTACT_REACH_M + CONTACT_CELL_M
-  return {
-    x0: minX - pad,
-    z0: minZ - pad,
-    nx: Math.ceil((maxX - minX + 2 * pad) / CONTACT_CELL_M) + 1,
-    nz: Math.ceil((maxZ - minZ + 2 * pad) / CONTACT_CELL_M) + 1,
-  }
-}
-
 // Mipmapped: without, the 5 m maps alias into a shimmering crosshatch on
 // ground a kilometer or more off.
-function texture(data: Uint8Array, w: number, h: number, format: typeof RGBAFormat | typeof RedFormat = RGBAFormat): DataTexture {
+export function shadingTexture(data: Uint8Array, w: number, h: number, format: typeof RGBAFormat | typeof RedFormat = RGBAFormat): DataTexture {
   const t = new DataTexture(data, w, h, format)
   t.unpackAlignment = 1
   t.magFilter = LinearFilter
@@ -259,38 +248,17 @@ function texture(data: Uint8Array, w: number, h: number, format: typeof RGBAForm
   return t
 }
 
+// A tile's maps, as the ground, its streets and buildings sample them.
 export interface GroundShading {
   normals: DataTexture // normalsAo
   cover: DataTexture
-  contact: DataTexture // contactPixels, in red
-  // GLSL for the texture coordinate of scene (x, z), given a vec2 expression.
-  uv: (xz: string) => string
-  contactUv: (xz: string) => string
+  contact: DataTexture // contactPixels, in red; one clear texel for tiles without
+  groundUv: Vector4 // gridUv of the normals' and cover's grid
+  contactUv: Vector4
 }
 
-const built = new WeakMap<LoadedCity, GroundShading>()
-
-export function groundShading(city: LoadedCity): GroundShading {
-  let s = built.get(city)
-  if (!s) {
-    const { x0, z0, cell, nx, nz } = city.terrain.header
-    const f = (v: number) => v.toFixed(5)
-    const cg = contactGrid(city)
-    const started = performance.now()
-    const contact = texture(contactPixels(city, cg), cg.nx, cg.nz, RedFormat)
-    console.info(`ground: contact shading ${cg.nx} x ${cg.nz} in ${(performance.now() - started).toFixed(0)} ms`)
-    s = {
-      normals: texture(normalsAo(city.terrain, smoothing(city)), nx, nz),
-      cover: texture(coverPixels(city), nx, nz),
-      contact,
-      // Sample (i, j) is texel (i, j)'s center.
-      uv: (xz) => `( ( ${xz} - vec2( ${f(x0)}, ${f(z0)} ) ) / ${f(cell)} + 0.5 ) / vec2( ${f(nx)}, ${f(nz)} )`,
-      contactUv: (xz) => `( ( ${xz} - vec2( ${f(cg.x0)}, ${f(cg.z0)} ) ) / ${f(CONTACT_CELL_M)} + 0.5 ) / vec2( ${f(cg.nx)}, ${f(cg.nz)} )`,
-    }
-    built.set(city, s)
-  }
-  return s
-}
+// No contact shading: tiles drawn at middle distance.
+export const NO_CONTACT = shadingTexture(new Uint8Array(1), 1, 1, RedFormat)
 
 const vec3 = (c: Color) => `vec3(${c.r.toFixed(5)}, ${c.g.toFixed(5)}, ${c.b.toFixed(5)})`
 
@@ -299,17 +267,34 @@ export const SHADING_PARS = /* glsl */ `
 uniform sampler2D uGroundNormals;
 uniform sampler2D uGroundCover;
 uniform sampler2D uContactAo;
+uniform vec4 uGroundUv;
+uniform vec4 uContactUv;
 uniform vec3 uLightDir;
 uniform float uHillshade;
 `
+
+// The uniforms SHADING_PARS declares, for a tile's maps (the light's are
+// the scene's: sceneUniforms.ts). Made once per tile and shared by its
+// materials, so a map swapped in later (its contact shading, up close)
+// reaches them all.
+export type ShadingUniforms = ReturnType<typeof shadingUniforms>
+export function shadingUniforms(s: GroundShading) {
+  return {
+    uGroundNormals: { value: s.normals },
+    uGroundCover: { value: s.cover },
+    uContactAo: { value: s.contact },
+    uGroundUv: { value: s.groundUv },
+    uContactUv: { value: s.contactUv },
+  }
+}
 
 // GLSL, after color_fragment: hillshading and occlusion on
 // `diffuseColor.rgb` at the vec2 `xz`; leaves `groundN` (the ground's
 // normal) and `groundShade` (the factor applied) for the code after it,
 // which shades any color it lays over the ground by the same factor.
-export function shadingCode(s: GroundShading, xz: string): string {
+export function shadingCode(xz: string): string {
   return `
-vec4 groundTexel = texture2D( uGroundNormals, ${s.uv(xz)} );
+vec4 groundTexel = texture2D( uGroundNormals, ${xz} * uGroundUv.xy + uGroundUv.zw );
 vec3 groundN = vec3( groundTexel.x * 2.0 - 1.0, groundTexel.y, groundTexel.z * 2.0 - 1.0 );
 // Lit as flat ground is, plus HILLSHADE (more on the shaded side with the
 // sun low) of the slope's difference from it.
@@ -317,16 +302,16 @@ float flatLit = max( uLightDir.y, 0.15 );
 float slopeLit = clamp( ( dot( groundN, uLightDir ) - uLightDir.y ) / flatLit, -1.0, 1.0 );
 float lowSun = 1.0 - smoothstep( ${LOW_SUN_FROM.toFixed(3)}, ${LOW_SUN_TO.toFixed(3)}, uLightDir.y );
 float hillshade = ${HILLSHADE.toFixed(3)} * ( 1.0 + ${LOW_SUN_BOOST.toFixed(3)} * lowSun * step( slopeLit, 0.0 ) );
-float groundShade = ( 1.0 + uHillshade * hillshade * slopeLit ) * groundTexel.a * ( 1.0 - texture2D( uContactAo, ${s.contactUv(xz)} ).r );
+float groundShade = ( 1.0 + uHillshade * hillshade * slopeLit ) * groundTexel.a * ( 1.0 - texture2D( uContactAo, ${xz} * uContactUv.xy + uContactUv.zw ).r );
 diffuseColor.rgb *= groundShade;
 `
 }
 
 // GLSL, after shadingCode: the cover over the paving, where `paved` (a
 // vec4: the paving's color and how much of it there is here) is.
-export function coverCode(s: GroundShading, xz: string, sidewalk: Color, ground: Color): string {
+export function coverCode(xz: string, sidewalk: Color, ground: Color): string {
   return `
-vec4 coverTexel = texture2D( uGroundCover, ${s.uv(xz)} );
+vec4 coverTexel = texture2D( uGroundCover, ${xz} * uGroundUv.xy + uGroundUv.zw );
 float coverSum = coverTexel.r + coverTexel.g + coverTexel.b;
 vec3 coverColor = ( coverTexel.r * ${vec3(COVER_COLORS.grass)} + coverTexel.g * ${vec3(COVER_COLORS.wood)} + coverTexel.b * ${vec3(COVER_COLORS.rock)} ) / max( coverSum, 0.001 );
 // In the ring, cover fades toward bare ground as the paving does there

@@ -43,6 +43,8 @@ export interface CityIndex {
   bakedAt: string
   // Each layer's own provenance line (source, date), set by its bake.
   sources: Partial<Record<TileLayer, string>>
+  // The whole city seen from afar (farFormat.ts, bake-far.ts).
+  far?: TileFile
   tiles: TileEntry[]
 }
 

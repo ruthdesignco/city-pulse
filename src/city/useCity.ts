@@ -1,43 +1,32 @@
 import { use } from 'react'
-import type { CityIndex, TileEntry, TileLayer } from './cityIndex.ts'
-import { type CityData, type CityTile, decodeTile, joinParts, toLines } from './format.ts'
+import type { CityIndex } from './cityIndex.ts'
+import { type Lines, toLines } from './format.ts'
 import { type LandCover, decodeLandCover } from './landCover.ts'
-import { type Terrain, decodeTerrain, stitchTerrain } from './terrain.ts'
+import { Terrain, type TerrainHeader, decodeTerrain } from './terrain.ts'
 // Through Vite, so the build gives them content-hashed URLs that can be
 // cached for good (vercel.json); the tiles' files carry their own hashes.
 import indexUrl from '../data/city-index.json?url'
 import backdropUrl from '../data/backdrop.bin?url'
 import landCoverUrl from '../data/landcover.bin?url'
 
-// The city (format.ts, cityIndex.ts): the index, then the tiles over
-// LOAD_EXTENT, their parts and 5 m ground, fetched together (everything
-// that draws the city needs both, and one promise keeps the Suspense
-// boundaries from remounting when one arrives before the other: App.tsx).
-// The tiles' parts are also joined as one city, for what works on it
-// whole; `tiles` keeps them apart, for what's drawn tile by tile.
-// `backdrop`: the landforms around it (bake-backdrop.ts), the terrain
-// format; `landCover`: what that land is (bake-landcover.ts).
-export type LoadedCity = CityData & {
+// What's city-wide, fetched together before any tile: the index
+// (cityIndex.ts), the landforms around the city (bake-backdrop.ts, the
+// terrain format) and what that land is (bake-landcover.ts). The tiles
+// themselves stream in by distance (stream/TileStream.ts).
+export interface CityBase {
   index: CityIndex
-  tiles: CityTile[]
-  terrain: Terrain
+  boundary: Lines // the three neighborhoods (ring.ts)
   backdrop: Terrain
   landCover: LandCover
-  // What each layer's tiles cost to download, bytes.
-  bytes: Partial<Record<TileLayer, number>>
 }
 
-// SoMa, the Mission and the Tenderloin with the ring around them, and the
-// waterfront north to the Bay (scene m, [minX, minZ, maxX, maxZ]): the area
-// baked before the city went to tiles. The rest of the city is baked, and
-// comes in with streaming.
-export const LOAD_EXTENT: [number, number, number, number] = [-2088, -4606, 2687, 3108]
-// Under the Bay and the ocean, where no tile has ground: the bake's sea floor.
-const SEA_FLOOR_M = -1
+// The backdrop is drawn this far down (Ground.tsx): past the city's
+// terrain grids, which ease to sea level at their edges, it lies under them.
+export const LAND_Y = -0.6
 
 export const tileUrl = (file: string) => `${import.meta.env.BASE_URL}tiles/${file}`
 
-let cityPromise: Promise<LoadedCity> | undefined
+let basePromise: Promise<CityBase> | undefined
 
 const fetchBytes = (url: string, name: string, bake: string) =>
   fetch(url).then((res) => {
@@ -45,84 +34,74 @@ const fetchBytes = (url: string, name: string, bake: string) =>
     return res.arrayBuffer()
   })
 
-export function loadIndex(): Promise<CityIndex> {
-  return fetchBytes(indexUrl, 'city-index.json', 'bake').then((b) => JSON.parse(new TextDecoder().decode(b)) as CityIndex)
-}
-
-// The tiles over an extent.
-export function tilesIn(index: CityIndex, [minX, minZ, maxX, maxZ]: [number, number, number, number]): TileEntry[] {
-  const m = index.tileM
-  return index.tiles.filter((t) => (t.i + 1) * m > minX && t.i * m < maxX && (t.j + 1) * m > minZ && t.j * m < maxZ)
-}
-
-async function load(): Promise<LoadedCity> {
-  const index = await loadIndex()
-  const entries = tilesIn(index, LOAD_EXTENT)
-  if (entries.length === 0) throw new Error('city-index.json: no tiles. Run `npm run bake` first.')
-  const bytes: Partial<Record<TileLayer, number>> = {}
-  const fetchLayer = (t: TileEntry, layer: TileLayer, bake: string) => {
-    const f = t.files[layer]
-    if (!f) throw new Error(`tile ${t.i},${t.j}: no ${layer} file. Run \`npm run ${bake}\` first.`)
-    bytes[layer] = (bytes[layer] ?? 0) + f.bytes
-    return fetchBytes(tileUrl(f.file), f.file, bake)
-  }
-  const [tiles, grounds, backdrop, landCover] = await Promise.all([
-    Promise.all(entries.map((t) => fetchLayer(t, 'city', 'bake').then(decodeTile))),
-    Promise.all(entries.map((t) => fetchLayer(t, 'terrain', 'bake:terrain').then(decodeTerrain))),
+async function load(): Promise<CityBase> {
+  const [index, backdrop, landCover] = await Promise.all([
+    fetchBytes(indexUrl, 'city-index.json', 'bake').then((b) => JSON.parse(new TextDecoder().decode(b)) as CityIndex),
     fetchBytes(backdropUrl, 'backdrop.bin', 'bake:backdrop').then(decodeTerrain),
     fetchBytes(landCoverUrl, 'landcover.bin', 'bake:landcover').then(decodeLandCover),
   ])
-  const m = index.tileM
-  const i0 = Math.min(...entries.map((t) => t.i))
-  const j0 = Math.min(...entries.map((t) => t.j))
-  const i1 = Math.max(...entries.map((t) => t.i))
-  const j1 = Math.max(...entries.map((t) => t.j))
-  const terrain = stitchTerrain(new Map(entries.map((t, k) => [`${t.i},${t.j}`, grounds[k]])), i0, j0, i1, j1, m, SEA_FLOOR_M)
-  const { pinnedMaterials, ...parts } = joinParts(tiles)
+  if (index.tiles.length === 0) throw new Error('city-index.json: no tiles. Run `npm run bake` first.')
   const boundary = toLines(index.boundary.map((r) => Array.from({ length: r.length / 2 }, (_, k): [number, number] => [r[2 * k], r[2 * k + 1]])))
-  console.info(`city: ${tiles.length} tiles, ${Object.entries(bytes).map(([l, n]) => `${l} ${(n / 1024).toFixed(0)} KB`).join(', ')}`)
-  return {
-    index,
-    tiles,
-    terrain,
-    backdrop,
-    landCover,
-    bytes,
-    ...parts,
-    boundary,
-    header: {
-      origin: index.origin,
-      ringMeters: index.ringMeters,
-      waterfront: index.waterfront,
-      extent: [i0 * m, j0 * m, (i1 + 1) * m, (j1 + 1) * m],
-      pinnedMaterials,
-      landmarkModels: index.landmarkModels,
-      attribution: index.attribution,
-      osmTimestamp: index.osmTimestamp,
-      osmElementsSha256: index.osmElementsSha256,
-      bakedAt: index.bakedAt,
-      landmarks: index.landmarks,
-    },
-  }
+  cityGround.setBackdrop(backdrop, index.tileM)
+  return { index, boundary, backdrop, landCover }
 }
 
-export function loadCity(): Promise<LoadedCity> {
-  cityPromise ??= load()
+export function loadCityBase(): Promise<CityBase> {
+  basePromise ??= load()
     // A rejected promise would otherwise stay cached forever: the root
     // ErrorBoundary's retry remounts this, and without clearing the cache
     // here it would suspend on the same dead promise and fail instantly.
     .catch((err: unknown) => {
-      cityPromise = undefined
+      basePromise = undefined
       throw err
     })
-  return cityPromise
+  return basePromise
 }
 
-// Suspends until the city's tiles are fetched and decoded.
-export function useCity(): LoadedCity {
-  return use(loadCity())
+// Suspends until the index, backdrop and land cover are in.
+export function useCityBase(): CityBase {
+  return use(loadCityBase())
 }
 
-export function useTerrain(): Terrain {
-  return useCity().terrain
+// The ground's height anywhere, for what stands on it outside the tiles'
+// own meshes (the camera, the vehicles): from a tile's 5 m terrain once a
+// worker has it (stream/tileWorker.ts sends a copy), the backdrop's 50 m
+// grid before that and past the tiles.
+class CityGround {
+  private tiles = new Map<string, Terrain>()
+  private backdrop: Terrain | null = null
+  private tileM = 1000
+  private waiting: { keys: string[]; done: () => void }[] = []
+
+  setBackdrop(b: Terrain, tileM: number) {
+    this.backdrop = b
+    this.tileM = tileM
+  }
+
+  setTile(key: string, header: TerrainHeader, heights: Int16Array) {
+    this.tiles.set(key, new Terrain(header, heights))
+    this.waiting = this.waiting.filter((w) => {
+      if (!w.keys.every((k) => this.tiles.has(k))) return true
+      w.done()
+      return false
+    })
+  }
+
+  keyAt(x: number, z: number): string {
+    return `${Math.floor(x / this.tileM)},${Math.floor(z / this.tileM)}`
+  }
+
+  heightAt(x: number, z: number): number {
+    const t = this.tiles.get(this.keyAt(x, z))
+    if (t) return t.heightAt(x, z)
+    return this.backdrop ? this.backdrop.heightAt(x, z) + LAND_Y : 0
+  }
+
+  // Resolves once the tiles under all of `keys` have their terrain.
+  whenTiles(keys: string[]): Promise<void> {
+    if (keys.every((k) => this.tiles.has(k))) return Promise.resolve()
+    return new Promise((done) => this.waiting.push({ keys, done }))
+  }
 }
+
+export const cityGround = new CityGround()

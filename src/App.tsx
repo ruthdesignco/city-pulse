@@ -3,15 +3,11 @@ import { Canvas } from '@react-three/fiber'
 import { Stats } from '@react-three/drei'
 import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
-import { Buildings } from './city/Buildings.tsx'
-import { Landmarks } from './city/Landmarks.tsx'
+import { City } from './city/City.tsx'
+import { useStream } from './city/stream/useStream.ts'
 import { Credits } from './Credits.tsx'
-import { CALIBRATE, DEMO, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER, WIND } from './params.ts'
-import { Ground } from './city/Ground.tsx'
-import { Rooftops } from './city/Rooftops.tsx'
-import { Streets } from './city/Streets.tsx'
-import { Trees } from './city/Trees.tsx'
-import { loadCity } from './city/useCity.ts'
+import { CALIBRATE, DEMO, NET, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER, WIND } from './params.ts'
+import { NetOverlay } from './city/NetOverlay.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
 import { Calibration } from './scene/Calibration.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
@@ -113,14 +109,10 @@ export default function App() {
   // A lost WebGL context (a driver reset, or memory pressure on an
   // integrated GPU) leaves a dead canvas: say so instead of claiming "live".
   const [contextLost, setContextLost] = useState(false)
-  // Until the city arrives the canvas shows only sky: say it's coming.
-  const [cityReady, setCityReady] = useState(false)
-  useEffect(() => {
-    loadCity().then(
-      () => setCityReady(true),
-      () => {}, // the scene's ErrorBoundary handles a failed load
-    )
-  }, [])
+  // Until the first view's tiles are in (stream/TileStream.ts), say the
+  // city is coming.
+  const stream = useStream()
+  const cityReady = stream?.firstViewMs != null
   if (contextLost)
     return (
       <div className="error-boundary" role="alert">
@@ -154,7 +146,7 @@ export default function App() {
           })
         }}
       >
-        {/* Each independently-loading resource (the city's tiles, their trees, routes.json)
+        {/* Each independently-loading resource (the city, routes.json)
             gets its own Suspense boundary. Sharing one boundary across
             siblings suspending on different promises that resolve at
             different real times makes React discard and remount the WHOLE
@@ -166,14 +158,7 @@ export default function App() {
           <Atmosphere shadowMapSize={quality.shadowMapSize} />
         </Suspense>
         <Suspense fallback={null}>
-          <Ground />
-          <Streets />
-          <Buildings />
-          <Landmarks />
-          <Rooftops />
-        </Suspense>
-        <Suspense fallback={null}>
-          <Trees />
+          <City />
         </Suspense>
         <Suspense fallback={null}>
           {/* A looping recording restarts its clock: start the buses fresh. */}
@@ -210,6 +195,7 @@ export default function App() {
         </div>
       )}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
+      {NET && stream && <NetOverlay stream={stream} />}
       {(TIME.mode === 'fixed' || WEATHER || WIND) && (
         <div className="notes">
           {TIME.mode === 'fixed' && <LightNote label={TIME.label} />}

@@ -146,9 +146,17 @@ const CALIFORNIA: Pose = { position: [339, 76, -2669.6], target: [1100, 0, -2791
 // across the Golden Gate's mouth to the Marin Headlands.
 const MARIN: Pose = { position: [-1000, 450, -4300], target: [-5800, 0, -6200] }
 
+// West across the city to the ocean: 450 m over Hayes Valley, looking
+// west along the Panhandle into Golden Gate Park, across the Richmond and
+// the Sunset to Ocean Beach and the Pacific under the late sun. The target
+// is in the park, ~5.3 km out (the orbit's 86 deg limit allows no flatter
+// a look from this height).
+const OCEAN: Pose = { position: [-1013, 450, -943], target: [-6212, 0, -166] }
+
 export const PRESETS: Record<string, Pose> = {
   california: CALIFORNIA,
   marin: MARIN,
+  ocean: OCEAN,
   transamerica: poseAround(TRANSAMERICA, 430, 1.25, 0.35),
   coit: poseAround(COIT, 200, 1.2, 0.6),
   nobhill: poseAround(NOB_HILL, 300, 1.3, 0.55),

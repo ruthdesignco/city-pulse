@@ -55,6 +55,8 @@ export const CALIBRATE = params.has('calibrate')
 const quality = params.get('quality')
 export const QUALITY: 'low' | 'high' | null = quality === 'low' || quality === 'high' ? quality : null
 export const SHOW_FPS = params.has('fps')
+// ?net: each tile's download and level, and the total (city/NetOverlay.tsx).
+export const NET = params.has('net')
 export const TIME = parseTimeParam(params.get('time'))
 export const WEATHER = parseWeatherParam(params.get('weather'))
 export const WIND = parseWindParam(params.get('wind'))

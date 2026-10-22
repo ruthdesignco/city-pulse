@@ -16,10 +16,10 @@ import { createServer } from 'vite'
 export const ROOT = join(import.meta.dirname, '..', '..')
 export const WIDTH = 1920
 export const HEIGHT = 1080
-// Time after the page's own network-idle for the tiles/routes.json to decode,
-// the scene to extrude/build, and the first few frames (shadows, SSAO) to
-// stabilize -- a guess, not measured; widen it if shots still look mid-load.
-const SETTLE_MS = 4000
+// Time after the city's tiles settle (TileStream.ts window.__cityIdle) for
+// the first few frames (shadows, SSAO) to stabilize and the vehicles to
+// arrive -- a guess, not measured; widen it if shots still look mid-load.
+const SETTLE_MS = 2000
 
 // `query` is added to ?demo, which hides the dev-only FPS/Stats overlay
 // (App.tsx), so the page matches what a viewer, not a developer, would see,
@@ -81,6 +81,10 @@ export async function withScenePage(label: string, query: Record<string, string>
     // SwiftShader can hold the main thread for many seconds compiling the
     // city's shaders on a slow CI runner; give the page longer to answer there.
     await page.waitForSelector('canvas', { timeout: SOFTWARE_GL ? 60_000 : 15_000 })
+    // Every tile showing what its distance wants (src/city/stream/TileStream.ts).
+    await page
+      .waitForFunction(() => (window as { __cityIdle?: boolean }).__cityIdle === true, undefined, { timeout: SOFTWARE_GL ? 180_000 : 60_000, polling: 250 })
+      .catch(() => console.warn(`${label}: the city's tiles never settled`))
     await page.waitForTimeout(SETTLE_MS)
     await withPage(page, report)
   } finally {

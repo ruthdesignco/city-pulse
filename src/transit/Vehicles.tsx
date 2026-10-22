@@ -21,7 +21,7 @@ import { lengthPx, modelScale, turnToward } from './lod.ts'
 import { FADE_S, type Motion } from './motion.ts'
 import type { Pose } from './spacing.ts'
 import { Traffic } from './traffic.ts'
-import { useTerrain } from '../city/useCity.ts'
+import { cityGround } from '../city/useCity.ts'
 import { useRoutes } from './useRoutes.ts'
 import { MODEL_LENGTH_M, MODEL_WIDTH_M, buildVehicleGeometry, vehicleMaterial } from './vehicleModels.ts'
 
@@ -67,7 +67,8 @@ interface ModelSlot {
 
 export function Vehicles({ state }: { state: CurrentState | null }) {
   const routes = useRoutes()
-  const terrain = useTerrain()
+  // The ground under them: their tiles' 5 m terrain once it's in (useCity.ts).
+  const terrain = cityGround
   const meshes = useRef<Partial<Record<VehicleKind, InstancedMesh | null>>>({})
   const traffic = useRef(new Traffic())
   // Vehicles that dropped out of current_state, shrinking away since `since`

@@ -22,7 +22,8 @@
     "fps": "node --experimental-strip-types scripts/fps.ts",
     "shots:time": "node --experimental-strip-types scripts/time-shots.ts",
     "shots:weather": "node --experimental-strip-types scripts/weather-shots.ts",
-    "shots:wind": "node --experimental-strip-types scripts/wind-shots.ts"
+    "shots:wind": "node --experimental-strip-types scripts/wind-shots.ts",
+    "bake:far": "node --experimental-strip-types scripts/bake-far.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

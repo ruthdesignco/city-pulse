@@ -13,6 +13,10 @@
 //   then        gzip of the sections (TILE_SECTIONS), each 4-byte aligned,
 //               lengths in header.lengths
 //
+// Version 2 adds `land`: which of the tile's LAND_CELL_M cells are San
+// Francisco's land (the bake's land mask), 255 or 0, row by row from the
+// corner, so the paving (paving.ts) stops at the county line.
+//
 // Coordinates in the file are integers in units of COORD_QUANTUM meters
 // from the tile's corner (header.x0, z0), within the Int16 range (+-4.9 km
 // of the tile's own) so the city can be any size: each line's first point
@@ -32,6 +36,8 @@ export const TILE_M = 1000
 export const COORD_QUANTUM = 0.15 // meters per Int16 unit in a tile file, from its corner
 export const HEIGHT_QUANTUM = 0.1 // meters per Uint16 unit
 export const RING_BAND_METERS = 4 // ringBand: 0 = inside the three neighborhoods, n = within n*4 m outside
+export const LAND_CELL_M = 25
+export const LAND_CELLS = TILE_M / LAND_CELL_M // per side
 
 export const StreetClass = { Major: 0, Minor: 1, Local: 2 } as const
 
@@ -72,7 +78,7 @@ export interface PinnedMaterial {
 }
 
 export interface TileHeader {
-  version: 1
+  version: 2
   i: number // the tile's column: x from i * TILE_M
   j: number // and row: z from j * TILE_M
   x0: number // its corner, scene m: what file coordinates count from
@@ -83,6 +89,7 @@ export interface TileHeader {
 
 export interface CityTile extends CityParts {
   header: TileHeader
+  land: Uint8Array // LAND_CELLS x LAND_CELLS, 255 where the cell is the city's land
 }
 
 // The loaded city as one: the tiles' parts end to end, plus what's
@@ -126,6 +133,7 @@ const TILE_SECTIONS = [
   ['cover.counts', Uint16Array],
   ['cover.classes', Uint8Array],
   ['cover.coords', Uint8Array],
+  ['land', Uint8Array],
 ] as const
 
 type TileSection = (typeof TILE_SECTIONS)[number][0]
@@ -216,10 +224,12 @@ function sectionsOf(t: CityTile): Record<TileSection, Typed> {
     'cover.counts': t.cover.counts,
     'cover.classes': t.cover.classes,
     'cover.coords': packCoords(t.cover, x0, z0),
+    land: t.land,
   }
 }
 
 export async function encodeTile(t: CityTile): Promise<Uint8Array> {
+  if (t.land.length !== LAND_CELLS * LAND_CELLS) throw new Error(`tile ${t.header.i},${t.header.j}: land mask has ${t.land.length} cells, not ${LAND_CELLS * LAND_CELLS}`)
   const sections = sectionsOf(t)
   const lengths = {} as Record<TileSection, number>
   let size = 0
@@ -251,7 +261,7 @@ export async function decodeTile(buffer: ArrayBuffer): Promise<CityTile> {
   if (magic !== TILE_MAGIC) throw new Error(`tile: bad magic ${JSON.stringify(magic)}`)
   const len = new DataView(buffer).getUint32(4, true)
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + len))) as TileHeader
-  if (header.version !== 1 || !header.lengths) throw new Error(`tile: unsupported version ${header.version}`)
+  if (header.version !== 2 || !header.lengths) throw new Error(`tile: unsupported version ${header.version}`)
   const body = await pipe(bytes.subarray(align4(8 + len)), new DecompressionStream('gzip'))
   const s = {} as Record<TileSection, Typed>
   let at = 0
@@ -283,6 +293,7 @@ export async function decodeTile(buffer: ArrayBuffer): Promise<CityTile> {
       classes: s['cover.classes'] as Uint8Array,
       coords: unpackCoords(counts('cover.counts'), s['cover.coords'] as Uint8Array, x0, z0),
     },
+    land: s.land as Uint8Array,
   }
 }
 

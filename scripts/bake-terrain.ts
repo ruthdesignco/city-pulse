@@ -14,8 +14,9 @@
 // they weren't), cached in scripts/.cache/; then each CELL_M grid point
 // averages four bilinear samples of it, a quarter cell either side. Heights are meters above
 // NAVD88 (about mean sea level). Inside the Bay (bay.ts) the ground is
-// held at SEA_FLOOR_M, under the water, and so is anything the DEM puts at
-// or below WATER_M (the Marina, the coves past the Bay's hand-drawn edge);
+// held at SEA_FLOOR_M, under the water, but for its islands (Treasure and
+// Yerba Buena, Alcatraz: ISLANDS), and so is anything the DEM puts at or
+// below WATER_M (the Marina, the coves past the Bay's hand-drawn edge);
 // everything else at least LAND_MIN_M, so
 // the water (which now runs under the whole region, the backdrop's land
 // standing out of it: bake-backdrop.ts) never floods low ground. Past the
@@ -29,6 +30,7 @@ import { TILE_M } from '../src/city/format.ts'
 import { Terrain, encodeTerrain } from '../src/city/terrain.ts'
 import { toLatLng } from '../src/geo/projection.ts'
 import { pruneLayer, readIndex, sizeReport, writeIndex, writeTileFile } from './lib/tileFiles.ts'
+import { ALCATRAZ, LandMask, neighborhoodRings } from './lib/landMask.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE_DIR = join(ROOT, 'scripts/.cache')
@@ -42,6 +44,9 @@ const TILE_CELLS = TILE_M / CELL_M
 const LAND_MIN_M = 0.6
 const WATER_M = 0.3
 const SEA_FLOOR_M = -1
+// The Bay's islands: their ground is the DEM's, as the land's is.
+const ISLANDS = new LandMask(neighborhoodRings(['Treasure Island']))
+const island = (x: number, z: number) => ISLANDS.has(x, z) || (x >= ALCATRAZ.minX && x <= ALCATRAZ.maxX && z >= ALCATRAZ.minZ && z <= ALCATRAZ.maxZ)
 const QUANTUM = 0.1
 
 async function fetchDem(bbox: [number, number, number, number], w: number, h: number, cachedOnly: boolean): Promise<Float32Array> {
@@ -139,7 +144,7 @@ async function main() {
             }
           }
           let h = got ? sum / got : 0
-          h = inBay(x, z, bay) || (got > 0 && h <= WATER_M) ? SEA_FLOOR_M : Math.max(LAND_MIN_M, h)
+          h = (inBay(x, z, bay) && !island(x, z)) || (got > 0 && h <= WATER_M) ? SEA_FLOOR_M : Math.max(LAND_MIN_M, h)
           heights[j * n + i] = Math.round(h / QUANTUM)
           lo = Math.min(lo, h)
           hi = Math.max(hi, h)

@@ -68,8 +68,15 @@ export class Terrain {
   }
 }
 
+// Anything with ground heights: a terrain, or the tiles' terrains together
+// (stream/tileBuild.ts).
+export interface Ground {
+  header: { cell: number }
+  heightAt(x: number, z: number): number
+}
+
 // The ground's up-facing unit normal at (x, z), from its slope over a cell.
-export function groundNormal(t: Terrain, x: number, z: number, out: [number, number, number] = [0, 1, 0]): [number, number, number] {
+export function groundNormal(t: Ground, x: number, z: number, out: [number, number, number] = [0, 1, 0]): [number, number, number] {
   const d = t.header.cell / 2
   const sx = (t.heightAt(x + d, z) - t.heightAt(x - d, z)) / (2 * d)
   const sz = (t.heightAt(x, z + d) - t.heightAt(x, z - d)) / (2 * d)
@@ -82,7 +89,7 @@ export function groundNormal(t: Terrain, x: number, z: number, out: [number, num
 
 // Lift a flat mesh's vertices (x, y, z) onto the ground: y += its height,
 // and, with `normals`, each normal set to the ground's.
-export function drape(t: Terrain, positions: Float32Array, normals?: Float32Array) {
+export function drape(t: Ground, positions: Float32Array, normals?: Float32Array) {
   const n: [number, number, number] = [0, 1, 0]
   for (let i = 0; i < positions.length; i += 3) {
     positions[i + 1] += t.heightAt(positions[i], positions[i + 2])

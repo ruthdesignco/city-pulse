@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COORD_QUANTUM, type CityTile, decodeTile, encodeTile, joinParts, packCoords, toLines, unpackCoords } from './format.ts'
+import { COORD_QUANTUM, type CityTile, LAND_CELLS, decodeTile, encodeTile, joinParts, packCoords, toLines, unpackCoords } from './format.ts'
 
 // A tile far from the origin (the Outer Sunset's): coordinates past the
 // old single file's +-4.9 km range.
@@ -7,7 +7,9 @@ function sample(name = 'Salesforce Tower'): CityTile {
   const x0 = -9000
   const z0 = 1000
   return {
-    header: { version: 1, i: -9, j: 1, x0, z0, pinnedMaterials: [{ building: 0, material: 3, name }] },
+    header: { version: 2, i: -9, j: 1, x0, z0, pinnedMaterials: [{ building: 0, material: 3, name }] },
+    // The west half land, the east half water.
+    land: Uint8Array.from({ length: LAND_CELLS * LAND_CELLS }, (_, k) => (k % LAND_CELLS < LAND_CELLS / 2 ? 255 : 0)),
     buildings: {
       ...toLines([
         [
@@ -65,6 +67,11 @@ describe('tile format', () => {
     expect(back.buildings.seeds).toEqual(tile.buildings.seeds)
     expect(back.streets.classes).toEqual(tile.streets.classes)
     expect(back.cover.classes).toEqual(tile.cover.classes)
+    expect(back.land).toEqual(tile.land)
+  })
+
+  it('refuses a land mask of the wrong size', async () => {
+    await expect(encodeTile({ ...sample(), land: new Uint8Array(10) })).rejects.toThrow(/land mask/)
   })
 
   it('stores a step of under ~9.6 m in one byte per axis', () => {

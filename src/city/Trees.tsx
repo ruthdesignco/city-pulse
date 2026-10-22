@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   type BufferGeometry,
   Color,
@@ -7,38 +7,28 @@ import {
   DynamicDrawUsage,
   FrontSide,
   InstancedBufferAttribute,
-  type InstancedMesh,
+  InstancedMesh,
   MeshStandardMaterial,
-  Object3D,
   type PerspectiveCamera,
+  Vector3,
 } from 'three'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
 import { RING_DIM_MAX } from './ring.ts'
-import type { TreesData } from './treeFormat.ts'
-import { type LodAnchor, isNear, nearDistance, shouldReassign } from './treeLod.ts'
-import { type TreeLevel, isDoubleSided, isUnitSized, treeGeometry, variantsOf } from './treeModels.ts'
-import { TREE_KINDS, type TreeKind, treeSize } from './treeSpecies.ts'
-import type { Terrain } from './terrain.ts'
-import { useTerrain } from './useCity.ts'
-import { useTrees } from './useTrees.ts'
+import type { TileStream } from './stream/TileStream.ts'
+import { type LodAnchor, inView, isNear, nearDistance, shouldReassign } from './treeLod.ts'
+import { type TreeLevel, isDoubleSided, treeGeometry, variantsOf } from './treeModels.ts'
+import { TREE_KINDS, type TreeKind } from './treeSpecies.ts'
 
-// Street trees from the tiles' trees files (scripts/bake-trees.ts): one instanced
-// mesh per kind, crown variant and level of detail (treeModels.ts,
-// treeLod.ts). Each tree's
-// transform and color are worked out once; when the camera has moved far
-// enough, they're copied into the near or far mesh of its kind. Near trees
-// cast shadows; far ones only receive them.
-
-// Per-tree variation, from a hash of the tree's baked position (treeKey):
-// stable across reloads and across rebakes that add or drop other trees or
-// widen the area, which an index-based hash wasn't.
-const HEIGHT_JITTER = 0.2
-const CROWN_JITTER = 0.22
-// Crowns a little oval from above, not perfectly round.
-const STRETCH_JITTER = 0.1
-const LIGHTNESS_JITTER = 0.06
-const HUE_JITTER = 0.015
+// Trees on the tiles drawn near (stream/TileStream.ts): street trees from
+// DataSF and the illustrative ones in parks and woods (bake-trees.ts), set
+// up per tile in the tile worker (treeSlots.ts). One instanced mesh per
+// kind, crown variant and level of detail (treeModels.ts, treeLod.ts);
+// when the camera has moved far enough, or the near tiles change, each
+// tree's transform and color are copied into the near or far mesh of its
+// kind. Near trees cast shadows; far ones only receive them. Further off
+// than the near tiles there are no single trees: the woods' canopy
+// (canopy.ts) stands in for them.
 
 const LEVELS: TreeLevel[] = ['near', 'far']
 
@@ -64,84 +54,45 @@ const GUST_ACROSS_M = 300
 // gust front moving at ~12 m/s.
 const GUST_RATE = (12 * (2 * Math.PI)) / GUST_ALONG_M / 2.8
 
-function hash(i: number, salt: number): number {
-  let h = Math.imul(i ^ (salt * 0x9e3779b9), 0x85ebca6b)
-  h ^= h >>> 13
-  h = Math.imul(h, 0xc2b2ae35)
-  h ^= h >>> 16
-  return (h >>> 0) / 4294967296
-}
+// Every kind and variant, in treeSlots.ts treeGroups' order.
+const GROUPS: { kind: TreeKind; variant: number }[] = []
+for (let kind = 0 as TreeKind; kind < TREE_KINDS; kind++) for (let variant = 0; variant < variantsOf(kind); variant++) GROUPS.push({ kind, variant })
 
-// A tree's identity for its variation: its quantized position.
-function treeKey(data: TreesData, i: number): number {
-  return Math.imul(data.coords[2 * i], 0x27d4eb2d) ^ Math.imul(data.coords[2 * i + 1], 0x165667b1)
-}
-
-interface KindSlot {
+interface Slot {
   kind: TreeKind
-  trees: number[] // indices into TreesData
-  matrices: Float32Array // 16 per tree, in `trees` order
-  greens: Float32Array // 3 per tree, linear
-  rings: Float32Array // 1 per tree, 0..1
+  capacity: number
+  mesh: Record<TreeLevel, InstancedMesh>
   geometry: Record<TreeLevel, BufferGeometry>
   green: Record<TreeLevel, InstancedBufferAttribute>
   ring: Record<TreeLevel, InstancedBufferAttribute>
 }
 
-// Each tree stands on the ground under its trunk (terrain.ts).
-function buildSlots(data: TreesData, terrain: Terrain): KindSlot[] {
-  const groups: { kind: TreeKind; variant: number; trees: number[] }[] = []
-  const groupOf = new Map<number, number[]>()
-  for (let kind = 0 as TreeKind; kind < TREE_KINDS; kind++)
-    for (let variant = 0; variant < variantsOf(kind); variant++) {
-      const trees: number[] = []
-      groups.push({ kind, variant, trees })
-      groupOf.set(kind * 16 + variant, trees)
-    }
-  for (let i = 0; i < data.header.count; i++) {
-    const kind = data.kind[i] as TreeKind
-    groupOf.get(kind * 16 + Math.floor(hash(treeKey(data, i), 6) * variantsOf(kind)))!.push(i)
-  }
-  const dummy = new Object3D()
-  const greens = palette.treeGreens.map((c) => new Color(c))
-  const c = new Color()
-  const hsl = { h: 0, s: 0, l: 0 }
-
-  return groups.map(({ kind, variant, trees }) => {
-    const n = trees.length
-    const matrices = new Float32Array(16 * n)
-    const greenOf = new Float32Array(3 * n)
-    const rings = new Float32Array(n)
-    trees.forEach((t, j) => {
-      const { height, crown } = treeSize(kind, data.dbh[t])
-      const key = treeKey(data, t)
-      const s = 1 + HEIGHT_JITTER * (2 * hash(key, 1) - 1)
-      const w = 1 + CROWN_JITTER * (2 * hash(key, 2) - 1)
-      const oval = STRETCH_JITTER * (2 * hash(key, 7) - 1)
-      const tx = data.coords[2 * t]
-      const tz = data.coords[2 * t + 1]
-      dummy.position.set(tx, terrain.heightAt(tx, tz), tz)
-      dummy.rotation.set(0, 2 * Math.PI * hash(key, 3), 0)
-      if (isUnitSized(kind)) dummy.scale.set(crown * w * (1 + oval), height * s, crown * w * (1 - oval))
-      else dummy.scale.setScalar(s)
-      dummy.updateMatrix()
-      dummy.matrix.toArray(matrices, 16 * j)
-      c.copy(greens[data.tone[t]]).getHSL(hsl)
-      c.setHSL(hsl.h + HUE_JITTER * (2 * hash(key, 4) - 1), hsl.s, hsl.l * (1 + LIGHTNESS_JITTER * (2 * hash(key, 5) - 1)))
-      c.toArray(greenOf, 3 * j)
-      rings[j] = data.ring[t] / 255
-    })
-    const per = <T,>(f: (level: TreeLevel) => T) => ({ near: f('near'), far: f('far') })
-    const green = per(() => new InstancedBufferAttribute(new Float32Array(3 * Math.max(1, n)), 3).setUsage(DynamicDrawUsage))
-    const ring = per(() => new InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1).setUsage(DynamicDrawUsage))
-    const geometry = per((level) => {
-      const g = treeGeometry(kind, level, variant)
-      g.setAttribute('iGreen', green[level])
-      g.setAttribute('iRing', ring[level])
-      return g
-    })
-    return { kind, trees, matrices, greens: greenOf, rings, geometry, green, ring }
+// Room for n trees of a group, at each level (the meshes are remade when a
+// group outgrows them, with room to spare).
+function makeSlot(kind: TreeKind, variant: number, n: number, materials: { front: MeshStandardMaterial; double: MeshStandardMaterial }): Slot {
+  const capacity = Math.max(16, Math.ceil(n * 1.5))
+  const per = <T,>(f: (level: TreeLevel) => T) => ({ near: f('near'), far: f('far') })
+  const green = per(() => new InstancedBufferAttribute(new Float32Array(3 * capacity), 3).setUsage(DynamicDrawUsage))
+  const ring = per(() => new InstancedBufferAttribute(new Float32Array(capacity), 1).setUsage(DynamicDrawUsage))
+  const geometry = per((level) => {
+    const g = treeGeometry(kind, level, variant)
+    g.setAttribute('iGreen', green[level])
+    g.setAttribute('iRing', ring[level])
+    return g
   })
+  const mesh = per((level) => {
+    const m = new InstancedMesh(geometry[level], isDoubleSided(kind) ? materials.double : materials.front, capacity)
+    m.instanceMatrix.setUsage(DynamicDrawUsage)
+    m.count = 0
+    // Instances span many tiles, so the model's own bounds would cull them.
+    m.frustumCulled = false
+    m.castShadow = level === 'near'
+    m.receiveShadow = true
+    // Left out of the Bay's reflection (BayWater.tsx), like the vehicles.
+    m.userData.noReflect = true
+    return m
+  })
+  return { kind, capacity, mesh, geometry, green, ring }
 }
 
 function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
@@ -190,48 +141,67 @@ function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
   return material
 }
 
-export function Trees() {
-  const data = useTrees()
-  const terrain = useTerrain()
-  const slots = useMemo(() => buildSlots(data, terrain), [data, terrain])
-  const materials = useMemo(() => ({ front: treeMaterial(false), double: treeMaterial(true) }), [])
-  const meshes = useRef<Record<string, InstancedMesh | null>>({})
-  const anchor = useRef<LodAnchor | null>(null)
-  useEffect(
-    () => () => slots.forEach((s) => LEVELS.forEach((l) => s.geometry[l].dispose())),
-    [slots],
+export function Trees({ stream }: { stream: TileStream }) {
+  const near = useSyncExternalStore(
+    (f) => stream.subscribe(f),
+    () => stream.nearTiles().version,
   )
+  const materials = useMemo(() => ({ front: treeMaterial(false), double: treeMaterial(true) }), [])
+  const slots = useRef<(Slot | null)[]>(GROUPS.map(() => null))
+  const group = useRef<import('three').Group>(null)
+  const anchor = useRef<LodAnchor | null>(null)
+  const look = useMemo(() => new Vector3(), [])
   useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials])
-  // New data or remounted meshes: assign again on the next frame.
+  useEffect(
+    () => () => {
+      for (const s of slots.current) if (s) LEVELS.forEach((l) => s.geometry[l].dispose())
+    },
+    [],
+  )
+  // New near tiles: assign again on the next frame.
   useEffect(() => {
     anchor.current = null
-  }, [slots])
+  }, [near])
 
   useFrame(({ camera, size }) => {
     const cam = camera.position
-    const now: LodAnchor = { x: cam.x, y: cam.y, z: cam.z, near: nearDistance((camera as PerspectiveCamera).fov, size.height) }
-    if (!shouldReassign(anchor.current, now)) return
+    camera.getWorldDirection(look)
+    const now: LodAnchor = { x: cam.x, y: cam.y, z: cam.z, near: nearDistance((camera as PerspectiveCamera).fov, size.height), dir: [look.x, look.y, look.z] }
+    if (!shouldReassign(anchor.current, now) || !group.current) return
     anchor.current = now
-
-    slots.forEach((slot, i) => {
-      const near = meshes.current[`${i}-near`]
-      const far = meshes.current[`${i}-far`]
-      if (!near || !far) return
-      const out = { near, far }
+    const tiles = stream.nearTiles().items
+    GROUPS.forEach(({ kind, variant }, gi) => {
+      const total = tiles.reduce((n, t) => n + (t.trees[gi]?.rings.length ?? 0), 0)
+      let slot = slots.current[gi]
+      if (!slot || slot.capacity < total) {
+        if (slot) for (const l of LEVELS) {
+          group.current!.remove(slot.mesh[l])
+          slot.geometry[l].dispose()
+        }
+        slot = makeSlot(kind, variant, total, materials)
+        for (const l of LEVELS) group.current!.add(slot.mesh[l])
+        slots.current[gi] = slot
+      }
       const counts = { near: 0, far: 0 }
       // Plain loops, no subarray views: this runs on every few meters of
       // camera motion, over every tree.
-      slot.trees.forEach((t, j) => {
-        const level: TreeLevel = isNear(data.coords[2 * t], data.coords[2 * t + 1], now) ? 'near' : 'far'
-        const k = counts[level]++
-        const m = out[level].instanceMatrix.array as Float32Array
-        for (let e = 0; e < 16; e++) m[16 * k + e] = slot.matrices[16 * j + e]
-        const g = slot.green[level].array as Float32Array
-        for (let e = 0; e < 3; e++) g[3 * k + e] = slot.greens[3 * j + e]
-        ;(slot.ring[level].array as Float32Array)[k] = slot.rings[j]
-      })
+      for (const t of tiles) {
+        const g = t.trees[gi]
+        if (!g) continue
+        const n = g.rings.length
+        for (let j = 0; j < n; j++) {
+          if (!inView(g.xz[2 * j], g.matrices[16 * j + 13], g.xz[2 * j + 1], now)) continue
+          const level: TreeLevel = isNear(g.xz[2 * j], g.xz[2 * j + 1], now) ? 'near' : 'far'
+          const k = counts[level]++
+          const m = slot.mesh[level].instanceMatrix.array as Float32Array
+          for (let e = 0; e < 16; e++) m[16 * k + e] = g.matrices[16 * j + e]
+          const gr = slot.green[level].array as Float32Array
+          for (let e = 0; e < 3; e++) gr[3 * k + e] = g.greens[3 * j + e]
+          ;(slot.ring[level].array as Float32Array)[k] = g.rings[j]
+        }
+      }
       for (const level of LEVELS) {
-        const mesh = out[level]
+        const mesh = slot.mesh[level]
         mesh.count = counts[level]
         for (const attr of [mesh.instanceMatrix, slot.green[level], slot.ring[level]]) {
           attr.clearUpdateRanges()
@@ -242,26 +212,5 @@ export function Trees() {
     })
   })
 
-  // Instances span the whole city, so the models' own bounds would cull them.
-  // Left out of the Bay's reflection (BayWater.tsx), like the vehicles.
-  return (
-    <>
-      {slots.flatMap((slot, i) =>
-        LEVELS.map((level) => (
-          <instancedMesh
-            key={`${i}-${level}`}
-            ref={(el) => {
-              meshes.current[`${i}-${level}`] = el
-            }}
-            args={[slot.geometry[level], isDoubleSided(slot.kind) ? materials.double : materials.front, Math.max(1, slot.trees.length)]}
-            count={0}
-            frustumCulled={false}
-            castShadow={level === 'near'}
-            receiveShadow
-            userData={{ noReflect: true }}
-          />
-        )),
-      )}
-    </>
-  )
+  return <group ref={group} />
 }

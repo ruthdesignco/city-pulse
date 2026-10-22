@@ -27,8 +27,8 @@ const MEASURE_MS = 6000
 const MEDIAN_MS = 13.3
 const P95_MS = 16.7
 const HITCH_MS = 50
-// As scenePage.ts waits after its own first load.
-const SETTLE_MS = 4000
+// As scenePage.ts waits after the tiles settle on its own first load.
+const SETTLE_MS = 2000
 
 function list(args: string[], name: string, all: string[]): string[] {
   const i = args.indexOf(`--${name}`)
@@ -65,6 +65,8 @@ async function main() {
           url.search = String(new URLSearchParams({ demo: '', ...queryOf(c) }))
           await page.goto(String(url), { waitUntil: 'networkidle' })
           await page.waitForSelector('canvas')
+          // Every tile in, at the level its distance wants (TileStream.ts).
+          await page.waitForFunction(() => (window as { __cityIdle?: boolean }).__cityIdle === true, undefined, { timeout: 60_000, polling: 250 })
           await page.waitForTimeout(SETTLE_MS)
         }
         await page.waitForTimeout(WARMUP_MS)

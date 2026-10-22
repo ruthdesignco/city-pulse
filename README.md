@@ -1,6 +1,6 @@
 # City Pulse
 
-A live, realistic 3D view of SoMa, the Mission and the Tenderloin in San Francisco, with real Muni vehicles moving through it. Live at https://city-pulse-gold.vercel.app.
+A live, realistic 3D view of SoMa, the Mission and the Tenderloin in San Francisco, with real Muni vehicles moving through it, and the rest of the city around them as context. Live at https://city-pulse-gold.vercel.app.
 
 Built with Vite, React, react-three-fiber and three.js, with a Supabase poller for the live transit feed. [SPEC.md](SPEC.md) has the full design and every decision behind it.
 
@@ -12,24 +12,25 @@ cp .env.example .env.local   # fill in the Supabase URL and anon key
 npm run dev
 ```
 
-`npm test` runs the test suite; `npm run lint` runs oxlint.
+`npm test` runs the test suite; `npm run lint` runs oxlint. `npm run fps` measures the frame rate of every camera preset; `?net` on the page shows each tile's download and level, the total, and what a frame draws.
 
 ## Baked data
 
-The city, its ground, the trees and the route shapes are baked offline and committed: all of San Francisco in 1 km tiles in `public/tiles/` (a file per tile and layer, listed with what's city-wide in `src/data/city-index.json`), the rest in `src/data/`. Every file is served under a content-hashed name, cached for good. Nothing is fetched from OpenStreetMap, DataSF or 511 at runtime, except the live vehicle positions through the poller, which also fetches the National Weather Service's observations for the fog, clouds and wind.
+The city, its ground, the trees and the route shapes are baked offline and committed: all of San Francisco in 1 km tiles in `public/tiles/` (a file per tile and layer, listed with what's city-wide in `src/data/city-index.json`), plus one file of the whole city seen from afar, the rest in `src/data/`. The page streams the tiles by distance from the camera (`src/city/stream/`). Every file is served under a content-hashed name, cached for good. Nothing is fetched from OpenStreetMap, DataSF or 511 at runtime, except the live vehicle positions through the poller, which also fetches the National Weather Service's observations for the fog, clouds and wind.
 
 | File | Made by | From |
 |---|---|---|
 | `public/tiles/city-*.bin`, `src/data/city-index.json` | `npm run bake -- --pbf <extract>` (`scripts/bake-city.ts`) | OpenStreetMap, Geofabrik Northern California extract of 2026-10-17; neighborhood boundaries from DataSF |
 | `public/tiles/terrain-*.bin` | `npm run bake:terrain` (`scripts/bake-terrain.ts`, run after the city bake) | USGS 3D Elevation Program (3DEP), public domain |
 | `public/tiles/trees-*.bin` | `npm run bake:trees` (`scripts/bake-trees.ts`, run after the city bake) | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), data as of 2026-10-21; illustrative trees in OSM's woods |
+| `public/tiles/far-*.bin` | `npm run bake:far` (`scripts/bake-far.ts`, run after the city and terrain bakes) | The city tiles and their terrain: blocks of buildings merged, the woods' canopy, where the landmark models stand |
 | `src/data/routes.json` | `npm run bake:routes` (`scripts/bake-routes.ts`, needs `TRANSIT_511_API_KEY`) | 511 SF Bay static GTFS for Muni |
 
 ## Data and licenses
 
 The code in this repository is MIT licensed (see [LICENSE](LICENSE)). The data is not covered by that license:
 
-- **OpenStreetMap data** (`public/tiles/city-*.bin`, `src/data/city-index.json`): © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). See [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright). The city tiles are a derivative database of OpenStreetMap and are themselves offered under the ODbL 1.0. They are made from the extract above by `scripts/bake-city.ts`.
+- **OpenStreetMap data** (`public/tiles/city-*.bin`, `public/tiles/far-*.bin`, `src/data/city-index.json`): © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). See [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright). The city tiles and the far file are a derivative database of OpenStreetMap and are themselves offered under the ODbL 1.0. They are made from the extract above by `scripts/bake-city.ts` and `scripts/bake-far.ts`.
 - **Street trees** (`public/tiles/trees-*.bin`): San Francisco Public Works via [DataSF](https://data.sf.gov/d/tkzw-k3nq), under the [Public Domain Dedication and License (PDDL) 1.0](https://opendatacommons.org/licenses/pddl/1-0/). The neighborhood boundaries (`scripts/data/analysis-neighborhoods.geojson`) are also from DataSF under the PDDL 1.0.
 - **Transit data** (`src/data/routes.json` and the live vehicle positions): data provided by [511.org](https://511.org), used under the 511 Data Disseminator Agreement.
 
