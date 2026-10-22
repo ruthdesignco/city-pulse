@@ -37,7 +37,16 @@ const INSTALL_BYTES_PER_FRAME = 6e6
 const JOBS_PER_WORKER = 6
 // A tile's tallest point, for its box in the view frustum (Sutro Tower).
 const TILE_TOP_M = 600
-const MAX_RETRIES = 3
+// A failed tile job is tried again after 1, then 2 s; after MAX_RETRIES
+// failures in a row the tile is stuck (shown by its far blocks, and said so
+// on the page: App.tsx) and tried again every STUCK_RETRY_MS.
+export const MAX_RETRIES = 3
+export const STUCK_RETRY_MS = 60_000
+export const tileRetryMs = (failures: number) => (failures < MAX_RETRIES ? 1000 * 2 ** (failures - 1) : STUCK_RETRY_MS)
+// The far file (every tile's stand-in, and where the landmarks stand) is
+// tried again after each of these; once they're spent (~31 s) the city has
+// failed to load and the page says so.
+export const FAR_RETRY_MS = [1000, 2000, 4000, 8000, 16000]
 // Files fetched at once: enough to keep a slow link full between round
 // trips, few enough that the most wanted come first.
 const FETCHES = 8
@@ -107,7 +116,9 @@ interface Tile {
   shown: Bundle
   fade: { from: Bundle; to: Bundle; t0: number } | null
   pending: Set<string>
+  // Failed jobs in a row, and when the next may go.
   failures: number
+  retryAt: number
 }
 
 export interface TileStats {
@@ -169,7 +180,11 @@ export class TileStream {
   private nextId = 1
   private ready: Done[] = []
   private farPending: FarBuild[] | null = null
-  private farRequested = false
+  // The far file: not yet asked for (or to be asked again at farRetryAt),
+  // on its way, in, or given up on (cityFailed).
+  private far: 'idle' | 'loading' | 'in' | 'failed' = 'idle'
+  private farFailures = 0
+  private farRetryAt = 0
   // Download report (NetOverlay.tsx): every file's size, once.
   readonly files = new Map<string, { bytes: number; key: string | null; layer: TileLayer | 'far' }>()
   private readonly frustum = new Frustum()
@@ -217,13 +232,18 @@ export class TileStream {
         fade: null,
         pending: new Set(),
         failures: 0,
+        retryAt: 0,
       })
     }
     const n = Math.max(1, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) / 2)))
     for (let w = 0; w < n; w++) {
       const worker = new Worker(new URL('./tileWorker.ts', import.meta.url), { type: 'module' })
       worker.onmessage = (e: MessageEvent<ToPage>) => this.receive(w, e.data)
-      worker.onerror = (e) => this.errors.push(`tile worker: ${e.message}`)
+      worker.onerror = (e) => {
+        this.errors.push(`tile worker: ${e.message}`)
+        // A worker that won't start never builds the far blocks.
+        if (this.far !== 'in') this.giveUpFar()
+      }
       worker.postMessage({ type: 'init', index } satisfies ToWorker)
       this.workers.push(worker)
       this.load.push(0)
@@ -254,6 +274,7 @@ export class TileStream {
         return
       case 'far':
         this.load[w]--
+        this.far = 'in'
         this.farPending = m.tiles
         this.landmarkY = m.landmarkY
         console.info(`city: far blocks for ${m.tiles.length} tiles in ${m.ms.toFixed(0)} ms`)
@@ -265,6 +286,10 @@ export class TileStream {
         this.jobs.delete(m.id)
         this.load[w]--
         job.tile.pending.delete(this.jobName(m.kind, job.step))
+        if (job.tile.failures) {
+          job.tile.failures = 0
+          this.changed()
+        }
         this.ready.push({ kind: m.kind, tile: job.tile, result: m.result, bytes: bytesOf(m.result) } as Done)
         return
       }
@@ -272,15 +297,23 @@ export class TileStream {
         const job = this.jobs.get(m.id)
         this.load[w]--
         if (!job) {
-          this.errors.push(m.message)
-          console.error(`city: ${m.message}`)
+          // The far file's decode (the one job without an entry): fetched
+          // again, in case what came was broken.
+          const far = this.city.index.far
+          if (far) this.fetching.delete(far.file)
+          this.farFailed(m.message)
           return
         }
         this.jobs.delete(m.id)
-        job.tile.pending.delete(this.jobName(job.kind, job.step))
-        job.tile.failures++
-        console.error(`city: tile ${job.tile.key} ${job.kind}: ${m.message}`)
-        if (job.tile.failures >= MAX_RETRIES) this.errors.push(`tile ${job.tile.key}: ${m.message}`)
+        const { tile } = job
+        tile.pending.delete(this.jobName(job.kind, job.step))
+        tile.failures++
+        tile.retryAt = performance.now() + tileRetryMs(tile.failures)
+        console.error(`city: tile ${tile.key} ${job.kind}: ${m.message}`)
+        if (tile.failures === MAX_RETRIES) {
+          this.errors.push(`tile ${tile.key}: ${m.message}`)
+          this.changed()
+        }
         return
       }
     }
@@ -320,7 +353,10 @@ export class TileStream {
             this.files.set(file, { bytes: bytes.byteLength, key: f.key, layer: f.layer })
             for (const w of f.workers) this.workers[w].postMessage({ type: 'file', file, bytes: bytes.slice(0) } satisfies ToWorker)
             f.workers.clear()
-            if (f.layer === 'far') this.workers[0].postMessage({ type: 'far', id: 0, bytes: bytes.slice(0) } satisfies ToWorker)
+            if (f.layer === 'far') {
+              this.load[0]++
+              this.workers[0].postMessage({ type: 'far', id: 0, bytes: bytes.slice(0) } satisfies ToWorker)
+            }
             this.changed()
           },
           (err: unknown) => {
@@ -328,7 +364,7 @@ export class TileStream {
             for (const w of f.workers) this.workers[w].postMessage({ type: 'file', file, bytes: null, error } satisfies ToWorker)
             // Asked for again by the next job that needs it.
             this.fetching.delete(file)
-            if (f.layer === 'far') this.errors.push(error)
+            if (f.layer === 'far') this.farFailed(error)
           },
         )
         .finally(() => {
@@ -336,6 +372,22 @@ export class TileStream {
           this.pump()
         })
     }
+  }
+
+  // The far file failed (its fetch or its decode): asked for again after
+  // the next FAR_RETRY_MS, or given up on once they're spent.
+  private farFailed(error: string) {
+    this.errors.push(error)
+    console.error(`city: ${error}`)
+    this.farFailures++
+    if (this.farFailures > FAR_RETRY_MS.length) return this.giveUpFar()
+    this.far = 'idle'
+    this.farRetryAt = performance.now() + FAR_RETRY_MS[this.farFailures - 1]
+  }
+
+  private giveUpFar() {
+    this.far = 'failed'
+    this.changed()
   }
 
   private jobName(kind: JobKind, step?: number) {
@@ -360,12 +412,13 @@ export class TileStream {
     const now = performance.now()
     // The far file first of all: every tile's stand-in, and where the
     // landmarks stand.
-    if (!this.farRequested && this.workers.length) {
-      this.farRequested = true
+    if (this.far === 'idle' && now >= this.farRetryAt && this.workers.length) {
       const far = this.city.index.far
-      if (!far) this.errors.push('city-index.json: no far file. Run `npm run bake:far`.')
-      else {
-        this.load[0]++
+      if (!far) {
+        this.errors.push('city-index.json: no far file. Run `npm run bake:far`.')
+        this.giveUpFar()
+      } else {
+        this.far = 'loading'
         this.need(far.file, null, 'far', -Infinity, -1)
       }
     }
@@ -382,17 +435,17 @@ export class TileStream {
       tile.distance = tileDistance(cam, tile.x0, tile.z0, this.city.index.tileM)
       tile.level = levelFor(tile.distance, tile.level, t)
     }
-    this.schedule(t)
+    this.schedule(t, now)
     this.install()
     for (const tile of this.tiles.values()) this.present(tile, now)
     this.watchSettled(now)
   }
 
   // The jobs still wanted, most wanted first, while workers have room.
-  private schedule(t: Thresholds) {
+  private schedule(t: Thresholds, now: number) {
     const wants: { tile: Tile; kind: JobKind; step?: number; score: number }[] = []
     for (const tile of this.tiles.values()) {
-      if (tile.level === 'far' || tile.level === null || tile.failures >= MAX_RETRIES) continue
+      if (tile.level === 'far' || tile.level === null || now < tile.retryAt) continue
       const score = (tile.inView ? 0 : 1e6) + tile.distance
       const step = LOD_STEPS[lodFor(tile.distance)]
       if (!tile.base) {
@@ -665,6 +718,18 @@ export class TileStream {
 
   get firstViewMs(): number | null {
     return this.firstView
+  }
+
+  // The far file couldn't be loaded, so the city can't show (App.tsx).
+  get cityFailed(): boolean {
+    return this.far === 'failed'
+  }
+
+  // Tiles whose jobs keep failing, shown by their far blocks meanwhile.
+  get stuckTiles(): number {
+    let n = 0
+    for (const t of this.tiles.values()) if (t.failures >= MAX_RETRIES) n++
+    return n
   }
 
   downloaded(): number {

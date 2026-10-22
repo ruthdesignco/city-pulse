@@ -27,3 +27,14 @@ export function WindNote({ preset }: { preset: string }) {
     </div>
   )
 }
+
+// Some of the city's tiles keep failing to load (TileStream.ts stuckTiles):
+// they show as plain far blocks until a retry gets them, and the page says
+// so instead of passing them off as the city.
+export function TilesNote({ count }: { count: number }) {
+  return (
+    <div className="light-note" role="status">
+      Part of the city didn't load ({count} {count === 1 ? 'area' : 'areas'} shown simplified); retrying
+    </div>
+  )
+}

@@ -18,7 +18,7 @@ import { QualityMonitor } from './scene/QualityMonitor.tsx'
 import { presetPose } from './scene/shots.ts'
 import { Freshness } from './transit/Freshness.tsx'
 import { RecordedBadge } from './transit/RecordedBadge.tsx'
-import { LightNote, WeatherNote, WindNote } from './scene/LightNote.tsx'
+import { LightNote, TilesNote, WeatherNote, WindNote } from './scene/LightNote.tsx'
 import { setWeather } from './scene/skyClock.ts'
 import { WEATHER_PRESETS, weatherToShow } from './scene/weather.ts'
 import { WeatherLabel } from './scene/WeatherLabel.tsx'
@@ -140,12 +140,24 @@ export default function App() {
   // city is coming.
   const stream = useStream()
   const cityReady = stream?.firstViewMs != null
+  const stuckTiles = stream?.stuckTiles ?? 0
   if (contextLost)
     return (
       <div className="error-boundary" role="alert">
         <p>The browser reset the graphics, which can happen on laptops under heavy load.</p>
         <button type="button" onClick={() => window.location.reload()}>
           Reload
+        </button>
+      </div>
+    )
+  // The far file never came (TileStream.ts, after ~30 s of retries): there's
+  // no city to show, so say so rather than "Loading the city…" forever.
+  if (stream?.cityFailed)
+    return (
+      <div className="error-boundary" role="alert">
+        <p>The city's map data didn't load. Check your connection and try again.</p>
+        <button type="button" onClick={() => window.location.reload()}>
+          Try again
         </button>
       </div>
     )
@@ -228,8 +240,9 @@ export default function App() {
       )}
       {feed.replay && <RecordedBadge replay={feed.replay} />}
       {NET && stream && <NetOverlay stream={stream} />}
-      {(TIME.mode === 'fixed' || WEATHER || WIND) && (
+      {(TIME.mode === 'fixed' || WEATHER || WIND || stuckTiles > 0) && (
         <div className="notes">
+          {stuckTiles > 0 && <TilesNote count={stuckTiles} />}
           {TIME.mode === 'fixed' && <LightNote label={TIME.label} />}
           {WEATHER && <WeatherNote preset={WEATHER} />}
           {WIND && <WindNote preset={WIND} />}
