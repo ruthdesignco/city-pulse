@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CoverClass, type CityTile, TILE_M, decodeTile, joinParts, toLines } from '../src/city/format.ts'
+import { woodedTest } from './lib/cover.ts'
 import { tileKey } from '../src/city/cityIndex.ts'
 import { ringPosition } from '../src/city/ring.ts'
 import { decodeTrees, encodeTrees } from '../src/city/treeFormat.ts'
@@ -255,17 +256,25 @@ async function main() {
       }
   }
 
-  // OSM's woods, tile by tile (each tile's cover is cut at its edges).
+  // OSM's woods and the wooded parks' land (cover.ts woodedTest), tile by
+  // tile (each tile's cover is cut at its edges): one tree per cell once,
+  // where a woods and a park overlap.
   let woodTrees = 0
   for (const tile of tiles) {
     const { counts, classes, coords } = tile.cover
+    const wooded = woodedTest(tile.cover)
+    const seen = new Set<string>()
     let c = 0
     counts.forEach((n, k) => {
       const ring: [number, number][] = []
       for (let i = 0; i < n; i++, c += 2) ring.push([coords[c], coords[c + 1]])
-      if (classes[k] !== CoverClass.Wood) return
+      if (classes[k] !== CoverClass.Wood && classes[k] !== CoverClass.Park) return
       for (const [gx, gz] of cellsIn(ring, WOOD_SPACING_M)) {
+        const cell = `${gx},${gz}`
+        if (seen.has(cell)) continue
+        seen.add(cell)
         if (cellHash(gx, gz, 11) > WOOD_FILL) continue
+        if (!wooded((gx + 0.5) * WOOD_SPACING_M, (gz + 0.5) * WOOD_SPACING_M)) continue
         const x = (gx + 0.15 + 0.7 * cellHash(gx, gz, 12)) * WOOD_SPACING_M
         const z = (gz + 0.15 + 0.7 * cellHash(gx, gz, 13)) * WOOD_SPACING_M
         if (footprints.contains(x, z) || roads.onRoadway(x, z)) continue
@@ -314,7 +323,7 @@ async function main() {
   const inArea = rows.length - drop.notATree - drop.noLocation - drop.outsideArea
   const pct = (v: number, of: number) => `${((100 * v) / of).toFixed(1)}%`
   console.log(`\nrows: ${rows.length} in the tiles' box (data as of ${dataAsOf})`)
-  console.log(`trees: ${n} kept (${core} in the three neighborhoods, ${n - core} beyond; ${yard} yard trees; illustrative: ${parkTrees} in landmark grounds, ${woodTrees} in OSM woods)`)
+  console.log(`trees: ${n} kept (${core} in the three neighborhoods, ${n - core} beyond; ${yard} yard trees; illustrative: ${parkTrees} in landmark grounds, ${woodTrees} in OSM woods and the wooded parks)`)
   console.log(`  dropped before the bake area: ${drop.notATree} planting sites/stumps, ${drop.noLocation} without a location, ${drop.outsideArea} outside it`)
   console.log(
     `  of the ${inArea} trees in the bake area: ${drop.median} median trees (${pct(drop.median, inArea)}), ` +

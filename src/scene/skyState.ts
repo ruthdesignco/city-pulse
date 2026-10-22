@@ -24,7 +24,7 @@ import { palette } from '../city/palette.ts'
 import { ORIGIN } from '../geo/projection.ts'
 import { sfHour, sfIsWeekend } from './sfTime.ts'
 import { CLEAR_WEATHER, FOG_RAMP_M, FOG_SOFT_M, FOG_TOP_M, type Weather, fogDensity } from './weather.ts'
-import { SKY_EXPOSURE, type SkyLook, SUN_DIRECTION, hazeColor, rawHorizonLuminance } from './skyModel.ts'
+import { SKY_EXPOSURE, type SkyLook, SUN_DIRECTION, VEIL, hazeColor, rawHorizonLuminance } from './skyModel.ts'
 import { bearingToScene } from './sun.ts'
 
 export const NIGHT_EXPOSURE = 0.09
@@ -169,6 +169,7 @@ export function computeSkyState(date: Date, weather: Weather = CLEAR_WEATHER): S
     nightZenith: new Color(palette.twilightSkyZenith).lerp(new Color(palette.nightSkyZenith), nightness),
     nightHorizon: new Color(palette.twilightSkyHorizon).lerp(new Color(palette.nightSkyHorizon), nightness),
     glowColor: new Color(palette.twilightGlow),
+    veil: VEIL.clone().multiplyScalar(exposure * (1 - night)),
     glow: 1 - nightness,
     overcast: cloud,
     overcastZenith: new Color(palette.overcastZenith).multiplyScalar(level).lerp(new Color(palette.overcastNightZenith), night),

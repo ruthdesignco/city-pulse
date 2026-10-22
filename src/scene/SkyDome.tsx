@@ -4,8 +4,8 @@ import { Color, type Fog, type ShaderMaterial, Vector3 } from 'three'
 import { Sky } from 'three/examples/jsm/objects/Sky.js'
 import { useSkyState } from './skyClock.ts'
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from './heightFog.ts'
-import { registerHeightFog } from './sceneUniforms.ts'
-import { GLOW_BEARING_POWER, GLOW_HEIGHT_POWER, SKY_EXPOSURE, SKY_PARAMS, type SkyLook, horizonColorFor } from './skyModel.ts'
+import { registerHeightFog, sceneUniforms } from './sceneUniforms.ts'
+import { GLOW_BEARING_POWER, GLOW_HEIGHT_POWER, SKY_EXPOSURE, SKY_GRADE_GLSL, SKY_PARAMS, type SkyLook, VEIL_FULL, fogColorFor, seaFogFor } from './skyModel.ts'
 
 // The sky: three's Sky (the Preetham daylight model) lit by the time of
 // day's sun (skyState.ts), the same as the scene's directional light, so the
@@ -14,7 +14,9 @@ import { GLOW_BEARING_POWER, GLOW_HEIGHT_POWER, SKY_EXPOSURE, SKY_PARAMS, type S
 // which this shader mirrors). Its look (SKY_PARAMS) and exposure live in
 // skyModel.ts, which also gives the fog its color: the sky's own horizon,
 // in whatever direction the camera faces, so fogged ground and water meet
-// the sky with no seam from any orbit angle. Cloud cover blends it to a flat
+// the sky with no seam from any orbit angle; toward a low sun no brighter
+// than a little over the haze (fogColorFor), so the land stands dark
+// against the glow. Cloud cover blends it to a flat
 // overcast gradient, and the height fog (heightFog.ts) covers it wherever the
 // line of sight runs through the marine layer: all of it from inside the
 // layer, none of it looking up from above.
@@ -34,6 +36,7 @@ function applySkyLook(material: ShaderMaterial, look: SkyLook) {
   u.uOvercast.value = look.overcast
   u.uOvercastZenith.value.copy(look.overcastZenith)
   u.uOvercastHorizon.value.copy(look.overcastHorizon)
+  u.uVeil.value.copy(look.veil)
 }
 
 export function SkyDome() {
@@ -52,6 +55,8 @@ export function SkyDome() {
     u.uOvercast = { value: 0 }
     u.uOvercastZenith = { value: new Color() }
     u.uOvercastHorizon = { value: new Color() }
+    u.uSeaHaze = sceneUniforms.uSeaFog
+    u.uVeil = { value: new Color() }
     registerHeightFog(material)
     u.turbidity.value = SKY_PARAMS.turbidity
     u.rayleigh.value = SKY_PARAMS.rayleigh
@@ -64,7 +69,8 @@ export function SkyDome() {
     if (!material.fragmentShader.includes(final)) throw new Error('SkyDome: Sky.js output line not found')
     material.fragmentShader =
       'uniform float uSkyExposure;\nuniform float uNight;\nuniform vec3 uNightZenith;\nuniform vec3 uNightHorizon;\nuniform float uGlow;\nuniform vec3 uGlowColor;\n' +
-      'uniform float uOvercast;\nuniform vec3 uOvercastZenith;\nuniform vec3 uOvercastHorizon;\n' +
+      'uniform float uOvercast;\nuniform vec3 uOvercastZenith;\nuniform vec3 uOvercastHorizon;\nuniform vec3 uSeaHaze;\nuniform vec3 uVeil;\n' +
+      SKY_GRADE_GLSL +
       HEIGHT_FOG_UNIFORMS +
       HEIGHT_FOG_GLSL +
       material.fragmentShader.replace(
@@ -72,9 +78,13 @@ export function SkyDome() {
         `float up = sqrt( clamp( direction.y, 0.0, 1.0 ) );
         float toward = max( 0.0, dot( normalize( direction.xz + 1e-6 ), normalize( vSunDirection.xz + 1e-6 ) ) );
         vec3 nightSky = mix( uNightHorizon, uNightZenith, up ) + uGlowColor * uGlow * pow( toward, ${GLOW_BEARING_POWER.toFixed(1)} ) * pow( 1.0 - up, ${GLOW_HEIGHT_POWER.toFixed(1)} );
-        vec3 skyNow = mix( texColor * uSkyExposure, nightSky, uNight );
+        vec3 daySky = skyGrade( ( texColor - sundiscColor ) * uSkyExposure + uVeil * smoothstep( 0.0, ${VEIL_FULL.toFixed(3)}, direction.y ), direction, vSunDirection ) + sundiscColor * uSkyExposure;
+        vec3 skyNow = mix( daySky, nightSky, uNight );
         skyNow = mix( skyNow, mix( uOvercastHorizon, uOvercastZenith, up ), uOvercast );
         skyNow = mix( skyNow, uFogColor, heightFogAmount( cameraPosition, vWorldPosition ) );
+        // Below the horizon, past where the sea's plane ends (the camera's
+        // far plane): the sea, as hazed as it is there.
+        skyNow = mix( skyNow, uSeaHaze, smoothstep( 0.0, -0.002, direction.y ) );
         gl_FragColor = vec4( skyNow, 1.0 );`,
       )
     return s
@@ -89,8 +99,12 @@ export function SkyDome() {
     const fog = scene.fog as Fog | null
     if (!fog) return
     camera.getWorldDirection(forward)
-    horizonColorFor(Math.atan2(forward.x, -forward.z), state.sky, fog.color)
+    const heading = Math.atan2(forward.x, -forward.z)
+    fogColorFor(heading, state.sky, state.haze, fog.color)
+    seaFogFor(heading, state.sky, state.haze, sceneUniforms.uSeaFog.value)
   })
 
-  return <primitive object={sky} />
+  // Drawn before the city: the box is only SKY_SIZE_M across, and the land
+  // and water reach past it.
+  return <primitive object={sky} renderOrder={-1} />
 }

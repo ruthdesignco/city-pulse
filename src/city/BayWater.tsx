@@ -94,6 +94,13 @@ const MOON_GLINT = 0.35
 // Sun glints: Water.js's shininess and strength are 100 and 2.
 const GLINT_SHININESS = 220
 const GLINT_STRENGTH = 0.9
+// The sun's glitter path on the sea (Cox-Munk: the share of wave facets
+// tilted to mirror the sun into the eye, for the waves' mean square slope,
+// calm to strong wind), sparkling with the chop: at grazing angles toward
+// a low sun, where a flat mirror shows none. Added after the haze, through
+// half of it at most.
+const GLITTER = 3
+const GLITTER_SLOPE2 = [0.01, 0.045]
 
 const f = (v: number) => v.toFixed(4)
 const WHITECAPS_FROM = windStrength(WHITECAP_FROM_MS)
@@ -187,11 +194,20 @@ function createBayWater(outline: [number, number][]) {
     frag,
     'vec3 outgoingLight = albedo;',
     `vec3 outgoingLight = albedo + uCityGlow * ( uWindowsOn * ${f(CITY_GLOW)} * ( 1.0 - smoothstep( ${f(CITY_GLOW_NEAR_M)}, ${f(CITY_GLOW_FAR_M)}, length( worldPosition.xz - uCity ) ) ) );
+          vec3 gh = normalize( sunDirection + eyeDirection );
+          float gt = ( 1.0 - gh.y * gh.y ) / max( gh.y * gh.y, 1e-4 );
+          float sparkle = 0.4 + 1.6 * pow( max( dot( reflect( -eyeDirection, surfaceNormal ), sunDirection ), 0.0 ), 30.0 );
+          vec3 glitter = sunColor * ${f(GLITTER)} * exp( -gt / mix( ${f(GLITTER_SLOPE2[0])}, ${f(GLITTER_SLOPE2[1])}, uWindE ) ) * sparkle * reflectance * step( 0.0, sunDirection.y );
           outgoingLight = mix( outgoingLight, uFoamColor, whitecaps( worldPosition.xz ) );`,
   )
   frag = patch(frag, 'void main() {', `${WHITECAP_GLSL}\nvoid main() {`)
-  frag = 'uniform float uWindowsOn;\nuniform vec3 uCityGlow;\nuniform vec2 uCity;\nuniform vec2 uWaterShift;\nuniform float uChop;\nuniform float uWindE;\nuniform float uWhitecaps;\nuniform float uFoamClock;\nuniform vec3 uFoamColor;\n' + frag
+  // Far off, the sea goes to its own haze (sceneUniforms.ts uSeaFog), so it
+  // runs out to a clear horizon instead of the land's darker haze.
+  // The glitter shines through the haze, dimmed by half of it at most.
+  frag = patch(frag, '#include <fog_fragment>', '#define fogColor uSeaFog\n#include <fog_fragment>\n#undef fogColor\n#ifdef USE_FOG\ngl_FragColor.rgb += glitter * ( 1.0 - 0.5 * fogFactor );\n#else\ngl_FragColor.rgb += glitter;\n#endif')
+  frag = 'uniform vec3 uSeaFog;\nuniform float uWindowsOn;\nuniform vec3 uCityGlow;\nuniform vec2 uCity;\nuniform vec2 uWaterShift;\nuniform float uChop;\nuniform float uWindE;\nuniform float uWhitecaps;\nuniform float uFoamClock;\nuniform vec3 uFoamColor;\n' + frag
   material.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
+  material.uniforms.uSeaFog = sceneUniforms.uSeaFog
   material.uniforms.uCityGlow = { value: new Color(palette.windowSoft) }
   material.uniforms.uCity = { value: new Vector2(TARGET[0], TARGET[2]) }
   material.uniforms.uWaterShift = { value: new Vector2() }

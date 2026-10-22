@@ -175,12 +175,16 @@ export function coverPixels(covers: CityParts['cover'][], grid: Grid): Uint8Arra
   const g = canvas2d(nx, nz)
   if (!g) return new Uint8Array(nx * nz * 4)
   g.globalCompositeOperation = 'lighter'
-  const fill = ['rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(64,0,128)']
+  // By CoverClass: the wooded parks' land and fields show as grass (their
+  // trees stand on it); their water and clearings not at all.
+  const fill = ['rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(64,0,128)', 'rgb(255,0,0)', null, 'rgb(255,0,0)', null]
   for (const { counts, classes, coords } of covers) {
     let c = 0
     for (let k = 0; k < counts.length; k++) {
       c = trace(g, grid, counts, coords, k, c)
-      g.fillStyle = fill[classes[k]] ?? fill[0]
+      const style = classes[k] < fill.length ? fill[classes[k]] : fill[0]
+      if (!style) continue
+      g.fillStyle = style
       g.fill()
     }
   }

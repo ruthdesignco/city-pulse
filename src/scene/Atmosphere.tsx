@@ -22,8 +22,8 @@ const SHADOW_NORMAL_BIAS_TEXELS = 0.75
 // Extra PCF radius (texels) under full overcast.
 const SHADOW_RADIUS_OVERCAST = 3
 
-const FOG_NEAR_M = 4500
-const FOG_FAR_M = 10000
+const FOG_NEAR_M = 3000
+const FOG_FAR_M = 30000
 
 // `shadowMapSize` comes from the quality step (quality.ts); a change
 // reallocates the shadow map.
@@ -85,13 +85,15 @@ export function Atmosphere({ shadowMapSize = SHADOW_MAP_SIZE }: { shadowMapSize?
           the sun's warmth shows only on faces it hits, the sky's cool only
           in shadow; through dusk to a dim, blue night. */}
       <hemisphereLight color={sky.fill.sky} groundColor={sky.fill.ground} intensity={sky.fill.intensity} />
-      {/* Haze for the far distance only: the city and its skyline sit
-          within ~3 km of the camera in the opening view and stay crisp
-          (starting at 2 km washed the Financial District blue-gray); past
-          FOG_NEAR_M the land and water fade into the sky, fully by
-          FOG_FAR_M, well inside the land plane's edge (Ground.tsx). Its
-          color follows the sky's horizon as the camera turns (SkyDome.tsx);
-          palette.sky is where it starts. */}
+      {/* Haze for the far distance: the city and its skyline sit within
+          ~3 km of the camera in the opening view and stay crisp (starting
+          at 2 km washed the Financial District blue-gray); past FOG_NEAR_M
+          the land and water ease into the haze, half by ~16 km, fully by
+          FOG_FAR_M, well inside the land plane's edge (Ground.tsx), so the
+          Marin Headlands and Mt Tamalpais still show (fully hazed by 10 km,
+          the west views at 16:50 lost them). Its color follows the sky's
+          horizon as the camera turns, no brighter than a little over the
+          haze (SkyDome.tsx); palette.sky is where it starts. */}
       <fog attach="fog" args={[palette.sky, FOG_NEAR_M, FOG_FAR_M]} />
       <object3D ref={lightTargetRef} position={TARGET} />
       <directionalLight

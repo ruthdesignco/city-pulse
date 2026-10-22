@@ -41,8 +41,12 @@ export const LAND_CELLS = TILE_M / LAND_CELL_M // per side
 
 export const StreetClass = { Major: 0, Minor: 1, Local: 2 } as const
 
-// Ground cover (scripts/lib/cover.ts): what the ground shows where it isn't paved.
-export const CoverClass = { Grass: 0, Wood: 1, Rock: 2, Sand: 3 } as const
+// Ground cover (scripts/lib/cover.ts): what the ground shows where it isn't
+// paved. Inside the wooded parks (cover.ts WOODED_PARKS): Park, their land
+// OSM leaves untagged, wooded (trees and canopy), shown as grass; and what
+// stays clear of trees there: Water (not drawn), Field (pitches, golf,
+// tracks: grass), Clear (parking, plazas, the stadium: not drawn).
+export const CoverClass = { Grass: 0, Wood: 1, Rock: 2, Sand: 3, Park: 4, Water: 5, Field: 6, Clear: 7 } as const
 export type CoverClass = (typeof CoverClass)[keyof typeof CoverClass]
 
 export interface Landmark {

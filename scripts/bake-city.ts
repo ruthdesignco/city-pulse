@@ -16,6 +16,7 @@
 
 import { createHash } from 'node:crypto'
 import {
+  CoverClass,
   HEIGHT_QUANTUM,
   LAND_CELLS,
   LAND_CELL_M,
@@ -52,7 +53,7 @@ import type { Bbox, OsmElement, OsmGeomPoint } from './lib/overpass.ts'
 import { buildingColorType, buildingVariant } from './lib/buildingColor.ts'
 import { loadFromPbf } from './lib/pbf.ts'
 import { LANDMARK_MATERIALS } from './lib/landmarkMaterials.ts'
-import { CLIFF_WIDTH_M, coverClass, isCliff } from './lib/cover.ts'
+import { CLIFF_WIDTH_M, PARK_ONLY, WOODED_PARKS, coverClass, isCliff } from './lib/cover.ts'
 import { LANDMARKS, type LandmarkPlacement } from '../src/city/landmarks/registry.ts'
 import { minAreaRect } from './lib/geometry.ts'
 import { ALCATRAZ, LandMask, neighborhoodRings } from './lib/landMask.ts'
@@ -326,12 +327,19 @@ function bakeStreets(elements: OsmElement[], keep: (p: Pt, shore: boolean) => bo
 // top edge to the right by CLIFF_WIDTH_M. Kept where any point is on the
 // city's land or its shore.
 const SIMPLIFY_COVER_M = 1
+// The wooded parks (cover.ts WOODED_PARKS) are Park, their gardens too;
+// water, fields and the like count only inside them.
 function bakeCover(elements: OsmElement[], keep: (p: Pt, shore: boolean) => boolean): { ring: Pt[]; cls: number }[] {
   const within = (p: Pt) => keep(p, true)
   const out: { ring: Pt[]; cls: number }[] = []
+  const parks = elements.filter((el) => WOODED_PARKS.has(`${el.type}/${el.id}`)).flatMap((el) => footprintsOf(el, el.tags ?? {}).map((f) => f.ring))
+  const missing = [...WOODED_PARKS].filter(([id]) => !elements.some((el) => `${el.type}/${el.id}` === id))
+  if (missing.length) throw new Error(`bake: wooded parks not found: ${missing.map(([id, name]) => `${name} (${id})`).join(', ')}`)
+  const inPark = (ring: Pt[]) => parks.some((p) => pointInRing(centroid(ring), p))
   for (const el of elements) {
-    const cls = coverClass(el.tags)
+    let cls = coverClass(el.tags)
     if (cls === null) continue
+    if (WOODED_PARKS.has(`${el.type}/${el.id}`)) cls = CoverClass.Park
     let rings: Pt[][] = []
     if (el.type === 'way' && isCliff(el.tags) && el.geometry) {
       const line = el.geometry.map(project)
@@ -346,10 +354,16 @@ function bakeCover(elements: OsmElement[], keep: (p: Pt, shore: boolean) => bool
     } else rings = footprintsOf(el, el.tags ?? {}).map((f) => f.ring)
     for (const r of rings) {
       if (r.length < 3 || !r.some(within)) continue
+      let c = cls
+      if (PARK_ONLY.has(c) || (el.tags?.leisure === 'garden' && c === CoverClass.Grass)) {
+        const inside = inPark(r)
+        if (PARK_ONLY.has(c) && !inside) continue
+        if (inside && c === CoverClass.Grass) c = CoverClass.Park
+      }
       let ring = simplifyRing(r, SIMPLIFY_COVER_M)
       if (ring.length < 3) continue
       if (signedArea(ring) < 0) ring = [...ring].reverse()
-      out.push({ ring, cls })
+      out.push({ ring, cls: c })
     }
   }
   return out
@@ -562,7 +576,7 @@ async function main() {
   console.log(`landmark models: ${landmarkModels.map((m) => `${m.id} (${m.sizeX.toFixed(0)} x ${m.sizeZ.toFixed(0)} m at ${m.x.toFixed(0)}, ${m.z.toFixed(0)}, ${((m.angle * 180) / Math.PI).toFixed(1)} deg${m.grounds ? `, grounds ${m.grounds.length / 2} pts` : ''})`).join(', ')}`)
   console.log(`landmark materials: ${pinned.map((p) => p.name).join(', ')}`)
   console.log(`streets: ${streets.length} runs`)
-  console.log(`ground cover: ${['grass', 'wood', 'rock', 'sand'].map((name, c) => `${cover.filter((x) => x.cls === c).length} ${name}`).join(', ')} outlines`)
+  console.log(`ground cover: ${['grass', 'wood', 'rock', 'sand', 'wooded park', 'park water', 'park fields', 'park clear'].map((name, c) => `${cover.filter((x) => x.cls === c).length} ${name}`).join(', ')} outlines`)
   console.log(`\ntallest:`)
   for (const t of tallest) {
     console.log(`  ${t.height.toFixed(1).padStart(6)} m  ${t.name ?? '(unnamed)'}  at x=${t.center[0].toFixed(0)}, z=${t.center[1].toFixed(0)}${t.ringBand ? '  [ring]' : ''}`)

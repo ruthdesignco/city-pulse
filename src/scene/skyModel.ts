@@ -99,13 +99,17 @@ export function skyRadiance(direction: Vector3, sunDirection: Vector3, p: SkyPar
 
 // ------------------------------------------------------- this scene's sky
 
-// A hazy San Francisco afternoon: high turbidity and Mie scattering, low
-// Rayleigh, so the horizon is a gray-white haze under a muted blue, never
-// the model's default deep saturated blue.
-export const SKY_PARAMS: SkyParams = { turbidity: 12, rayleigh: 0.25, mieCoefficient: 0.06, mieDirectionalG: 0.8 }
+// A clear San Francisco afternoon: a blue sky with a pale haze at the
+// horizon, the model's own sun glow kept slight (little Mie scattering, in
+// a narrow forward lobe) and a golden one added round a low sun (skyGrade),
+// so the sky stays blue in most of a frame looking toward it. (Turbidity
+// 12, Mie 0.06 at 0.8 lit the whole horizon within ~70 deg of a low sun
+// brighter than white: the west views at 16:50 blew out.)
+export const SKY_PARAMS: SkyParams = { turbidity: 6, rayleigh: 1.0, mieCoefficient: 0.0015, mieDirectionalG: 0.98 }
 // Scales Sky.js's radiance into the scene's units, set so the haze at the
-// horizon (opposite the sun) reads about as bright as a sunlit pale wall.
-export const SKY_EXPOSURE = 9
+// horizon away from the sun reads about as bright as a sunlit pale wall
+// (the same brightness the earlier, hazier sky was tuned to).
+export const SKY_EXPOSURE = 0.5244
 // Where the fog samples the sky: right at the horizon, the color Sky.js also
 // paints below it, which is what fogged ground's far edge meets.
 const HORIZON_ELEVATION_DEG = 0
@@ -137,6 +141,10 @@ export interface SkyLook {
   // horizon toward the sun's bearing.
   glowColor: Color
   glow: number
+  // A pale blue veil over the day sky (scene units), full from VEIL_FULL
+  // (the y of the direction) up, none at the horizon: the overhead blue
+  // that a sky with little haze scattering lacks (SKY_PARAMS).
+  veil: Color
   // Cloud cover (weather.ts): how far the whole sky goes to a flat overcast
   // gradient, 0 clear .. 1 overcast.
   overcast: number
@@ -149,8 +157,69 @@ export interface SkyLook {
 export const GLOW_BEARING_POWER = 3
 export const GLOW_HEIGHT_POWER = 4
 
+// The low sun's golden glow, added to the Preetham sky (whose own Mie
+// scattering is kept slight, SKY_PARAMS, so the sky stays blue): a core a
+// few degrees round the sun and a soft fringe out to ~30 deg, both GOLD,
+// at full strength with the sun below GOLD_LOW[0] (the y of its direction)
+// and gone above GOLD_LOW[1]; then the highlights eased (luminance up to
+// KNEE_FROM as it is, compressed past it toward KNEE_MAX, hue kept), so the
+// glow keeps its color instead of clipping to white. SkyDome.tsx's shader
+// does the same (SKY_GRADE_GLSL).
+export const GOLD = new Color(1, 0.64, 0.32)
+export const GLOW_CORE_RAD = 0.08
+export const GLOW_FRINGE_RAD = 0.3
+export const GLOW_CORE = 2.2
+export const GLOW_FRINGE = 0.7
+const GOLD_LOW = [0.1, 0.55]
+const GOLD_HUE = 0.75
+const GOLD_HUE_RAD = 0.25
+export const KNEE_FROM = 0.85
+export const KNEE_MAX = 1.1
+
+// How strongly the glow (and the warm haze, fogColorFor) shows at the sun's height.
+export function lowSun(sun: Vector3): number {
+  return 1 - Math.min(1, Math.max(0, (sun.y - GOLD_LOW[0]) / (GOLD_LOW[1] - GOLD_LOW[0])))
+}
+
+export function skyGrade(c: Color, direction: Vector3, sun: Vector3): Color {
+  const a = Math.acos(Math.min(1, Math.max(-1, direction.dot(sun))))
+  const glow = (GLOW_CORE * Math.exp(-a / GLOW_CORE_RAD) + GLOW_FRINGE * Math.exp(-a / GLOW_FRINGE_RAD)) * lowSun(sun) * Math.min(1, Math.max(0, direction.y * 20 + 1))
+  c.r += GOLD.r * glow
+  c.g += GOLD.g * glow
+  c.b += GOLD.b * glow
+  const l = lum3(c)
+  if (l > KNEE_FROM) c.multiplyScalar((KNEE_FROM + (l - KNEE_FROM) / (1 + (l - KNEE_FROM) / (KNEE_MAX - KNEE_FROM))) / l)
+  // Near the sun, the sky's own hue shifts toward the gold too.
+  const w = GOLD_HUE * Math.exp(-a / GOLD_HUE_RAD) * lowSun(sun)
+  const lc = lum3(c)
+  const lg = lum3(GOLD)
+  return c.lerp(new Color(GOLD.r * (lc / lg), GOLD.g * (lc / lg), GOLD.b * (lc / lg)), w)
+}
+
+export const SKY_GRADE_GLSL = /* glsl */ `
+vec3 skyGrade( vec3 c, vec3 dir, vec3 sun ) {
+  float a = acos( clamp( dot( dir, sun ), -1.0, 1.0 ) );
+  float low = 1.0 - clamp( ( sun.y - ${GOLD_LOW[0].toFixed(3)} ) / ${(GOLD_LOW[1] - GOLD_LOW[0]).toFixed(3)}, 0.0, 1.0 );
+  float glow = ( ${GLOW_CORE.toFixed(3)} * exp( -a / ${GLOW_CORE_RAD.toFixed(3)} ) + ${GLOW_FRINGE.toFixed(3)} * exp( -a / ${GLOW_FRINGE_RAD.toFixed(3)} ) ) * low * clamp( dir.y * 20.0 + 1.0, 0.0, 1.0 );
+  c += vec3( ${GOLD.r.toFixed(3)}, ${GOLD.g.toFixed(3)}, ${GOLD.b.toFixed(3)} ) * glow;
+  float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+  if ( l > ${KNEE_FROM.toFixed(3)} ) c *= ( ${KNEE_FROM.toFixed(3)} + ( l - ${KNEE_FROM.toFixed(3)} ) / ( 1.0 + ( l - ${KNEE_FROM.toFixed(3)} ) / ${(KNEE_MAX - KNEE_FROM).toFixed(3)} ) ) / l;
+  vec3 gold = vec3( ${GOLD.r.toFixed(3)}, ${GOLD.g.toFixed(3)}, ${GOLD.b.toFixed(3)} );
+  float w = ${GOLD_HUE.toFixed(3)} * exp( -a / ${GOLD_HUE_RAD.toFixed(3)} ) * low;
+  return mix( c, gold * dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ) / dot( gold, vec3( 0.2126, 0.7152, 0.0722 ) ), w );
+}
+`
+
+// The veil's color at the day's full exposure (linear), and where it's full.
+export const VEIL = new Color(0.13, 0.2, 0.32)
+export const VEIL_FULL = 0.35
+
 export function skyColor(direction: Vector3, look: SkyLook, out = new Color()): Color {
-  const [r, g, b] = skyRadiance(direction, look.sunDirection, SKY_PARAMS, look.sunDirection.y)
+  const base = new Color(...skyRadiance(direction, look.sunDirection, SKY_PARAMS, look.sunDirection.y)).multiplyScalar(look.exposure)
+  const v = Math.min(1, Math.max(0, direction.y / VEIL_FULL))
+  base.add(look.veil.clone().multiplyScalar(v * v * (3 - 2 * v)))
+  const day = skyGrade(base, direction, look.sunDirection)
+  const [r, g, b] = [day.r / look.exposure, day.g / look.exposure, day.b / look.exposure]
   const up = Math.sqrt(Math.min(1, Math.max(0, direction.y)))
   const n = look.night
   const flat = Math.hypot(direction.x, direction.z) || 1
@@ -170,10 +239,41 @@ export function skyColor(direction: Vector3, look: SkyLook, out = new Color()): 
   )
 }
 
-// The sky at the horizon toward compass bearing `azimuth` (radians), for the
-// fog in the direction the camera faces.
+// The sky at the horizon toward compass bearing `azimuth` (radians).
 export function horizonColorFor(azimuth: number, look: SkyLook, out = new Color()): Color {
   return skyColor(new Vector3(Math.sin(azimuth), 0, -Math.cos(azimuth)), look, out)
+}
+
+// The far haze (Atmosphere.tsx), as the camera faces `azimuth`: the haze
+// away from the sun (`haze`, hazeColor), and toward a low sun warmed toward
+// GOLD and up to FOG_GLOW_MAX times as bright, never the glow's own
+// brightness: distant hills and sea stand against the glow, darker, as
+// silhouettes, instead of fading into it.
+export const FOG_GLOW_MAX = 1.3
+const FOG_TOWARD_POWER = 4
+export function fogColorFor(azimuth: number, look: SkyLook, haze: Color, out = new Color()): Color {
+  const sun = look.sunDirection
+  const flat = Math.hypot(sun.x, sun.z) || 1
+  const toward = Math.max(0, (Math.sin(azimuth) * sun.x - Math.cos(azimuth) * sun.z) / flat) ** FOG_TOWARD_POWER * lowSun(sun) * (1 - look.night)
+  const warm = haze.clone().multiply(GOLD)
+  warm.multiplyScalar((FOG_GLOW_MAX * lum3(haze)) / Math.max(1e-6, lum3(warm)))
+  return out.copy(haze).lerp(warm, toward)
+}
+
+// The far sea's haze (sceneUniforms.ts uSeaFog), as the camera faces
+// `azimuth`: the sky it mostly mirrors there (a few degrees up), SEA_FOG_SHADE darker, and toward a low
+// sun no brighter than SEA_GLOW_MAX times the haze: a warm band under the
+// glow, so the horizon reads as a line; the sun's glitter lights it
+// (BayWater.tsx).
+const SEA_FOG_SHADE = 0.85
+const SEA_GLOW_MAX = 1.0
+const SEA_FOG_ELEVATION = 0.05 // rad: the sky the sea mostly mirrors, a few degrees up
+export function seaFogFor(azimuth: number, look: SkyLook, haze: Color, out = new Color()): Color {
+  const e = SEA_FOG_ELEVATION
+  skyColor(new Vector3(Math.cos(e) * Math.sin(azimuth), Math.sin(e), -Math.cos(e) * Math.cos(azimuth)), look, out).multiplyScalar(SEA_FOG_SHADE)
+  const cap = SEA_GLOW_MAX * lum3(haze)
+  const l = lum3(out)
+  return l > cap ? out.multiplyScalar(cap / l) : out
 }
 
 const AROUND = Array.from({ length: 16 }, (_, i) => (i * Math.PI) / 8)

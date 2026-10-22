@@ -22,6 +22,10 @@ import type { SkyState } from './skyState.ts'
 //               x, z), uWindClock the trees' sway phase
 export const sceneUniforms = {
   uHaze: { value: new Color(palette.sky) },
+  // The far sea's haze (SkyDome.tsx sets it as the camera turns): the sky's
+  // own horizon there, a shade darker, so the sea runs out to a clear
+  // horizon line under it (BayWater.tsx, and the sky below the horizon).
+  uSeaFog: { value: new Color(palette.sky) },
   uWindowsOn: { value: 0 },
   uHour: { value: 12 },
   uWeekend: { value: 0 },

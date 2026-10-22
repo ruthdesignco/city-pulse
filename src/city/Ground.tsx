@@ -88,16 +88,24 @@ vLandN = normal;
   return material
 }
 
-// The water's outline: the backdrop's box (BayWater.tsx).
+// The water's outline (BayWater.tsx): the backdrop's box, where its land
+// stands out of the water, and the Pacific west of it, OCEAN_M out, so
+// looking west the sea runs to a horizon (the true one is ~75 km off from
+// 450 m up; the camera sees 100 km: App.tsx).
+const OCEAN_M = 150000
 function waterOutline(b: Terrain): [number, number][] {
   const { x0, z0, cell, nx, nz } = b.header
   const x1 = x0 + (nx - 1) * cell
   const z1 = z0 + (nz - 1) * cell
   return [
-    [x0, z0],
+    [x0 - OCEAN_M, z0 - OCEAN_M],
+    [x0 - OCEAN_M, z1 + OCEAN_M],
+    [x0, z1 + OCEAN_M],
     [x0, z1],
     [x1, z1],
     [x1, z0],
+    [x0, z0],
+    [x0, z0 - OCEAN_M],
   ]
 }
 

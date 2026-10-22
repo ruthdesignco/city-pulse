@@ -24,11 +24,12 @@ const STEEP_FROM = 0.94
 const STEEP_FULL = 0.82
 const SLOPE_EARTH = new Color('#7a7c66')
 
-// The land plane, in meters: its edge 20 km out, past the fog's full
-// distance (Atmosphere.tsx) from anywhere the orbit can take the camera.
+// The land plane, in meters: its edge 100 km out, past the fog's full
+// distance (Atmosphere.tsx) and the camera's far plane (App.tsx), so no
+// edge ever shows; west of the backdrop the Pacific covers it (Ground.tsx).
 // Flat, LAND_Y down: past the terrain's grid, which eases to sea level at
 // its edges (bake-terrain.ts) and lies on top of it there.
-export const LAND_M = 40000
+export const LAND_M = 200000
 // The flat land plane itself, under the backdrop where they meet at its
 // tapered edge (and under the water inside the backdrop's box).
 export const LAND_PLANE_Y = -2

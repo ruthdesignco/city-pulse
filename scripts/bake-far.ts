@@ -15,7 +15,8 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CoverClass, HEIGHT_QUANTUM, RING_BAND_METERS, type CityTile, toLines } from '../src/city/format.ts'
+import { HEIGHT_QUANTUM, RING_BAND_METERS, type CityTile, toLines } from '../src/city/format.ts'
+import { woodedTest } from './lib/cover.ts'
 import { FAR_CANOPY_CELLS, FAR_CANOPY_CELL_M, type FarTile, encodeFar } from '../src/city/farFormat.ts'
 import { landmarkGround } from '../src/city/landmarks/registry.ts'
 import { type Pt, convexHull, minAreaRect, pointInRing, signedArea } from './lib/geometry.ts'
@@ -153,21 +154,16 @@ export function farTile(t: CityTile, ringMeters: number, heightAt: (x: number, z
     stand(hull, Math.min(tallest, Math.max(MIN_BLOCK_M, volume / signedArea(hull))), b.colorIndex[biggest], ring01)
   }
 
-  // The woods' canopy: the cells whose centers lie in the tile's wood cover.
-  const woods: Pt[][] = []
-  c = 0
-  for (let k = 0; k < t.cover.counts.length; k++) {
-    const n = t.cover.counts[k]
-    const r: Pt[] = []
-    for (let i = 0; i < n; i++, c += 2) r.push([t.cover.coords[c], t.cover.coords[c + 1]])
-    if (t.cover.classes[k] === CoverClass.Wood) woods.push(r)
-  }
+  // The woods' canopy: the cells whose centers are wooded (cover.ts
+  // woodedTest: OSM's woods, the wooded parks' land), clear of buildings.
+  const wooded = woodedTest(t.cover)
+  const inBuilding = (x: number, z: number) => rings.some((r) => pointInRing([x, z], r))
   const cells: number[] = []
   const ground: number[] = []
   for (let bz = 0; bz < FAR_CANOPY_CELLS; bz++)
     for (let a = 0; a < FAR_CANOPY_CELLS; a++) {
       const p: Pt = [t.header.x0 + (a + 0.5) * FAR_CANOPY_CELL_M, t.header.z0 + (bz + 0.5) * FAR_CANOPY_CELL_M]
-      if (!woods.some((w) => pointInRing(p, w))) continue
+      if (!wooded(p[0], p[1]) || inBuilding(p[0], p[1])) continue
       cells.push(a + bz * FAR_CANOPY_CELLS)
       ground.push(heightAt(p[0], p[1]))
     }

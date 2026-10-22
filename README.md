@@ -22,7 +22,7 @@ The city, its ground, the trees and the route shapes are baked offline and commi
 |---|---|---|
 | `public/tiles/city-*.bin`, `src/data/city-index.json` | `npm run bake -- --pbf <extract>` (`scripts/bake-city.ts`) | OpenStreetMap, Geofabrik Northern California extract of 2026-10-17; neighborhood boundaries from DataSF |
 | `public/tiles/terrain-*.bin` | `npm run bake:terrain` (`scripts/bake-terrain.ts`, run after the city bake) | USGS 3D Elevation Program (3DEP), public domain |
-| `public/tiles/trees-*.bin` | `npm run bake:trees` (`scripts/bake-trees.ts`, run after the city bake) | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), data as of 2026-10-21; illustrative trees in OSM's woods |
+| `public/tiles/trees-*.bin` | `npm run bake:trees` (`scripts/bake-trees.ts`, run after the city bake) | DataSF San Francisco Street Tree Inventory (`tkzw-k3nq`), data as of 2026-10-21; illustrative trees in OSM's woods and in Golden Gate Park and a few other wooded parks (`scripts/lib/cover.ts`) |
 | `public/tiles/far-*.bin` | `npm run bake:far` (`scripts/bake-far.ts`, run after the city and terrain bakes) | The city tiles and their terrain: blocks of buildings merged, the woods' canopy, where the landmark models stand |
 | `src/data/routes.json` | `npm run bake:routes` (`scripts/bake-routes.ts`, needs `TRANSIT_511_API_KEY`) | 511 SF Bay static GTFS for Muni |
 

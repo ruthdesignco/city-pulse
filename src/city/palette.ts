@@ -6,7 +6,7 @@ export const palette = {
   // direction (skyModel.ts horizonColor; skyModel.test.ts keeps them equal).
   // The fog starts here and then follows the sky as the camera turns
   // (SkyDome.tsx); the ring's buildings, streets and paving fade toward it.
-  sky: '#bcc2cb',
+  sky: '#bccacb',
 
   // Land beyond the baked city (Ground.tsx): the rest of San Francisco seen
   // from afar, a cool urban gray, clearly darker than the haze so the fog

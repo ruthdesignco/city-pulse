@@ -136,7 +136,9 @@ export default function App() {
         // as soft blobs on walls and roofs; "soft" (PCFSoft) was removed in
         // this three.js version.
         shadows="percentage"
-        camera={{ position: START_POSE.position, fov: 40, near: 10, far: 20000 }}
+        // Far enough for the sea horizon (~75 km from 450 m up, Ground.tsx);
+        // depth precision is set by `near`, not this.
+        camera={{ position: START_POSE.position, fov: 40, near: 10, far: 100000 }}
         onCreated={({ gl }) => {
           const ctx = gl.getContext()
           setStep((s) => Math.max(s, startStep(QUALITY, rendererName(ctx))))
