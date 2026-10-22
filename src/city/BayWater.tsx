@@ -203,8 +203,13 @@ function createBayWater(outline: [number, number][]) {
   frag = patch(frag, 'void main() {', `${WHITECAP_GLSL}\nvoid main() {`)
   // Far off, the sea goes to its own haze (sceneUniforms.ts uSeaFog), so it
   // runs out to a clear horizon instead of the land's darker haze.
-  // The glitter shines through the haze, dimmed by half of it at most.
-  frag = patch(frag, '#include <fog_fragment>', '#define fogColor uSeaFog\n#include <fog_fragment>\n#undef fogColor\n#ifdef USE_FOG\ngl_FragColor.rgb += glitter * ( 1.0 - 0.5 * fogFactor );\n#else\ngl_FragColor.rgb += glitter;\n#endif')
+  // The glitter shines through the haze, dimmed by half of it at most,
+  // before the tone mapping (displayOutput.ts).
+  frag = patch(
+    frag,
+    '#include <fog_fragment>',
+    '#define fogColor uSeaFog\n#include <fog_linear_fragment>\n#undef fogColor\n#ifdef USE_FOG\ngl_FragColor.rgb += glitter * ( 1.0 - 0.5 * fogFactor );\n#else\ngl_FragColor.rgb += glitter;\n#endif\n#include <display_output_fragment>',
+  )
   frag = 'uniform vec3 uSeaFog;\nuniform float uWindowsOn;\nuniform vec3 uCityGlow;\nuniform vec2 uCity;\nuniform vec2 uWaterShift;\nuniform float uChop;\nuniform float uWindE;\nuniform float uWhitecaps;\nuniform float uFoamClock;\nuniform vec3 uFoamColor;\n' + frag
   material.uniforms.uWindowsOn = sceneUniforms.uWindowsOn
   material.uniforms.uSeaFog = sceneUniforms.uSeaFog

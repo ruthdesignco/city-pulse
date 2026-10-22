@@ -154,10 +154,22 @@ const MARIN: Pose = { position: [-1000, 450, -4300], target: [-5800, 0, -6200] }
 // look from this height).
 const OCEAN: Pose = { position: [-1013, 450, -943], target: [-6000, 0, 700] }
 
+// Close looks at the bridges (landmarks/bridges.ts). The Golden Gate from
+// over Crissy Field, ~1.4 km east of its span, looking west-northwest past
+// the south tower to the north tower and Marin, toward the late sun. The
+// Bay Bridge's west span from over the water off the Embarcadero, ~1.5 km
+// out, looking southeast along its first bridge: Rincon Hill and SoMa at
+// the right, the central anchorage and the second bridge toward Yerba
+// Buena Island at the left, its city side lit by the late sun.
+const GOLDEN_GATE: Pose = { position: [-4450, 230, -5250], target: [-5780, 90, -5650] }
+const BAY_BRIDGE: Pose = { position: [1450, 330, -3650], target: [2700, 60, -2850] }
+
 export const PRESETS: Record<string, Pose> = {
   california: CALIFORNIA,
   marin: MARIN,
   ocean: OCEAN,
+  goldengate: GOLDEN_GATE,
+  baybridge: BAY_BRIDGE,
   transamerica: poseAround(TRANSAMERICA, 430, 1.25, 0.35),
   coit: poseAround(COIT, 200, 1.2, 0.6),
   nobhill: poseAround(NOB_HILL, 300, 1.3, 0.55),

@@ -14,7 +14,7 @@ import {
 } from 'three'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { palette } from './palette.ts'
-import { RING_DIM_MAX } from './ring.ts'
+import { GREENERY_RING_SHARE, RING_DIM_MAX } from './ring.ts'
 import type { TileStream } from './stream/TileStream.ts'
 import { type LodAnchor, inView, isNear, nearDistance, shouldReassign } from './treeLod.ts'
 import { type TreeLevel, isDoubleSided, treeGeometry, variantsOf } from './treeModels.ts'
@@ -111,10 +111,11 @@ function treeMaterial(doubleSided: boolean): MeshStandardMaterial {
       )
       .replace(
         '#include <begin_vertex>',
-        // The ring fades toward the haze on ring.ts's curve, like the buildings.
+        // The ring fades toward the haze on ring.ts's curve, like the buildings,
+        // by GREENERY_RING_SHARE of it.
         `#include <begin_vertex>
         vTreeColor = mix(uTrunk, iGreen, aCrown) * aTone;
-        vTreeColor = mix(vTreeColor, uDim, ${RING_DIM_MAX.toFixed(3)} * smoothstep(0.0, 1.0, iRing));`,
+        vTreeColor = mix(vTreeColor, uDim, ${(RING_DIM_MAX * GREENERY_RING_SHARE).toFixed(3)} * smoothstep(0.0, 1.0, iRing));`,
       )
       // The sway, in world space (after the instance's own rotation and
       // scale), so every tree leans the same way.

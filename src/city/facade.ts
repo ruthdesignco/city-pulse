@@ -334,8 +334,15 @@ float windowMatte = fcUpperGlass * ( fcType == 2 ? 0.0 : 1.0 ) + fcShopGlass;
 // at this hour for this building's use; color and brightness vary per
 // window. Far away, where the pattern has faded to its average, the
 // expected glow instead (the share, an average color), so nothing shimmers.
-// No branch (this chunk takes derivatives; see facade.test.ts): computed
-// always, scaled to nothing by day through uWindowsOn.
+// Only worked out while windows are lit (uWindowsOn, the same for every
+// pixel): by day it would be scaled to nothing. Its derivatives are taken
+// before the branch (facade.test.ts).
+float fcBlockU = fcCu / ${v(WINDOW_BLOCK_COLUMNS)};
+float fcBlockV = fcCv / ${v(WINDOW_BLOCK_FLOORS)};
+float fcBlockDu = fwidth( fcBlockU );
+float fcBlockDv = fwidth( fcBlockV );
+vec3 windowLight = vec3( 0.0 );
+if ( uWindowsOn > 0.0 ) {
 int fcUse = fcType == 1 ? 1 : 0;
 float fcShare = litShare( fcUse, uHour, uWeekend );
 vec3 fcCell = vec3( fcSeed * 113.0, floor( fcCu ), floor( fcCv ) );
@@ -346,11 +353,9 @@ vec3 fcWarm = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, fcT
 vec3 fcColor = mix( fcWarm, ${vec3(palette.windowCool)}, fcCool );
 float fcDetail = min( fcDetailAcross, fcDetailUp );
 // Blocks of windows: their own detail, from how many pixels a block spans.
-float fcBlockU = fcCu / ${v(WINDOW_BLOCK_COLUMNS)};
-float fcBlockV = fcCv / ${v(WINDOW_BLOCK_FLOORS)};
 float fcBlockDetail = min(
-  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockU ) ),
-  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockV ) )
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fcBlockDu ),
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fcBlockDv )
 );
 float fcInPane = clamp( ( fract( fcCv ) - fcSill ) / max( fcHeight, 0.01 ), 0.0, 1.0 );
 float fcCeiling = mix( ${v((1 + WINDOW_FOOT) / 2)}, mix( ${v(WINDOW_FOOT)}, 1.0, fcInPane ), fcDetail );
@@ -367,7 +372,8 @@ float fcShopLit = mix( fcShopShare, step( fcHash( fcBay ), fcShopShare ), min( f
 vec3 fcShopLight = ${vec3(palette.windowSoft)} * fcShopLit;
 
 // Squared: faint through blue hour, while walls are still lit; full by night.
-vec3 windowLight = uWindowsOn * uWindowsOn * ( fcUpperGlass * fcUpperLight * ${v(WINDOW_RADIANCE)} + fcShopGlass * fcShopLight * ${v(SHOP_RADIANCE)} );
+windowLight = uWindowsOn * uWindowsOn * ( fcUpperGlass * fcUpperLight * ${v(WINDOW_RADIANCE)} + fcShopGlass * fcShopLight * ${v(SHOP_RADIANCE)} );
+}
 float windowReflect = fcUpperGlass * ${pick((f) => v(f.reflect))} + fcShopGlass * ${v(SHOP_REFLECT)};
 float windowGlint = mix( ${pick((f) => v(f.glint))}, ${v(SHOP_GLINT)}, fcGround );
 `
@@ -456,18 +462,24 @@ float fcUpperGlass = fcEnabled * fcInside * ( fcWidth - fcMullion * ${v(2 * MULL
 diffuseColor.rgb = mix( diffuseColor.rgb, ${pick((f) => vec3(f.glass))}, fcUpperGlass );
 float windowGlass = fcUpperGlass;
 float windowMatte = fcUpperGlass * ( fcType == 2 ? 0.0 : 1.0 );
-int fcUse = fcType == 1 ? 1 : 0;
-float fcShare = litShare( fcUse, uHour, uWeekend );
+// Lit only while windows are (as FACADE_COLOR), derivatives first.
 float fcBlockU = dot( vGround, vec2( 0.7071 ) ) / ( fcSpacing * ${v(WINDOW_BLOCK_COLUMNS)} );
 float fcBlockV = fcCv / ${v(WINDOW_BLOCK_FLOORS)};
+float fcBlockDu = fwidth( fcBlockU );
+float fcBlockDv = fwidth( fcBlockV );
+vec3 windowLight = vec3( 0.0 );
+if ( uWindowsOn > 0.0 ) {
+int fcUse = fcType == 1 ? 1 : 0;
+float fcShare = litShare( fcUse, uHour, uWeekend );
 float fcBlockDetail = min(
-  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockU ) ),
-  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fwidth( fcBlockV ) )
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fcBlockDu ),
+  1.0 - smoothstep( ${v(1 / BLOCK_FULL_PX)}, ${v(1 / BLOCK_GONE_PX)}, fcBlockDv )
 );
 float fcBlockLit = step( fcHash( vec3( fcSeed * 59.0, floor( fcBlockU ), floor( fcBlockV ) ) ), fcShare );
 vec3 fcFarColor = mix( ${vec3(palette.windowWarm)}, ${vec3(palette.windowSoft)}, 0.15 ) * 0.8;
 vec3 fcFar = mix( fcFarColor * fcShare * ${v(FAR_AVERAGE)}, fcFarColor * mix( fcShare, fcBlockLit, ${v(BLOCK_CONTRAST)} * uWindowsOn ) * ${v(FAR_GLOW)}, fcBlockDetail );
-vec3 windowLight = uWindowsOn * uWindowsOn * fcUpperGlass * fcFar * ${v(WINDOW_RADIANCE)};
+windowLight = uWindowsOn * uWindowsOn * fcUpperGlass * fcFar * ${v(WINDOW_RADIANCE)};
+}
 float windowReflect = fcUpperGlass * ${pick((f) => v(f.reflect))};
 float windowGlint = ${pick((f) => v(f.glint))};
 `

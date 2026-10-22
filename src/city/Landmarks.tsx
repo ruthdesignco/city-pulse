@@ -3,6 +3,7 @@ import { type BufferGeometry, Color, MeshStandardMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { registerHeightFog, sceneUniforms } from '../scene/sceneUniforms.ts'
 import { WINDOW_RADIANCE } from './facade.ts'
+import { buildBridges } from './landmarks/bridges.ts'
 import { Glow, place } from './landmarks/build.ts'
 import { LANDMARK_MODELS } from './landmarks/models.ts'
 import { palette } from './palette.ts'
@@ -34,12 +35,17 @@ const DETAIL_PX = [0.25, 0.6] // floors per pixel: full detail, then only the av
 // Each stands where the far bake found its ground (registry.ts
 // landmarkGround, farFormat.ts landmarkY), so it's in place before its
 // tile's own files are: Sutro Tower stands over the whole west of the city.
-function buildGeometry(models: LandmarkPlacement[], ground: Record<string, number>): BufferGeometry | null {
+// The bridges stand where they're built (landmarks/bridges.ts); their
+// cables and suspenders are a mesh of their own, left out of the Bay's
+// reflection.
+function buildGeometry(models: LandmarkPlacement[], ground: Record<string, number>): { solid: BufferGeometry; thin: BufferGeometry } {
   const parts = models.flatMap((at) => {
     const build = LANDMARK_MODELS[at.id]
     return build ? [place(build(at), { ...at, y: ground[at.id] ?? 0 }, at.ring)] : []
   })
-  return parts.length ? mergeGeometries(parts) : null
+  const bridges = buildBridges()
+  const origin = { x: 0, z: 0, angle: 0 }
+  return { solid: mergeGeometries([...parts, place(bridges.solid, origin)]), thin: place(bridges.thin, origin) }
 }
 
 const f = (v: number) => v.toFixed(4)
@@ -106,8 +112,19 @@ export function Landmarks({ stream }: { stream: TileStream }) {
   )
   const geometry = useMemo(() => (ground ? buildGeometry(index.landmarkModels, ground) : null), [index, ground])
   const material = useMemo(() => buildMaterial(), [])
-  useEffect(() => () => geometry?.dispose(), [geometry])
+  useEffect(
+    () => () => {
+      geometry?.solid.dispose()
+      geometry?.thin.dispose()
+    },
+    [geometry],
+  )
   useEffect(() => () => material.dispose(), [material])
   if (!geometry) return null
-  return <mesh geometry={geometry} material={material} castShadow receiveShadow />
+  return (
+    <>
+      <mesh geometry={geometry.solid} material={material} castShadow receiveShadow />
+      <mesh geometry={geometry.thin} material={material} castShadow receiveShadow userData={{ noReflect: true }} />
+    </>
+  )
 }

@@ -2,7 +2,7 @@ import { Color } from 'three'
 import { describe, expect, it } from 'vitest'
 import { BuildingColorType } from '../../scripts/lib/buildingColor.ts'
 import { palette } from './palette.ts'
-import { FACADES, FACADE_COLOR, STONE_TOWER, STONE_TOWER_SHARE, glassShare, isStoneTower } from './facade.ts'
+import { FACADES, FACADE_AVERAGE, FACADE_COLOR, STONE_TOWER, STONE_TOWER_SHARE, glassShare, isStoneTower } from './facade.ts'
 
 const luminance = (hex: string) => {
   const c = new Color(hex)
@@ -78,7 +78,11 @@ describe('facades', () => {
     for (const f of FACADES) expect(f.sill + f.height).toBeLessThan(1)
   })
 
-  it('only takes derivatives outside any branch', () => {
-    expect(FACADE_COLOR).not.toMatch(/\bif\s*\(/)
+  it('only takes derivatives outside any branch, and branches only on the lit windows', () => {
+    for (const chunk of [FACADE_COLOR, FACADE_AVERAGE]) {
+      const branches = [...chunk.matchAll(/\bif\s*\(([^)]*)\)/g)]
+      expect(branches.map((m) => m[1].trim())).toEqual(['uWindowsOn > 0.0'])
+      expect(chunk.slice(branches[0].index)).not.toMatch(/\b(fwidth|dFdx|dFdy)\s*\(/)
+    }
   })
 })

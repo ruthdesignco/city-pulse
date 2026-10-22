@@ -136,8 +136,13 @@ export class GroundMask {
   }
 
   set(i: number, j: number, drawn: boolean) {
+    this.setShare(i, j, drawn ? 1 : 0)
+  }
+
+  // A share of the way, 0..1 (TileStream.ts's near trees as they fade).
+  setShare(i: number, j: number, share: number) {
     const k = (j - this.j0) * this.w + (i - this.i0)
-    const v = drawn ? 255 : 0
+    const v = Math.round(255 * Math.min(1, Math.max(0, share)))
     if (this.data[k] === v) return
     this.data[k] = v
     this.texture.needsUpdate = true

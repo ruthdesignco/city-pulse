@@ -90,6 +90,10 @@ export const palette = {
   // trees; palms a touch yellower. Trunks one warm gray-brown.
   treeGreens: ['#7d8a66', '#687a5c', '#848e7b', '#808a5e'],
   treeTrunk: '#5e5246',
+  // The woods' far canopy (canopy.ts): a forest from afar, its pines,
+  // cypresses and eucalyptus massed, deeper and more saturated than any one
+  // street tree, so it still reads green through the ring's haze.
+  canopyGreens: ['#3a5c1c', '#557326'],
 
   // Vehicle models (vehicleModels.ts): lit by the sun like the buildings, in
   // their real body colors at every distance. Generic liveries, no operator

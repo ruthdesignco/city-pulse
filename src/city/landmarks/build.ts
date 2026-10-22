@@ -83,6 +83,33 @@ export function rect(hx: number, hz: number, y: number, cx = 0, cz = 0): V3[] {
   ]
 }
 
+const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+const unit = (a: V3): V3 => {
+  const l = Math.hypot(...a) || 1
+  return [a[0] / l, a[1] / l, a[2] / l]
+}
+
+// A square member from a to b, `w0` across at a and `w1` at b, its faces
+// outward and its ends capped.
+export function member(m: ModelBuilder, a: V3, b: V3, w0: number, w1: number, color: string, glow: Glow = Glow.None) {
+  const d = unit(sub(b, a))
+  const u = unit(Math.abs(d[1]) > 0.95 ? cross(d, [1, 0, 0]) : cross(d, [0, 1, 0]))
+  const v = cross(d, u) // u x v = d: the corners run counterclockwise about d
+  const around = (p: V3, w: number): V3[] =>
+    [0, 1, 2, 3].map((k) => {
+      const th = Math.PI / 4 + (k * Math.PI) / 2
+      const cu = (Math.cos(th) * w) / Math.SQRT2
+      const cv = (Math.sin(th) * w) / Math.SQRT2
+      return [p[0] + u[0] * cu + v[0] * cv, p[1] + u[1] * cu + v[1] * cv, p[2] + u[2] * cu + v[2] * cv]
+    })
+  const lo = around(a, w0)
+  const hi = around(b, w1)
+  m.loft(lo, hi, color, glow)
+  m.face(hi, color, glow)
+  m.face([...lo].reverse(), color, glow)
+}
+
 export interface Placed {
   x: number
   z: number

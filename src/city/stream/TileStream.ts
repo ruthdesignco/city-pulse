@@ -135,6 +135,7 @@ function canopyGeometry(c: CanopyMesh): BufferGeometry {
   g.setAttribute('position', new BufferAttribute(c.position, 3))
   g.setAttribute('color', new BufferAttribute(c.color, 3))
   g.setAttribute('ring', new BufferAttribute(c.ring, 1))
+  g.setAttribute('lift', new BufferAttribute(c.lift, 1))
   g.setIndex(new BufferAttribute(c.index, 1))
   g.computeBoundingSphere()
   return g
@@ -152,6 +153,9 @@ type Done = { [K in JobKind]: { kind: K; tile: Tile; result: JobResult[K]; bytes
 export class TileStream {
   readonly group = new Group()
   readonly mask: GroundMask
+  // Which tiles show their trees, as far as they've faded in: where the
+  // woods' canopy next door sinks into them (canopy.ts).
+  readonly nearTrees: GroundMask
   private readonly tiles = new Map<string, Tile>()
   private readonly workers: Worker[] = []
   private readonly load: number[] = []
@@ -177,7 +181,7 @@ export class TileStream {
   landmarkY: Record<string, number> | null = null
   // The prisms' and canopy's usual materials, every tile's (Faded).
   private readonly prismMaterial = midBuildingMaterial({ value: 1 })
-  private readonly canopyMaterial = canopyMaterial({ value: 1 })
+  private readonly canopyMaterial: MeshStandardMaterial
   // The renderer's last frame (City.tsx countDrawn), for ?net.
   readonly drawn = { calls: 0, triangles: 0 }
   errors: string[] = []
@@ -189,6 +193,8 @@ export class TileStream {
     this.city = city
     const { index } = city
     this.mask = new GroundMask(index.tiles, index.tileM)
+    this.nearTrees = new GroundMask(index.tiles, index.tileM)
+    this.canopyMaterial = canopyMaterial({ value: 1 }, false, this.nearTrees)
     this.group.name = 'city-tiles'
     for (const entry of index.tiles) {
       const x0 = entry.i * index.tileM
@@ -233,6 +239,7 @@ export class TileStream {
     }
     this.prismMaterial.dispose()
     this.canopyMaterial.dispose()
+    this.nearTrees.texture.dispose()
   }
 
   // ------------------------------------------------------------ messages
@@ -441,7 +448,7 @@ export class TileStream {
     // In the Bay's 512 px reflection (BayWater.tsx) distant blocks are mush.
     tile.far.mesh.userData.noReflect = true
     if (f.canopy) {
-      tile.canopy = this.faded(canopyGeometry(f.canopy), canopyMaterial, this.canopyMaterial)
+      tile.canopy = this.faded(canopyGeometry(f.canopy), (fade, dither) => canopyMaterial(fade, dither, this.nearTrees), this.canopyMaterial)
       tile.canopy.mesh.renderOrder = ORDER.canopy
       tile.canopy.mesh.userData.noReflect = true
       tile.canopy.mesh.visible = true
@@ -512,6 +519,7 @@ export class TileStream {
   }
 
   private present(t: Tile, now: number) {
+    this.nearTrees.setShare(t.entry.i, t.entry.j, this.treesShown(t, now))
     // The fade under way, if any, runs out first.
     if (t.fade) {
       const k = Math.max(0.0001, Math.min(1, (now - t.fade.t0) / (FADE_S * 1000)))
@@ -563,6 +571,14 @@ export class TileStream {
     if (t.shown !== 'near' && t.near && t.level !== 'near') this.drop(t, 'near')
     if (t.shown !== 'mid' && t.mid && t.level !== 'mid') this.drop(t, 'mid')
     if (t.shown === 'near' && t.mid) this.drop(t, 'mid')
+  }
+
+  // How far a tile's trees (its near level) are in: 1 shown, 0 not, the
+  // fade's share between.
+  private treesShown(t: Tile, now: number): number {
+    if (!t.fade) return t.shown === 'near' ? 1 : 0
+    const k = Math.min(1, (now - t.fade.t0) / (FADE_S * 1000))
+    return t.fade.to === 'near' ? k : t.fade.from === 'near' ? 1 - k : 0
   }
 
   private nearestStep(steps: Map<number, BufferGeometry>, want: number): BufferGeometry {

@@ -85,7 +85,8 @@ export function SkyDome() {
         // Below the horizon, past where the sea's plane ends (the camera's
         // far plane): the sea, as hazed as it is there.
         skyNow = mix( skyNow, uSeaHaze, smoothstep( 0.0, -0.002, direction.y ) );
-        gl_FragColor = vec4( skyNow, 1.0 );`,
+        gl_FragColor = vec4( skyNow, 1.0 );
+        #include <display_output_fragment>`,
       )
     return s
   }, [])

@@ -1,14 +1,16 @@
-import { Suspense, useCallback, useEffect, useState } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Suspense, use, useCallback, useEffect, useMemo, useState } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { Stats } from '@react-three/drei'
-import { EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing'
-import { ToneMappingMode } from 'postprocessing'
+import { EffectComposer, EffectComposerContext, SSAO, ToneMapping } from '@react-three/postprocessing'
+import { EffectPass, ToneMappingMode } from 'postprocessing'
+import { LinearSRGBColorSpace, NeutralToneMapping, NoToneMapping, SRGBColorSpace } from 'three'
 import { City } from './city/City.tsx'
 import { useStream } from './city/stream/useStream.ts'
 import { Credits } from './Credits.tsx'
 import { CALIBRATE, DEMO, NET, QUALITY, REPLAY, REPLAY_HOLD_S, REPLAY_START_S, SHOW_FPS, TIME, VIEW, WEATHER, WIND } from './params.ts'
 import { NetOverlay } from './city/NetOverlay.tsx'
 import { Atmosphere } from './scene/Atmosphere.tsx'
+import './scene/displayOutput.ts'
 import { Calibration } from './scene/Calibration.tsx'
 import { CameraRig } from './scene/CameraRig.tsx'
 import { DEFAULT_STEP, QUALITY_STEPS, monitorEnabled, startStep, stepDown } from './scene/quality.ts'
@@ -92,6 +94,18 @@ function rendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): strin
   return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : null
 }
 
+// The composer's last pass dithers, as the shaders do drawing straight to
+// the canvas (displayOutput.ts), so the sky's gradients don't band. Its
+// passes are made as its effects mount, so they're checked each frame.
+function ditherEffects(passes: readonly unknown[]) {
+  for (const p of passes) if (p instanceof EffectPass && !p.dithering) p.dithering = true
+}
+function ComposerDither() {
+  const composer = use(EffectComposerContext).composer
+  useFrame(() => ditherEffects(composer.passes))
+  return null
+}
+
 export default function App() {
   const feed = useFeed()
   useWeather(feed.state)
@@ -101,6 +115,19 @@ export default function App() {
   // on ?quality=high), lower while the frame rate stays under the floor.
   const [step, setStep] = useState(() => startStep(QUALITY, null))
   const quality = QUALITY_STEPS[step]
+  // Straight to the canvas, multisampled by the browser and tone mapped in
+  // each shader (displayOutput.ts), unless an effect needs the composer:
+  // SSAO (?quality=high), or no MSAA at all (the lowest step).
+  const direct = !quality.ssao && quality.msaa > 0
+  // The canvas's own MSAA is fixed when it's made, from the starting step.
+  const [antialias] = useState(() => {
+    const s = QUALITY_STEPS[startStep(QUALITY, null)]
+    return !s.ssao && s.msaa > 0
+  })
+  const gl = useMemo(
+    () => ({ antialias, toneMapping: direct ? NeutralToneMapping : NoToneMapping, outputColorSpace: direct ? LinearSRGBColorSpace : SRGBColorSpace }),
+    [antialias, direct],
+  )
   useEffect(() => {
     document.documentElement.dataset.quality = String(step)
     if (step > DEFAULT_STEP) console.info(`quality: step ${step}`, quality)
@@ -124,13 +151,11 @@ export default function App() {
     )
   return (
     <WebGLGate>
-      {/* The effect composer renders the whole scene again into a 4x
-          multisampled half-float buffer, so pixel count is the frame cost:
-          cap the pixel ratio at 1.5 (44% fewer pixels than 2 on Retina) and
-          skip the canvas's own antialiasing, which the composer replaces. */}
+      {/* Pixel count is the frame cost: cap the pixel ratio at 1.5 (44%
+          fewer pixels than 2 on Retina). */}
       <Canvas
         dpr={[1, quality.maxDpr]}
-        gl={{ antialias: false }}
+        gl={gl}
         // PCF: hardware depth comparisons over a small disk (shadow-radius,
         // Atmosphere.tsx), crisp edges without stair-steps. VSM's blur read
         // as soft blobs on walls and roofs; "soft" (PCFSoft) was removed in
@@ -169,16 +194,21 @@ export default function App() {
         {CALIBRATE && <Calibration />}
         <WindClock />
         <CameraRig start={START_POSE} />
-        {/* No bloom: the look is realistic, nothing in the scene glows. The
-            composer turns off the renderer's tone mapping, so it's applied
-            here: Khronos PBR Neutral, which shows base colors as authored
-            and only rolls off highlights (lighting.ts). SSAO: soft contact shadows in corners
-            and at street level, subtle enough not to compete with the real
-            shadows from Atmosphere's sun. */}
+        {/* No bloom: the look is realistic, nothing in the scene glows.
+            Tone mapping is Khronos PBR Neutral, which shows base colors as
+            authored and only rolls off highlights (lighting.ts): in each
+            shader when drawing straight to the canvas (displayOutput.ts),
+            here when the composer runs, which turns off the renderer's own.
+            SSAO: soft contact shadows in corners and at street level,
+            subtle enough not to compete with the real shadows from
+            Atmosphere's sun. */}
+        {!direct && (
         <EffectComposer enableNormalPass={quality.ssao} multisampling={quality.msaa}>
           {quality.ssao ? <SSAO radius={0.12} intensity={12} luminanceInfluence={0.6} distanceFalloff={0.5} /> : <></>}
           <ToneMapping mode={ToneMappingMode.NEUTRAL} />
+          <ComposerDither />
         </EffectComposer>
+        )}
         {/* Watching from when the city is in: frames while it loads (fetching,
             extruding, compiling) aren't the scene's frame rate, and counting
             them stepped quality down on slow loads. */}

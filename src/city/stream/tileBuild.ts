@@ -228,6 +228,9 @@ export interface CanopyMesh {
   position: Float32Array
   color: Float32Array // linear
   ring: Float32Array // ring.ts position, 0..1
+  // How far over the ground a vertex is (0 at the walls' feet): what sinks
+  // where the woods meet a tile's trees (canopy.ts).
+  lift: Float32Array
   index: Uint32Array
 }
 
@@ -245,18 +248,22 @@ export function buildCanopy(far: FarTile, ringAt: (x: number, z: number) => numb
   const position: number[] = []
   const color: number[] = []
   const ring: number[] = []
+  const lift: number[] = []
   const index: number[] = []
-  const deep = new Color(palette.treeGreens[1])
-  const gray = new Color(palette.treeGreens[2])
+  // The canopy's greens (palette.ts); crowns and their shade come from the
+  // material (canopy.ts).
+  const deep = new Color(palette.canopyGreens[0])
+  const gray = new Color(palette.canopyGreens[1])
   const c = new Color()
   // A corner's top and its ground: the cells around it that are woods.
   const corners = new Map<number, number>()
-  const put = (x: number, y: number, z: number, shade: number) => {
+  const put = (x: number, y: number, z: number, shade: number, over: number) => {
     const h = cornerHash(x, z)
     c.copy(deep).lerp(gray, h * 0.6).multiplyScalar(shade * (0.9 + 0.2 * cornerHash(z, x)))
     position.push(x, y, z)
     color.push(c.r, c.g, c.b)
     ring.push(ringAt(x, z))
+    lift.push(over)
     return position.length / 3 - 1
   }
   const groundAtCorner = (A: number, B: number) => {
@@ -280,7 +287,8 @@ export function buildCanopy(far: FarTile, ringAt: (x: number, z: number) => numb
     if (v === undefined) {
       const x = x0 + A * FAR_CANOPY_CELL_M
       const z = z0 + B * FAR_CANOPY_CELL_M
-      v = put(x, groundAtCorner(A, B) + CANOPY_M * (1 - CANOPY_VARY + 2 * CANOPY_VARY * cornerHash(x, z)), z, 1)
+      const over = CANOPY_M * (1 - CANOPY_VARY + 2 * CANOPY_VARY * cornerHash(x, z))
+      v = put(x, groundAtCorner(A, B) + over, z, 1, over)
       corners.set(key, v)
     }
     return v
@@ -295,10 +303,10 @@ export function buildCanopy(far: FarTile, ringAt: (x: number, z: number) => numb
     const wall = (p: number, q: number) => {
       const [px, py, pz] = position.slice(3 * p, 3 * p + 3)
       const [qx, qy, qz] = position.slice(3 * q, 3 * q + 3)
-      const lp = put(px, py - CANOPY_M - FAR_SINK_M, pz, CANOPY_WALL_SHADE)
-      const lq = put(qx, qy - CANOPY_M - FAR_SINK_M, qz, CANOPY_WALL_SHADE)
-      const up = put(px, py, pz, CANOPY_WALL_SHADE)
-      const uq = put(qx, qy, qz, CANOPY_WALL_SHADE)
+      const lp = put(px, py - CANOPY_M - FAR_SINK_M, pz, CANOPY_WALL_SHADE, 0)
+      const lq = put(qx, qy - CANOPY_M - FAR_SINK_M, qz, CANOPY_WALL_SHADE, 0)
+      const up = put(px, py, pz, CANOPY_WALL_SHADE, lift[p])
+      const uq = put(qx, qy, qz, CANOPY_WALL_SHADE, lift[q])
       index.push(lp, lq, uq, lp, uq, up)
     }
     // Edges counterclockwise round the cell seen from above, each wall facing out.
@@ -307,7 +315,13 @@ export function buildCanopy(far: FarTile, ringAt: (x: number, z: number) => numb
     if (!has(a, b + 1)) wall(t01, t11)
     if (!has(a - 1, b)) wall(t00, t01)
   }
-  return { position: Float32Array.from(position), color: Float32Array.from(color), ring: Float32Array.from(ring), index: Uint32Array.from(index) }
+  return {
+    position: Float32Array.from(position),
+    color: Float32Array.from(color),
+    ring: Float32Array.from(ring),
+    lift: Float32Array.from(lift),
+    index: Uint32Array.from(index),
+  }
 }
 
 export interface FarBuild {

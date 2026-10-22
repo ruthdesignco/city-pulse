@@ -299,8 +299,17 @@ const STREET_CLASS: Record<string, number> = {
 
 // Keep only the runs of each street on the city's land (and its piers), so
 // streets end where the city does instead of trailing on into Daly City.
+// Along each segment too, every SEGMENT_CHECK_M: the Bay Bridge's deck is
+// one segment from Rincon Hill to Yerba Buena Island, and lay on the water
+// (its model, src/city/landmarks/bridges.ts, carries it now).
+const SEGMENT_CHECK_M = 20
 function bakeStreets(elements: OsmElement[], keep: (p: Pt, shore: boolean) => boolean): { line: Pt[]; cls: number }[] {
   const within = (p: Pt) => keep(p, true)
+  const alongWithin = (a: Pt, b: Pt) => {
+    const n = Math.floor(Math.hypot(b[0] - a[0], b[1] - a[1]) / SEGMENT_CHECK_M)
+    for (let k = 1; k <= n; k++) if (!within([a[0] + ((b[0] - a[0]) * k) / (n + 1), a[1] + ((b[1] - a[1]) * k) / (n + 1)])) return false
+    return true
+  }
   const out: { line: Pt[]; cls: number }[] = []
   for (const el of elements) {
     if (el.type !== 'way' || !el.tags?.highway || !el.geometry) continue
@@ -312,8 +321,11 @@ function bakeStreets(elements: OsmElement[], keep: (p: Pt, shore: boolean) => bo
     }
     for (const g of el.geometry) {
       const p = project(g)
-      if (within(p)) run.push(p)
-      else flush()
+      if (!within(p)) flush()
+      else {
+        if (run.length && !alongWithin(run[run.length - 1], p)) flush()
+        run.push(p)
+      }
     }
     flush()
   }

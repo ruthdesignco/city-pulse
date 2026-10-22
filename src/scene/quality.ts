@@ -18,7 +18,10 @@ export interface QualityStep {
   ssao: boolean // SSAO and the normal pass it needs
   shadowMapSize: number
   maxDpr: number
-  msaa: number // EffectComposer multisampling
+  // MSAA samples: the canvas's own when drawing straight to it (set when
+  // it's made, App.tsx), the composer's with SSAO; 0 draws through the
+  // composer without any.
+  msaa: number
 }
 
 // Step 0 is ?quality=high's; pages start at DEFAULT_STEP.

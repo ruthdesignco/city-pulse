@@ -14,6 +14,10 @@ import type { CityData } from './format.ts'
 
 // How far toward the haze a ring feature is mixed at the ring's outer edge.
 export const RING_DIM_MAX = 0.3
+// Trees and the woods' canopy take only this share of it: over their dark
+// greens the full fade outweighed the green, and the woods read gray. The
+// distance fog still hazes them.
+export const GREENERY_RING_SHARE = 0.35
 
 // `ring` is 0 inside the neighborhoods, rising to 1 at the ring's outer
 // edge: 0 there, eased (smoothstep) up to RING_DIM_MAX. Buildings.tsx
