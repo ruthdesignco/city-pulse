@@ -273,3 +273,18 @@ What would change his mind: MTC replying in the open thread that publishing OSM-
 | 2026-10-22 | Geometry step in the quality floor only after the mid-range test, which Tyler runs on his Windows PC | Sides with Hightower | |
 | 2026-10-22 | City-wide Muni later | Waits on the plan and egress question | |
 | 2026-10-22 | Vercel Hobby stays; Tyler checks the Supabase spend cap himself | | |
+
+## Follow-up (2026-10-22, same day)
+| # | Fix | Status |
+|---|---|---|
+| 1 | Data-license statements | Done (`ec25187`). README "Data and licenses" lists every shipped file by source. The tree tiles are ODbL as a whole, `routes.json`'s snapped geometry is ODbL (Decision 1), and `landcover.bin`, USGS 3DEP and NWS are listed. A test fails if a shipped data file has no license line |
+| 2 | Vehicle position in About this view | Done, in Tyler's shorter wording: "Where each vehicle is drawn is an estimate, not its reported position: moved on between Muni's reports (about every 80 s), placed in its lane, and nudged up to 30 m so vehicles don't overlap. Metro trains in the subway show as a faint shape on the street above." Pinned by `dataCredits.test.ts` |
+| 3 | Stream retries and visible failures | Done (`a7e4520`). Far file retried at 1, 2, 4, 8 and 16 s, then a "map data didn't load" panel with Try again. Tile backoff of 1 and 2 s, then stuck and retried every minute, with a note on screen. The `load[0]` leak is fixed. Smoke passes (7 cases) |
+| 4 | Mid-range measurement | Tyler, on his Windows PC |
+| 5 | `TileStream` tests | Partly done (`7c7c005`): 8 tests with fake workers, fetch and clock. They cover far retry, give-up, decode retry, worker failure, fetch dedupe, tile backoff and stuck count, and stale results dropped. Two mutations of the backoff were each caught. Not covered: the near-to-far disposal and round-trip memory checks, which need real tile geometry |
+| 6 | Provenance | Done (`ec25187`). `routes.json` records the OSM extract its shapes were snapped to (2026-10-17) and the Overpass data its tunnels came from (2026-10-21T17:22:37Z, the response fetched just before its last bake). `sources.trees` records the OSM extract. Both bake scripts now write these |
+
+Live checks through the Supabase MCP (22:41 UTC):
+- **The freshness-aware ping is live.** `healthcheck_state` exists, and `ping_healthcheck()` reads it. The `ingest_runs_ping_healthcheck` trigger is enabled, and Vault holds `healthcheck_url`. The muni row's `last_feed_timestamp` is the newest feed time.
+- **Muni is healthy.** In the last 3 hours there were 134 `ok` runs (about 45 an hour, as designed), 405 `skipped_interval` runs, and no errors. In the last 24 hours, 34 errors were all "Signal timed out", between 22:42 and 23:30 UTC on 2026-10-21: a 48-minute 511 slowdown. Nothing is stuck in `running`.
+- **NWS polls succeed, but the data is stale.** There were 12 `ok` runs in 3 hours, all HTTP 200. But the newest observation is from 13:15 UTC, 9.5 hours old. api.weather.gov itself returns 13:15 as KSFO's latest (checked directly), so this is an NWS outage, not the poller. The site handles it as designed: the label says "unavailable" and the sky is clear after 6 hours. The runbook's weather step covers it; nothing alerts, by design.
