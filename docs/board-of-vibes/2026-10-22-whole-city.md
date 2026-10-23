@@ -118,7 +118,7 @@ Guests: Willison ship with changes, Quinn ship with changes
 | 6 | Cloud & compute | Hightower | Platform default is fine | Static site plus one Edge Function with two cron jobs |
 | 7 | CI/CD & version control | Hightower | Platform default is fine | Lint, both tsc configs, vitest, the SQL fixture over every migration, and a smoke test. `main` protected against force-push |
 | 8 | Security & RLS | Hunt | Platform default is fine | Unchanged. Weather adds no client-side fetch |
-| 9 | Rate limiting | Hunt | Platform default is fine | The NWS poll runs four times an hour, off the 511 budget. The 511 higher limit was requested 2026-10-22, with no reply |
+| 9 | Rate limiting | Hunt | Platform default is fine | The NWS poll runs four times an hour, off the 511 budget. The 511 higher-limit request is not yet delivered; resend pending, due 2026-11-18 (the first send bounced) |
 | 10 | Caching & CDN | Osmani | Platform default is fine | A first visit is about 6.9 MB (SPEC), almost all cacheable for good. The repeat-visit cost is `index.html` plus a 304 |
 | 11 | Load balancing & scaling | Hightower | N/A at this stage | Hobby. Each visitor's 6.9 MB first load is about 5x the realism build's bandwidth; see Cost |
 | 12 | Error tracking & logs | Majors | Risk | `TileStream.errors` and worker errors go only to the console. Fix 3 puts them on screen, per the no-Sentry decision |
@@ -170,7 +170,7 @@ Guests: Willison ship with changes, Quinn ship with changes
 | OpenStreetMap woods, parks, curb lines | `trees-*.bin` (illustrative trees, nudged trees) | ODbL 1.0 for the derived part | **Labelled PDDL only** (fix 1) |
 | OpenStreetMap streets and Overpass tunnels | `routes.json` (snapped geometry, classes, tunnel flags) | ODbL 1.0 for the derived part | **Labelled 511 only**. Combined with 511 terms: Decision 1 |
 | DataSF street trees, neighborhoods | `trees-*.bin`, tile land masks | PDDL 1.0 | Fine. Courtesy credit on screen |
-| 511 static GTFS and live positions | `routes.json`, live | 511 Data Disseminator Agreement | Credit wording correct since `2b16b95`. §2.g notice sent 2026-10-22 |
+| 511 static GTFS and live positions | `routes.json`, live | 511 Data Disseminator Agreement | Credit wording correct since `2b16b95`. §2.g notice not yet delivered; resend pending, due 2026-11-18 (the first send bounced) |
 | USGS 3DEP | `terrain-*.bin`, `backdrop.bin` | Public domain | Fine. Add to the README (fix 1) |
 | National Weather Service | live, via the poller | Public domain | Fine. Credited on screen. User-Agent set as NWS asks |
 | Wikipedia (landmark dimensions, Muni fleet series) | Code constants | Facts, not copyrightable | Fine: no text or images copied |
@@ -193,7 +193,7 @@ The reading behind rows 3 and 4: OSMF's Collective Database guideline treats dat
 
 **5. What to build next from the Later list.** The board agrees: none of them yet. Fixes 1–4 come first. Then:
 1. **Later 5, cached shadow map**, only if the mid-range run shows the shadow pass is a large share of the frame there (Osmani expects it is). It's the one Later item that helps the visitors the project is most likely to lose.
-2. **Later 3, ferries**: wait for MTC's reply on the higher limit. Muni already uses about 45 of 60 calls an hour, and each ferry operator is another call.
+2. **Later 3, ferries**: wait for MTC's reply on the higher limit, once the request is delivered. Muni already uses about 45 of 60 calls an hour, and each ferry operator is another call.
 3. **Later 4, pedestrians**: still last, for the realism review's reasons. The whole city makes them heavier, not lighter.
 
 Not on the list, raised by Majors and Quinn: show Muni city-wide. The 511 feed already returns all of SF; the poller clips it. It costs no 511 budget, but `current_state` egress grows about 4x, and the city now draws the Sunset's N line with no trains on it. Decision 3.
@@ -209,7 +209,7 @@ Not on the list, raised by Majors and Quinn: show Muni city-wide. The 511 feed a
 ## Disagreements
 1. **How to license `routes.json`.** Hunt vs Hightower.
    - Hunt: snapped shapes mix 511 data under its agreement with OSM geometry that ODbL share-alike wants offered under ODbL, and Tyler can't relicense 511's data. Ship the raw 511 shapes and snap in the tile worker at load from the OSM streets already shipped under ODbL. The derived database is then never distributed, only shown, which makes it a Produced Work needing only the credit already on screen.
-   - Hightower: that moves a bake step into every visitor's load (cost unmeasured) to settle a question nobody has raised. State the OSM-derived part under ODbL with the bake script as the method, note 511's terms for the rest, and ask MTC in the thread already open.
+   - Hightower: that moves a bake step into every visitor's load (cost unmeasured) to settle a question nobody has raised. State the OSM-derived part under ODbL with the bake script as the method, note 511's terms for the rest, and ask MTC in the same email as the §2.g notice.
    - Kleppmann sides with Hightower for now, as long as the file records which OSM extract it was snapped to.
 2. **Geometry step now or after measuring.** Osmani vs Hightower.
    - Osmani: add the `NEAR_FLOOR_PX` step now. It's one constant and cheap insurance.
@@ -226,7 +226,7 @@ Hunt: the repo tells people the wrong license for files it hands them.
 - The fix is a few README lines and two header strings, and it should land before the walkthrough draws attention to the repo.
 - On `routes.json` he goes further: stating ODbL doesn't cure a combination Tyler may not have the right to make. Snapping at runtime avoids the question rather than arguing it.
 
-What would change his mind: MTC replying in the open thread that publishing OSM-aligned shapes is fine, or a measured runtime snap cost too high for the load budget (over about 300 ms in the worker on a mid-range CPU).
+What would change his mind: MTC replying to the §2.g notice that publishing OSM-aligned shapes is fine, or a measured runtime snap cost too high for the load budget (over about 300 ms in the worker on a mid-range CPU).
 
 ## Next three actions
 1. **Today, statements only:**
@@ -249,7 +249,7 @@ What would change his mind: MTC replying in the open thread that publishing OSM-
 
 ## Decisions needed from Tyler
 1. **`routes.json` license route:**
-   - (a) State the OSM-derived geometry under ODbL, with the bake scripts as the method, plus 511's terms for the rest, and ask MTC in the open thread. The chair recommends (a).
+   - (a) State the OSM-derived geometry under ODbL, with the bake scripts as the method, plus 511's terms for the rest, and ask MTC in the §2.g notice. The chair recommends (a).
    - (b) Ship raw 511 shapes and snap in the browser. This is the fallback if MTC objects or Hunt's concern is confirmed.
 2. **Geometry step:** now (Osmani) or after the Iris Xe run (Hightower). The chair recommends after, since the run is this week anyway.
 3. **City-wide Muni:** yes, no, or after the plan is confirmed. If yes, Muni only; the police clip stays.
@@ -269,7 +269,7 @@ What would change his mind: MTC replying in the open thread that publishing OSM-
 | 2026-10-21 | Vehicles snapped to lanes and spaced, display only, at most 30 m from the estimate | Buses on sidewalks, overlapping | Yes in code (replay test: 95% fewer overlaps). Not disclosed (fix 2) |
 | 2026-10-22 | Whole city streamed in 1 km tiles, three levels | All of SF as context | Yes on the M4 Pro (66/66 fps cases). Unmeasured on mid-range (fix 4) |
 | 2026-10-22 | Draw straight to the canvas; composer only for SSAO and the lowest step | About 2 ms of the composer's MSAA resolve | Yes on Apple. The lowest step's cost is unmeasured (fix 4) |
-| 2026-10-22 | `routes.json` stated under ODbL for its OSM-derived geometry, with the bake scripts as the method; 511's terms for the rest. Tyler mentions it to MTC in the open thread | Sides with Hightower and Kleppmann. Snapping in the browser stays the fallback if MTC objects | |
+| 2026-10-22 | `routes.json` stated under ODbL for its OSM-derived geometry, with the bake scripts as the method; 511's terms for the rest. Tyler mentions it to MTC in the §2.g notice (resend pending, due 2026-11-18) | Sides with Hightower and Kleppmann. Snapping in the browser stays the fallback if MTC objects | |
 | 2026-10-22 | Geometry step in the quality floor only after the mid-range test, which Tyler runs on his Windows PC | Sides with Hightower | |
 | 2026-10-22 | City-wide Muni later | Waits on the plan and egress question | |
 | 2026-10-22 | Vercel Hobby stays; Tyler checks the Supabase spend cap himself | | |
@@ -288,3 +288,5 @@ Live checks through the Supabase MCP (22:41 UTC):
 - **The freshness-aware ping is live.** `healthcheck_state` exists, and `ping_healthcheck()` reads it. The `ingest_runs_ping_healthcheck` trigger is enabled, and Vault holds `healthcheck_url`. The muni row's `last_feed_timestamp` is the newest feed time.
 - **Muni is healthy.** In the last 3 hours there were 134 `ok` runs (about 45 an hour, as designed), 405 `skipped_interval` runs, and no errors. In the last 24 hours, 34 errors were all "Signal timed out", between 22:42 and 23:30 UTC on 2026-10-21: a 48-minute 511 slowdown. Nothing is stuck in `running`.
 - **NWS polls succeed, but the data is stale.** There were 12 `ok` runs in 3 hours, all HTTP 200. But the newest observation is from 13:15 UTC, 9.5 hours old. api.weather.gov itself returns 13:15 as KSFO's latest (checked directly), so this is an NWS outage, not the poller. The site handles it as designed: the label says "unavailable" and the sky is clear after 6 hours. The runbook's weather step covers it; nothing alerts, by design.
+
+**Correction (2026-10-22):** the §2.g notice and the higher-limit request are not yet delivered; resend pending, due 2026-11-18. The email to transitdata@511.org bounced because that address accepts only approved senders. The realism scorecard and SPEC are corrected to match.
