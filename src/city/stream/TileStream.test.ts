@@ -1,10 +1,15 @@
-import { PerspectiveCamera } from 'three'
+import { BufferGeometry, type EventDispatcher, Material, PerspectiveCamera, Texture } from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CityIndex } from '../cityIndex.ts'
+import { landMaterial } from '../groundMaterial.ts'
+import { NO_CONTACT } from '../groundShading.ts'
 import type { LandCover } from '../landCover.ts'
 import type { Terrain } from '../terrain.ts'
 import type { CityBase } from '../useCity.ts'
+import { FADE_S } from './dither.ts'
 import type { ToPage, ToWorker } from './protocol.ts'
+import { buildBase, buildFar, buildMid, buildNear, groundMesh } from './tileBuild.ts'
+import { ctx, farTile } from './tileFixtures.ts'
 import { FAR_RETRY_MS, MAX_RETRIES, STUCK_RETRY_MS, TileStream } from './TileStream.ts'
 
 // params.ts reads the page's URL as it loads.
@@ -224,5 +229,160 @@ describe('TileStream: tiles', () => {
     await step(s, AWAY)
     expect(s.stuckTiles).toBe(0)
     expect(s.group.children.length).toBe(meshes)
+  })
+})
+
+// ------------------------------------------------- cleanup, with real tiles
+
+const MID = camera(3500) // tile 0 past the near line, short of the far
+
+type Resource = BufferGeometry | Material | Texture
+const label = (r: Resource) => r.constructor.name
+
+// Every geometry, material and texture reachable from `root`.
+function resources(root: unknown): Set<Resource> {
+  const out = new Set<Resource>()
+  const seen = new Set<object>()
+  const stack = [root]
+  while (stack.length) {
+    const v = stack.pop()
+    if (!v || typeof v !== 'object' || seen.has(v) || ArrayBuffer.isView(v) || v instanceof ArrayBuffer) continue
+    seen.add(v)
+    if (v instanceof BufferGeometry || v instanceof Material || v instanceof Texture) out.add(v)
+    if (v instanceof Map) for (const [k, x] of v) stack.push(k, x)
+    else if (v instanceof Set) stack.push(...v)
+    else stack.push(...Object.values(v))
+  }
+  return out
+}
+
+// What the stream makes past its far blocks: everything reachable from it
+// after each frame (all it makes lives a frame at least), less what was
+// there with only the far blocks in and the scene's own (the land's
+// material, the clear contact map); and which of it was disposed.
+class Ledger {
+  private readonly shared: Set<Resource>
+  readonly made = new Set<Resource>()
+  private readonly disposed = new Set<Resource>()
+  private readonly s: TileStream
+
+  constructor(s: TileStream) {
+    this.s = s
+    this.shared = resources([s, landMaterial(), NO_CONTACT])
+  }
+
+  look() {
+    for (const r of resources(this.s)) {
+      if (this.shared.has(r) || this.made.has(r)) continue
+      this.made.add(r)
+      ;(r as EventDispatcher<{ dispose: object }>).addEventListener('dispose', () => this.disposed.add(r))
+    }
+  }
+
+  count(kind: string) {
+    return [...this.made].filter((r) => label(r) === kind).length
+  }
+
+  // Made and never disposed.
+  leaked() {
+    return [...this.made].filter((r) => !this.disposed.has(r)).map(label)
+  }
+
+  // Made and still reachable from the stream.
+  held() {
+    return [...resources(this.s)].filter((r) => !this.shared.has(r)).map(label)
+  }
+}
+
+// Every build the workers have been sent and not answered, answered with
+// the real thing (tileFixtures.ts), as tileWorker.ts would.
+const answered = new WeakMap<FakeWorker, number>()
+function serve() {
+  for (const w of FakeWorker.all) {
+    const builds = w.builds()
+    for (const b of builds.slice(answered.get(w) ?? 0)) {
+      const result = b.kind === 'base' ? buildBase(ctx, b.i, b.j, b.step!) : b.kind === 'lod' ? groundMesh(ctx, b.i, b.j, b.step!) : b.kind === 'near' ? buildNear(ctx, b.i, b.j) : buildMid(ctx, b.i, b.j)
+      w.reply({ type: 'built', id: b.id, kind: b.kind, i: b.i, j: b.j, result, ms: 1 } as ToPage)
+    }
+    answered.set(w, builds.length)
+  }
+}
+
+// The far file in, with tile 0's real blocks and canopy.
+async function farBlocksIn(s: TileStream) {
+  await step(s, AWAY)
+  FakeWorker.all[0].reply({ type: 'far', id: 0, tiles: [buildFar(farTile(), ctx)], landmarkY: {}, ms: 1 })
+  await step(s, AWAY)
+}
+
+// Frames 50 ms apart from `cam`, the workers answering, until the stream's
+// idle (every tile showing what its level wants, nothing pending) and a
+// fade's time has passed.
+async function settleAt(s: TileStream, cam: PerspectiveCamera, ledger: Ledger) {
+  for (let k = 1; k <= 200; k++) {
+    await step(s, cam, 50)
+    serve()
+    ledger.look()
+    if (k * 50 > FADE_S * 1000 && window.__cityIdle) return
+  }
+  throw new Error('the stream never settled')
+}
+
+const maskClear = (s: TileStream) => Array.from(s.mask.texture.image.data as Uint8Array).every((v) => v === 0)
+
+describe('TileStream: cleanup', () => {
+  it('a tile dropping from near to far disposes all its near and mid levels made, and holds none of it', async () => {
+    const s = new TileStream(base())
+    await farBlocksIn(s)
+    const ledger = new Ledger(s)
+    const meshes = s.group.children.length
+    await settleAt(s, NEAR, ledger)
+    expect(s.stats()[0].shown).toBe('near')
+    expect(s.nearTiles().items).toHaveLength(1)
+    // Its ground's maps and paving, and the buildings' contact map; the
+    // ground, streets and buildings, and their materials.
+    expect(ledger.count('DataTexture')).toBe(4)
+    expect(ledger.count('BufferGeometry')).toBeGreaterThanOrEqual(5)
+    expect(ledger.count('MeshStandardMaterial')).toBeGreaterThanOrEqual(5)
+
+    await settleAt(s, AWAY, ledger)
+    expect(s.stats()[0].shown).toBe('far')
+    expect(ledger.leaked()).toEqual([])
+    expect(ledger.held()).toEqual([])
+    expect(s.group.children).toHaveLength(meshes)
+    expect(s.nearTiles().items).toEqual([])
+    expect(maskClear(s)).toBe(true)
+  })
+
+  it('a round trip, near to mid to far and back to near and far, leaves nothing behind', async () => {
+    const s = new TileStream(base())
+    await farBlocksIn(s)
+    const workers = FakeWorker.all.length
+    const ledger = new Ledger(s)
+    const meshes = s.group.children.length
+    const shown: string[] = []
+    for (const cam of [NEAR, MID, AWAY, NEAR, AWAY]) {
+      await settleAt(s, cam, ledger)
+      shown.push(s.stats()[0].shown)
+    }
+    expect(shown).toEqual(['near', 'mid', 'far', 'near', 'far'])
+    // Twice over: the ground's maps, paving and contact map each time.
+    expect(ledger.count('DataTexture')).toBe(8)
+
+    expect(ledger.leaked()).toEqual([])
+    expect(ledger.held()).toEqual([])
+    expect(s.group.children).toHaveLength(meshes)
+    expect(s.nearTiles().items).toEqual([])
+    expect(maskClear(s)).toBe(true)
+    // The workers: no more of them, and none with work outstanding.
+    const inside = s as unknown as { jobs: Map<number, unknown>; load: number[]; ready: unknown[]; tiles: Map<string, { pending: Set<string> }> }
+    expect(FakeWorker.all).toHaveLength(workers)
+    expect(inside.jobs.size).toBe(0)
+    expect(inside.load.every((n) => n === 0)).toBe(true)
+    expect(inside.ready).toEqual([])
+    for (const t of inside.tiles.values()) expect(t.pending.size).toBe(0)
+    const terminate = vi.spyOn(FakeWorker.prototype, 'terminate')
+    s.dispose()
+    expect(terminate).toHaveBeenCalledTimes(workers)
   })
 })
