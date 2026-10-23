@@ -256,19 +256,21 @@ function resources(root: unknown): Set<Resource> {
   return out
 }
 
-// What the stream makes past its far blocks: everything reachable from it
-// after each frame (all it makes lives a frame at least), less what was
-// there with only the far blocks in and the scene's own (the land's
-// material, the clear contact map); and which of it was disposed.
+// What the stream makes past its far blocks (or, `withFar`, all it makes):
+// everything reachable from it after each frame (all it makes lives a
+// frame at least), less what was there with only the far blocks in and the
+// scene's own (the land's material, the clear contact map); and which of
+// it was disposed.
 class Ledger {
   private readonly shared: Set<Resource>
   readonly made = new Set<Resource>()
   private readonly disposed = new Set<Resource>()
   private readonly s: TileStream
 
-  constructor(s: TileStream) {
+  constructor(s: TileStream, withFar = false) {
     this.s = s
-    this.shared = resources([s, landMaterial(), NO_CONTACT])
+    this.shared = resources(withFar ? [landMaterial(), NO_CONTACT] : [s, landMaterial(), NO_CONTACT])
+    this.look()
   }
 
   look() {
@@ -384,5 +386,18 @@ describe('TileStream: cleanup', () => {
     const terminate = vi.spyOn(FakeWorker.prototype, 'terminate')
     s.dispose()
     expect(terminate).toHaveBeenCalledTimes(workers)
+  })
+
+  it('dispose() frees all the stream made: a near tile, the far blocks and canopy, the shared materials and both masks', async () => {
+    const s = new TileStream(base())
+    await farBlocksIn(s)
+    const ledger = new Ledger(s, true)
+    await settleAt(s, NEAR, ledger)
+    expect(s.stats()[0].shown).toBe('near')
+    // The far blocks' and canopy's geometry; the ground mask and near trees'.
+    expect(ledger.count('DataTexture')).toBe(4 + 2)
+    s.dispose()
+    expect(ledger.leaked()).toEqual([])
+    expect(s.group.children).toEqual([])
   })
 })

@@ -253,12 +253,14 @@ export class TileStream {
   dispose() {
     for (const w of this.workers) w.terminate()
     for (const t of this.tiles.values()) {
-      for (const b of ['far', 'mid', 'near'] as const) this.drop(t, b)
+      for (const b of ['mid', 'near'] as const) this.drop(t, b)
       this.dropBase(t)
       this.dropCanopy(t)
+      this.dropFar(t)
     }
     this.prismMaterial.dispose()
     this.canopyMaterial.dispose()
+    this.mask.texture.dispose()
     this.nearTrees.texture.dispose()
   }
 
@@ -671,6 +673,15 @@ export class TileStream {
     for (const x of t.base.textures) x.dispose()
     t.base = null
     this.mask.set(t.entry.i, t.entry.j, false)
+  }
+
+  // Only with the stream (dispose): a tile's far blocks stay while it does.
+  private dropFar(t: Tile) {
+    if (!t.far) return
+    this.group.remove(t.far.mesh)
+    disposeMesh(t.far.mesh)
+    t.far.dither?.dispose()
+    t.far = null
   }
 
   private dropCanopy(t: Tile) {
